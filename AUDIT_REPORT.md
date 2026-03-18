@@ -1,6 +1,6 @@
 # Wallet API — Auditoría Completa de Seguridad, Concurrencia e Integridad
 
-**Fecha:** 2026-03-18
+**Fecha:** 2026-03-18 (actualizado 2026-03-19)
 **Metodología:** Penetration testing automatizado (60 tests) + revisión de código estática + pruebas de concurrencia bidireccional + análisis de condiciones de carrera
 **Stack:** Hono 4.12.8 / Prisma 7.5.0 / PostgreSQL 16 / TypeScript 5.9.3
 
@@ -12,12 +12,12 @@
 |-----------|----------|
 | Tests de penetración ejecutados | **60** |
 | Tests pasados | **60** |
-| Bugs de concurrencia confirmados | **1** (deadlock en transfers bidireccionales) |
-| Problemas de diseño para producción | **5** |
-| Hardening recomendado | **8** |
+| Bugs de concurrencia confirmados | **1** (deadlock en transfers) → **RESUELTO** |
+| Problemas de diseño para producción | **5** encontrados → **2 RESUELTOS**, 1 diseñado, 2 pendientes |
+| Hardening recomendado | **8** → **1 RESUELTO**, 7 pendientes |
 | Vulnerabilidades de seguridad explotables | **0** |
 
-La API tiene una base arquitectónica excelente: double-entry bookkeeping correcto, optimistic locking funcional, ledger inmutable con triggers, y validación en profundidad. Sin embargo, hay condiciones de carrera y decisiones de diseño que necesitan corrección antes de producción con carga real.
+La API tiene una base arquitectónica excelente: double-entry bookkeeping correcto, optimistic locking funcional, ledger inmutable con triggers, y validación en profundidad. Los problemas críticos de concurrencia (deadlock en transfers, system wallet bottleneck) fueron resueltos. El server-side retry absorbe conflictos de versión internamente. Quedan mejoras de hardening y operabilidad documentadas abajo.
 
 ---
 
@@ -70,9 +70,9 @@ Constraints adicionales protegen invariantes a nivel DB:
 - `holds_positive_amount`: `amount_cents > 0`
 - `transactions_positive_amount`: `amount_cents > 0`
 
-### 3. Optimistic locking bien implementado
+### 3. Optimistic locking + server-side retry
 
-[wallet.repo.ts:42-57](src/wallet/adapters/persistence/prisma/wallet.repo.ts#L42-L57) — El campo `version` con `updateMany WHERE version = X` es la implementación canónica:
+[wallet.repo.ts:42-57](src/wallet/adapters/persistence/prisma/wallet.repo.ts#L42-L57) — User wallets usan `version` con `updateMany WHERE version = X`:
 
 ```typescript
 const result = await db.wallet.updateMany({
@@ -88,11 +88,17 @@ if (result.count === 0) throw ErrVersionConflict();
 
 `touchForHoldChange()` en [wallet.aggregate.ts:187-192](src/wallet/domain/wallet/wallet.aggregate.ts#L187-L192) hace que PlaceHold y VoidHold participen en el contention del wallet, evitando que holds concurrentes pasen el balance check simultáneamente.
 
+**System wallets** usan `adjustSystemWalletBalance()` con atomic increment — sin version check, eliminando el bottleneck de hot row.
+
+**Server-side retry**: `PrismaTransactionManager` reintenta hasta 3 veces en VERSION_CONFLICT con backoff exponencial (30ms, 60ms, 120ms), absorbiendo contención natural sin molestar al cliente.
+
 Probado con:
-- 10 deposits concurrentes: 2 exitosos, 8 conflictos → balance consistente
-- 20 withdrawals concurrentes contra $100: 1 exitoso, 12 insufficient, 7 conflictos → sin overdraft
-- Transfer race ($50 a 2 destinos desde $50): 1 exitoso, 1 conflicto → sin overdraft
-- Hold + Withdraw race ($50 cada uno desde $50): 1 exitoso, 1 conflicto → sin overdraft
+- 10 deposits concurrentes al mismo wallet: 4 exitosos, 6 conflictos (con retry interno) → balance consistente
+- 20 deposits concurrentes a wallets distintos: 20/20 exitosos, 0 conflictos (system wallet sin bottleneck)
+- 20 withdrawals concurrentes contra $100: 1 exitoso, sin overdraft
+- Transfer race ($50 a 2 destinos desde $50): 1 exitoso, sin overdraft
+- Hold + Withdraw race ($50 cada uno desde $50): 1 exitoso, sin overdraft
+- 40 transfers bidireccionales A↔B: 0 deadlocks (lock ordering por ID)
 
 ### 4. Idempotencia con atomic acquire
 
@@ -427,9 +433,9 @@ Si un record lleva >5 min en estado pending (posible crash), el middleware lo li
 
 ---
 
-### DISEÑO-3: READ COMMITTED sin isolation explícito
+### ~~DISEÑO-3: READ COMMITTED sin isolation explícito~~ RESUELTO
 
-**Severidad:** MEDIA
+**Severidad:** ~~MEDIA~~ **RESUELTO**
 **Archivo:** [transaction.manager.ts:19](src/wallet/adapters/persistence/prisma/transaction.manager.ts#L19)
 
 ```typescript
@@ -464,6 +470,10 @@ await this.prisma.$transaction(async (tx) => { ... }, {
 ```
 
 O al mínimo, documentar explícitamente que "READ COMMITTED + optimistic locking" es la estrategia elegida y que toda nueva operación que modifique el available balance **debe** tocar la versión del wallet.
+
+**Resolución implementada:** `PrismaTransactionManager` ahora usa `isolationLevel: "Serializable"`. PostgreSQL detecta automáticamente conflictos de lectura/escritura entre transacciones concurrentes — no depende de que el programador recuerde hacer `touchForHoldChange()`. Los serialization failures de PostgreSQL (P2034/40001) se reintentan internamente junto con VERSION_CONFLICT. Si todos los reintentos se agotan, el error se mapea a 409 Conflict (retryable por el cliente) en vez de 500.
+
+Verificado: 10 deposits concurrentes → 5 exitosos, 5 conflictos (409), 0 errores 500. Invariantes intactos.
 
 ---
 
@@ -713,9 +723,9 @@ capture hold de 60: 0 < 60 → FALLA (incorrectamente)
 |--------|:---:|:---:|--------|
 | Overdraft por concurrencia | Muy Baja | Crítico | **Mitigado** (optimistic locking + DB constraint) |
 | Double-spend por replay | Muy Baja | Crítico | **Mitigado** (idempotency + UNIQUE constraint en Transaction) |
-| Deadlock en transfers | Media | Medio | **No mitigado** (confirmado con test) |
+| Deadlock en transfers | ~~Media~~ | ~~Medio~~ | **RESUELTO** (lock ordering por ID) |
 | Ledger tampering | Muy Baja | Crítico | **Mitigado** (trigger, cuando está aplicado) |
-| System wallet contention | Alta bajo carga | Medio | **No mitigado** (by design) |
+| System wallet contention | ~~Alta bajo carga~~ | ~~Medio~~ | **RESUELTO** (atomic increment sin version check) |
 | Cross-tenant access | Muy Baja | Alto | **Mitigado** (platformId check everywhere) |
 | API key brute-force | Baja | Alto | **Parcialmente mitigado** (SHA-256, sin rate limit) |
 | DoS / resource exhaustion | Media | Medio | **No mitigado** (sin rate limiting) |
@@ -741,7 +751,7 @@ capture hold de 60: 0 < 60 → FALLA (incorrectamente)
 | # | Acción | Esfuerzo | Archivos |
 |---|--------|----------|----------|
 | 5 | Idempotency recovery via UNIQUE constraint | 4-6h | `transaction.repo.ts`, `transaction.errors.ts`, `errors.ts`, 4 handlers, `idempotency.ts` |
-| 6 | Explicit isolation level | 30 min | `transaction.manager.ts` |
+| ~~6~~ | ~~Explicit isolation level~~ | | **RESUELTO** — Serializable + serialization failure retry + 409 mapping |
 | 7 | Max string lengths | 1h | Todos los Zod schemas |
 | 8 | Path param validation | 1h | Todos los HTTP handlers |
 | 9 | Status CHECK constraints | 30 min | `immutable_ledger.sql` |
@@ -760,8 +770,8 @@ capture hold de 60: 0 < 60 → FALLA (incorrectamente)
 | Arquitectura | **9/10** | DDD / Hexagonal / CQRS limpio |
 | Seguridad (auth, injection, disclosure) | **9/10** | Timing-safe, parameterized, sin leaks |
 | Validación de input | **8/10** | Zod en body, falta en path params y max lengths |
-| Concurrencia | **7/10** | Optimistic locking funcional, pero deadlock en transfers y system wallet bottleneck |
-| Idempotencia | **7/10** | Diseño sólido, pero transacciones desacopladas y fire-and-forget |
+| Concurrencia | **9/10** | Optimistic locking + atomic increment para system wallet + server-side retry + lock ordering. Deadlock y bottleneck resueltos |
+| Idempotencia | **7/10** | Diseño sólido, pero transacciones desacopladas y fire-and-forget (solución diseñada, pendiente de implementar) |
 | Operabilidad | **6/10** | Buen logging, pero sin reconciliación, graceful shutdown, ni distributed locks |
 
-**Veredicto:** La base arquitectónica y el modelo de datos son mejores que muchos sistemas en producción. Los invariantes financieros se mantienen bajo presión (0 inconsistencias en 60 tests). El deadlock en transfers es el único bug funcional confirmado. Los demás hallazgos son mejoras de robustez y escalabilidad necesarias para producción con tráfico real.
+**Veredicto:** La base arquitectónica y el modelo de datos son mejores que muchos sistemas en producción. Los invariantes financieros se mantienen bajo presión (0 inconsistencias en 60 tests). Los problemas de concurrencia (deadlock, system wallet bottleneck) fueron resueltos. El server-side retry absorbe conflictos de versión internamente. Los hallazgos pendientes son mejoras de hardening y operabilidad.
