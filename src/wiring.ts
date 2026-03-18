@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import type { IdempotencyStore } from "./api/middleware/idempotency.js";
 import type { Config } from "./config.js";
 import { UUIDV7Generator } from "./shared/kernel/adapters/uuidV7.js";
@@ -38,9 +39,8 @@ const sensitiveKeys = [
  * Logger chain: PinoAdapter -> SensitiveKeysFilter -> SafeLogger
  */
 export function wire(config: Config): Dependencies {
-  // Prisma 7.x reads DATABASE_URL from environment automatically.
-  // Connection URL for migrations is configured in prisma/prisma.config.ts.
-  const prisma = new PrismaClient();
+  const adapter = new PrismaPg({ connectionString: config.databaseUrl });
+  const prisma = new PrismaClient({ adapter });
 
   const idGen = new UUIDV7Generator();
   const rawLogger = new PinoAdapter(config.logLevel);
@@ -63,8 +63,6 @@ export function wire(config: Config): Dependencies {
 
     if (!platform || platform.status !== "active") return null;
 
-    // In production, hash `secret` and compare with platform.apiKeyHash.
-    // For now, compare raw (to be replaced with proper hashing).
     const { createHash } = await import("node:crypto");
     const hash = createHash("sha256").update(secret).digest("hex");
     if (hash !== platform.apiKeyHash) return null;

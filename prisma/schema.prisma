@@ -5,8 +5,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  /// Prisma 7.x: connection URL configured in prisma.config.ts (for migrate)
-  /// and via PrismaClient constructor (for runtime). See src/wiring.ts.
 }
 
 /// Platform that integrates the wallet service. Authenticates via API key.
