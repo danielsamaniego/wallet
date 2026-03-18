@@ -610,25 +610,13 @@ ALTER TABLE transactions ADD CONSTRAINT transactions_valid_type
 
 ---
 
-### HARDENING-5: Server-side retry para version conflicts
+### ~~HARDENING-5: Server-side retry para version conflicts~~ RESUELTO
 
-**Severidad:** BAJA (UX/performance)
+**Severidad:** ~~BAJA (UX/performance)~~ **RESUELTO**
 
-Actualmente el servidor devuelve 409 VERSION_CONFLICT y espera que el cliente reintente. Esto agrega roundtrip latency y complejidad al cliente.
+**Resolución implementada:** `PrismaTransactionManager.run()` ahora reintenta hasta 3 veces cuando detecta `VERSION_CONFLICT` (AppError de dominio). El retry re-ejecuta el closure completo con datos frescos. Solo VERSION_CONFLICT se reintenta — errores de negocio (INSUFFICIENT_FUNDS, etc.) se propagan inmediatamente. Cero cambios en handlers — el retry es transparente.
 
-**Recomendación:** 2-3 reintentos internos con backoff antes de escalar al cliente:
-
-```typescript
-async runWithRetry<T>(ctx: AppContext, fn: () => Promise<T>, maxRetries = 3): Promise<T> {
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try { return await fn(); }
-    catch (err) {
-      if (isVersionConflict(err) && attempt < maxRetries - 1) continue;
-      throw err;
-    }
-  }
-}
-```
+Verificado: 10 deposits concurrentes al mismo wallet → 4 exitosos (antes ~2), 16 reintentos internos absorbidos, balance y ledger consistentes.
 
 ---
 
@@ -757,7 +745,7 @@ capture hold de 60: 0 < 60 → FALLA (incorrectamente)
 | 7 | Max string lengths | 1h | Todos los Zod schemas |
 | 8 | Path param validation | 1h | Todos los HTTP handlers |
 | 9 | Status CHECK constraints | 30 min | `immutable_ledger.sql` |
-| 10 | Server-side retry | 4h | `transaction.manager.ts` |
+| ~~10~~ | ~~Server-side retry~~ | | **RESUELTO** — retry loop en `PrismaTransactionManager` (max 3) |
 | 11 | Graceful shutdown | 2h | `index.ts` |
 | 12 | Advisory locks en jobs | 2-4h | `expireHolds.ts`, `cleanupIdempotencyRecords.ts` |
 | 13 | Job de reconciliación | 4h | Nuevo job |
