@@ -8,7 +8,7 @@ Architecture patterns and technical decisions for the Wallet Service.
 
 - **Dependency rule**: Domain and app must **not** import from adapters or HTTP. They depend only on interfaces (ports) and `shared/domain/` packages. Never import from `shared/adapters/` in domain or app — that's an architecture violation. Third-party libs (Prisma, Pino, uuidv7, Hono) live only in adapters.
 - **ID generation — UUID v7 only, from application**: `IDGenerator` interface; implementation uses `uuidv7`. App generates all IDs; DB never generates them (no `DEFAULT gen_random_uuid()`).
-- **Amounts**: Integer cents (`bigint` / BigInt) everywhere. All financial amounts in smallest currency unit; no floating point.
+- **Amounts**: Integer values in smallest currency unit per ISO 4217 (`bigint` / BigInt) everywhere. Column names use `_cents` as convention; the actual unit depends on the currency's minor unit exponent (2 for USD/EUR, 0 for JPY, 3 for BHD). No floating point.
 - **Timestamps**: Unix milliseconds (ms since epoch) everywhere: DB (BigInt), domain, ports, DTOs, API.
 - **Commands**: Write side; mutate aggregates via domain repositories (interface). May return minimal data (e.g. created ID) — see backend-architecture.md for rationale.
 - **Queries**: Read side; return DTOs via ReadStore (interface); no aggregate loading for display.
@@ -81,7 +81,7 @@ See **[backend-architecture.md](backend-architecture.md)** § Logging for full d
 
 - PostgreSQL via Prisma ORM.
 - Optimistic locking: `version` field on wallets; updates must match current version.
-- **Double-entry ledger**: Every operation produces 2 entries (debit + credit). `ledger_entries` is immutable (DB trigger + REVOKE UPDATE/DELETE).
+- **Double-entry ledger**: Every operation creates a **Movement** (journal entry) with 2 ledger entries (debit + credit) that must sum to zero. For transfers, both sides share the same `movement_id`. `ledger_entries` is immutable (DB trigger + REVOKE UPDATE/DELETE). Audit invariant: `SUM(amount_cents) GROUP BY movement_id = 0`.
 - Idempotency records: TTL 48h; stored responses for safe retries. Includes `request_hash` (SHA-256) for payload mismatch detection.
 - DB constraints enforce uniqueness and referential integrity as safety net.
 

@@ -44,6 +44,7 @@ export class PrismaTransactionRepo implements ITransactionRepository {
       reference: t.reference,
       metadata: (t.metadata ?? undefined) as Record<string, string> | undefined,
       holdId: t.holdId,
+      movementId: t.movementId,
       createdAt: BigInt(t.createdAt),
     };
   }

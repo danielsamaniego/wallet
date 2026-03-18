@@ -2,7 +2,9 @@ import type { AppContext } from "../../../../shared/domain/kernel/context.js";
 import type { IIDGenerator } from "../../../../shared/domain/kernel/id.generator.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import { LedgerEntry } from "../../../domain/ledgerEntry/ledgerEntry.entity.js";
+import { Movement } from "../../../domain/movement/movement.entity.js";
 import type { ILedgerEntryRepository } from "../../../domain/ports/ledgerEntry.repository.js";
+import type { IMovementRepository } from "../../../domain/ports/movement.repository.js";
 import type { ITransactionManager } from "../../../domain/ports/transaction.manager.js";
 import type { ITransactionRepository } from "../../../domain/ports/transaction.repository.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
@@ -21,6 +23,7 @@ export class DepositHandler {
     private readonly walletRepo: IWalletRepository,
     private readonly transactionRepo: ITransactionRepository,
     private readonly ledgerEntryRepo: ILedgerEntryRepository,
+    private readonly movementRepo: IMovementRepository,
     private readonly idGen: IIDGenerator,
     private readonly logger: ILogger,
   ) {}
@@ -34,6 +37,7 @@ export class DepositHandler {
     });
 
     const txId = this.idGen.newId();
+    const movementId = this.idGen.newId();
 
     await this.txManager.run(ctx, async (txCtx) => {
       const wallet = await this.walletRepo.findById(txCtx, cmd.walletId);
@@ -48,6 +52,9 @@ export class DepositHandler {
       if (!systemWallet) throw ErrSystemWalletNotFound(wallet.platformId, wallet.currencyCode);
 
       const now = Date.now();
+
+      // Create movement (journal entry)
+      const movement = Movement.create({ id: movementId, type: "deposit", createdAt: now });
 
       // Mutate aggregates
       wallet.deposit(cmd.amountCents, now);
@@ -65,6 +72,7 @@ export class DepositHandler {
         reference: cmd.reference ?? null,
         metadata: null,
         holdId: null,
+        movementId,
         createdAt: now,
       });
 
@@ -76,6 +84,7 @@ export class DepositHandler {
         entryType: "CREDIT",
         amountCents: cmd.amountCents,
         balanceAfterCents: wallet.cachedBalanceCents,
+        movementId,
         createdAt: now,
       });
 
@@ -86,10 +95,12 @@ export class DepositHandler {
         entryType: "DEBIT",
         amountCents: -cmd.amountCents,
         balanceAfterCents: systemWallet.cachedBalanceCents,
+        movementId,
         createdAt: now,
       });
 
-      // Persist
+      // Persist (movement first — FK constraint)
+      await this.movementRepo.save(txCtx, movement);
       await this.walletRepo.save(txCtx, wallet);
       await this.walletRepo.save(txCtx, systemWallet);
       await this.transactionRepo.save(txCtx, tx);
@@ -102,6 +113,6 @@ export class DepositHandler {
       amount_cents: Number(cmd.amountCents),
     });
 
-    return { transactionId: txId };
+    return { transactionId: txId, movementId };
   }
 }

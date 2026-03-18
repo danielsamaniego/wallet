@@ -101,9 +101,13 @@ export function idempotency(
     const now = Date.now();
     const expiresAt = now + 48 * 60 * 60 * 1000;
 
-    // Hash request body for payload mismatch detection
+    // Hash request method + path + body for payload mismatch detection.
+    // Including method:path ensures the same idempotency key used on a different
+    // endpoint is rejected as a payload mismatch (per IETF draft recommendation).
     const rawBody = await c.req.text();
-    const requestHash = createHash("sha256").update(rawBody).digest("hex");
+    const requestHash = createHash("sha256")
+      .update(`${c.req.method}:${c.req.path}:${rawBody}`)
+      .digest("hex");
 
     // Atomic acquire: INSERT pending record or return existing
     const existing = await store.acquire(key, platformId, requestHash, now, expiresAt);

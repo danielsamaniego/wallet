@@ -45,6 +45,19 @@ model Wallet {
   @@map("wallets")
 }
 
+/// Groups all transactions and ledger entries for a single financial operation (journal entry).
+/// One movement per deposit, withdrawal, transfer, or hold capture. Entries must sum to zero.
+model Movement {
+  id            String        @id /// UUID v7, app-generated
+  type          String /// deposit | withdrawal | transfer | hold_capture
+  createdAt     BigInt        @map("created_at") /// Unix ms
+
+  transactions  Transaction[]
+  ledgerEntries LedgerEntry[]
+
+  @@map("movements")
+}
+
 /// Financial transaction record. amount_cents is always positive.
 model Transaction {
   id                  String        @id /// UUID v7, app-generated
@@ -59,12 +72,15 @@ model Transaction {
   reference           String? /// External reference from caller
   metadata            Json? /// Arbitrary JSON metadata
   holdId              String?       @map("hold_id") /// If from a captured hold
+  movementId          String        @map("movement_id")
+  movement            Movement      @relation(fields: [movementId], references: [id])
   createdAt           BigInt        @map("created_at") /// Unix ms
 
   ledgerEntries LedgerEntry[]
 
   @@index([walletId, createdAt])
   @@index([idempotencyKey])
+  @@index([movementId])
   @@map("transactions")
 }
 
@@ -79,10 +95,13 @@ model LedgerEntry {
   entryType         String      @map("entry_type") /// CREDIT | DEBIT
   amountCents       BigInt      @map("amount_cents") /// + for credit, - for debit
   balanceAfterCents BigInt      @map("balance_after_cents") /// Balance snapshot after this entry
+  movementId        String      @map("movement_id")
+  movement          Movement    @relation(fields: [movementId], references: [id])
   createdAt         BigInt      @map("created_at") /// Unix ms
 
   @@index([walletId, createdAt])
   @@index([transactionId])
+  @@index([movementId])
   @@map("ledger_entries")
 }
 

@@ -46,6 +46,7 @@ export function transferHandler(handler: TransferHandler, logger: ILogger) {
         {
           source_transaction_id: result.sourceTransactionId,
           target_transaction_id: result.targetTransactionId,
+          movement_id: result.movementId,
         },
         201,
       );

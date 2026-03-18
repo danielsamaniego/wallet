@@ -3,6 +3,7 @@ import type { HonoVariables } from "../../shared/adapters/kernel/hono.context.js
 import { PrismaHoldRepo } from "../../wallet/adapters/persistence/prisma/hold.repo.js";
 import { PrismaLedgerEntryReadStore } from "../../wallet/adapters/persistence/prisma/ledgerEntry.readstore.js";
 import { PrismaLedgerEntryRepo } from "../../wallet/adapters/persistence/prisma/ledgerEntry.repo.js";
+import { PrismaMovementRepo } from "../../wallet/adapters/persistence/prisma/movement.repo.js";
 // Adapters
 import { PrismaTransactionManager } from "../../wallet/adapters/persistence/prisma/transaction.manager.js";
 import { PrismaTransactionReadStore } from "../../wallet/adapters/persistence/prisma/transaction.readstore.js";
@@ -42,6 +43,7 @@ export function setupWalletRoutes(app: Hono<{ Variables: HonoVariables }>, deps:
   const holdRepo = new PrismaHoldRepo(prisma, logger);
   const transactionRepo = new PrismaTransactionRepo(prisma, logger);
   const ledgerEntryRepo = new PrismaLedgerEntryRepo(prisma, logger);
+  const movementRepo = new PrismaMovementRepo(prisma, logger);
   const walletReadStore = new PrismaWalletReadStore(prisma, logger);
   const transactionReadStore = new PrismaTransactionReadStore(prisma, logger);
   const ledgerEntryReadStore = new PrismaLedgerEntryReadStore(prisma, logger);
@@ -53,6 +55,7 @@ export function setupWalletRoutes(app: Hono<{ Variables: HonoVariables }>, deps:
     walletRepo,
     transactionRepo,
     ledgerEntryRepo,
+    movementRepo,
     idGen,
     logger,
   );
@@ -62,6 +65,7 @@ export function setupWalletRoutes(app: Hono<{ Variables: HonoVariables }>, deps:
     holdRepo,
     transactionRepo,
     ledgerEntryRepo,
+    movementRepo,
     idGen,
     logger,
   );

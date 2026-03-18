@@ -9,12 +9,20 @@ Conceptual data model for the Wallet Service. Entities and relationships for imp
 ```mermaid
 erDiagram
     Platform ||--o{ Wallet : owns
+    Movement ||--o{ Transaction : groups
+    Movement ||--o{ LedgerEntry : groups
     Wallet ||--o{ Transaction : has
     Wallet ||--o{ LedgerEntry : has
     Wallet ||--o{ Hold : has
     Transaction ||--o{ LedgerEntry : produces
     Transaction }o--o| Hold : "from capture"
     Platform ||--o{ IdempotencyRecord : uses
+
+    Movement {
+        uuid id PK
+        string type
+        bigint created_at
+    }
 
     Platform {
         uuid id PK
@@ -50,6 +58,7 @@ erDiagram
         string reference
         json metadata
         uuid hold_id
+        uuid movement_id FK
         bigint created_at
     }
 
@@ -60,6 +69,7 @@ erDiagram
         string entry_type
         bigint amount_cents
         bigint balance_after_cents
+        uuid movement_id FK
         bigint created_at
     }
 
@@ -136,9 +146,27 @@ Per-owner, per-platform, per-currency balance container. Uses optimistic locking
 
 ---
 
+### Movement
+
+Journal entry that groups all transactions and ledger entries for a single financial operation. The accounting unit of atomicity — ledger entries within a movement must always sum to zero.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| id | UUID | Primary key; app generates UUID v7 |
+| type | string | deposit, withdrawal, transfer, hold_capture |
+| created_at | BIGINT | Unix ms |
+
+**Audit invariant:** `SUM(amount_cents) GROUP BY movement_id = 0` for all movements.
+
+**Relationships:**
+- One-to-many Transactions (1 for most ops, 2 for transfers)
+- One-to-many LedgerEntries (always 2: one debit, one credit)
+
+---
+
 ### Transaction
 
-Record of a financial operation. `amount_cents` is always positive; direction implied by `type` and ledger entries.
+Record of a financial operation per wallet. `amount_cents` is always positive; direction implied by `type` and ledger entries.
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -146,16 +174,18 @@ Record of a financial operation. `amount_cents` is always positive; direction im
 | wallet_id | UUID | FK → Wallet (primary wallet) |
 | counterpart_wallet_id | UUID? | FK → Wallet (for transfers) |
 | type | string | deposit, withdrawal, transfer_in, transfer_out, hold_capture |
-| amount_cents | BIGINT | Always positive; integer cents |
+| amount_cents | BIGINT | Always positive; smallest currency unit |
 | status | string | completed, failed, reversed |
 | idempotency_key | string? | Unique; for safe retries |
 | reference | string? | External reference from caller |
 | metadata | JSON? | Arbitrary metadata |
 | hold_id | string? | If transaction from captured hold |
+| movement_id | UUID | FK → Movement; groups this transaction with its counterpart entries |
 | created_at | BIGINT | Unix ms |
 
 **Relationships:**
 - Belongs to Wallet
+- Belongs to Movement
 - One-to-many LedgerEntries
 
 ---
@@ -172,6 +202,7 @@ Immutable double-entry ledger line. Append-only — DB trigger prevents UPDATE a
 | entry_type | string | CREDIT or DEBIT |
 | amount_cents | BIGINT | Positive for credit, negative for debit |
 | balance_after_cents | BIGINT | Balance snapshot after this entry |
+| movement_id | UUID | FK → Movement; entries sharing a movement_id must sum to zero |
 | created_at | BIGINT | Unix ms |
 
 **Immutability:** Protected by DB trigger; REVOKE UPDATE/DELETE recommended.
@@ -179,6 +210,7 @@ Immutable double-entry ledger line. Append-only — DB trigger prevents UPDATE a
 **Relationships:**
 - Belongs to Transaction
 - Belongs to Wallet
+- Belongs to Movement
 
 ---
 
@@ -227,6 +259,8 @@ Stores response for idempotent mutations. Prevents duplicate financial operation
 | From | To | Relationship |
 |------|----|--------------|
 | Platform | Wallet | 1:N |
+| Movement | Transaction | 1:N (1 for most ops, 2 for transfers) |
+| Movement | LedgerEntry | 1:N (always 2: debit + credit) |
 | Wallet | Transaction | 1:N |
 | Wallet | LedgerEntry | 1:N |
 | Wallet | Hold | 1:N |
@@ -242,7 +276,7 @@ Stores response for idempotent mutations. Prevents duplicate financial operation
 
 2. **Timestamps**: Unix milliseconds (ms since epoch) everywhere: DB (BIGINT), domain, ports, DTOs, API.
 
-3. **Amounts**: Integer cents (BIGINT). No floats. Stripe-style representation.
+3. **Amounts**: Integer values in the smallest currency unit per ISO 4217 (BIGINT). No floats. Stripe-style representation. The `_cents` column suffix is a naming convention; the actual unit depends on the currency's minor unit exponent (e.g., 2 for USD/EUR, 0 for JPY, 3 for BHD).
 
 4. **System wallets**: `is_system = true`; can have negative balance. Act as counterparty for deposits and withdrawals.
 

@@ -18,6 +18,7 @@ export class Transaction {
   private readonly _reference: string | null;
   private readonly _metadata: Record<string, unknown> | null;
   private readonly _holdId: string | null;
+  private readonly _movementId: string;
   private readonly _createdAt: number;
 
   private constructor() {
@@ -31,6 +32,7 @@ export class Transaction {
     this._reference = null;
     this._metadata = null;
     this._holdId = null;
+    this._movementId = "";
     this._createdAt = 0;
   }
 
@@ -45,6 +47,7 @@ export class Transaction {
     reference: string | null;
     metadata: Record<string, unknown> | null;
     holdId: string | null;
+    movementId: string;
     createdAt: number;
   }): Transaction {
     const t = new Transaction();
@@ -59,6 +62,7 @@ export class Transaction {
       _reference: params.reference,
       _metadata: params.metadata,
       _holdId: params.holdId,
+      _movementId: params.movementId,
       _createdAt: params.createdAt,
     });
     return t;
@@ -75,6 +79,7 @@ export class Transaction {
     reference: string | null;
     metadata: Record<string, unknown> | null;
     holdId: string | null;
+    movementId: string;
     createdAt: number;
   }): Transaction {
     const t = new Transaction();
@@ -89,6 +94,7 @@ export class Transaction {
       _reference: params.reference,
       _metadata: params.metadata,
       _holdId: params.holdId,
+      _movementId: params.movementId,
       _createdAt: params.createdAt,
     });
     return t;
@@ -123,6 +129,9 @@ export class Transaction {
   }
   get holdId(): string | null {
     return this._holdId;
+  }
+  get movementId(): string {
+    return this._movementId;
   }
   get createdAt(): number {
     return this._createdAt;

@@ -9,6 +9,7 @@ export class LedgerEntry {
   private readonly _entryType: EntryType;
   private readonly _amountCents: bigint;
   private readonly _balanceAfterCents: bigint;
+  private readonly _movementId: string;
   private readonly _createdAt: number;
 
   private constructor() {
@@ -18,6 +19,7 @@ export class LedgerEntry {
     this._entryType = "CREDIT";
     this._amountCents = 0n;
     this._balanceAfterCents = 0n;
+    this._movementId = "";
     this._createdAt = 0;
   }
 
@@ -28,6 +30,7 @@ export class LedgerEntry {
     entryType: EntryType;
     amountCents: bigint;
     balanceAfterCents: bigint;
+    movementId: string;
     createdAt: number;
   }): LedgerEntry {
     if (params.entryType === "DEBIT" && params.amountCents > 0n) {
@@ -50,6 +53,7 @@ export class LedgerEntry {
       _entryType: params.entryType,
       _amountCents: params.amountCents,
       _balanceAfterCents: params.balanceAfterCents,
+      _movementId: params.movementId,
       _createdAt: params.createdAt,
     });
     return e;
@@ -62,6 +66,7 @@ export class LedgerEntry {
     entryType: EntryType;
     amountCents: bigint;
     balanceAfterCents: bigint;
+    movementId: string;
     createdAt: number;
   }): LedgerEntry {
     const e = new LedgerEntry();
@@ -72,6 +77,7 @@ export class LedgerEntry {
       _entryType: params.entryType,
       _amountCents: params.amountCents,
       _balanceAfterCents: params.balanceAfterCents,
+      _movementId: params.movementId,
       _createdAt: params.createdAt,
     });
     return e;
@@ -94,6 +100,9 @@ export class LedgerEntry {
   }
   get balanceAfterCents(): bigint {
     return this._balanceAfterCents;
+  }
+  get movementId(): string {
+    return this._movementId;
   }
   get createdAt(): number {
     return this._createdAt;

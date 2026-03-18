@@ -3,8 +3,10 @@ import type { IIDGenerator } from "../../../../shared/domain/kernel/id.generator
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import { ErrHoldExpired, ErrHoldNotFound } from "../../../domain/hold/hold.errors.js";
 import { LedgerEntry } from "../../../domain/ledgerEntry/ledgerEntry.entity.js";
+import { Movement } from "../../../domain/movement/movement.entity.js";
 import type { IHoldRepository } from "../../../domain/ports/hold.repository.js";
 import type { ILedgerEntryRepository } from "../../../domain/ports/ledgerEntry.repository.js";
+import type { IMovementRepository } from "../../../domain/ports/movement.repository.js";
 import type { ITransactionManager } from "../../../domain/ports/transaction.manager.js";
 import type { ITransactionRepository } from "../../../domain/ports/transaction.repository.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
@@ -24,6 +26,7 @@ export class CaptureHoldHandler {
     private readonly holdRepo: IHoldRepository,
     private readonly transactionRepo: ITransactionRepository,
     private readonly ledgerEntryRepo: ILedgerEntryRepository,
+    private readonly movementRepo: IMovementRepository,
     private readonly idGen: IIDGenerator,
     private readonly logger: ILogger,
   ) {}
@@ -34,6 +37,7 @@ export class CaptureHoldHandler {
     this.logger.debug(ctx, `${methodLogTag} start`, { hold_id: cmd.holdId });
 
     const txId = this.idGen.newId();
+    const movementId = this.idGen.newId();
 
     await this.txManager.run(ctx, async (txCtx) => {
       const hold = await this.holdRepo.findById(txCtx, cmd.holdId);
@@ -69,6 +73,9 @@ export class CaptureHoldHandler {
       // Capture hold
       hold.capture(now);
 
+      // Create movement (journal entry)
+      const movement = Movement.create({ id: movementId, type: "hold_capture", createdAt: now });
+
       // Debit wallet, credit system wallet
       wallet.withdraw(hold.amountCents, hold.amountCents, now);
       systemWallet.deposit(hold.amountCents, now);
@@ -84,6 +91,7 @@ export class CaptureHoldHandler {
         reference: hold.reference,
         metadata: null,
         holdId: hold.id,
+        movementId,
         createdAt: now,
       });
 
@@ -94,6 +102,7 @@ export class CaptureHoldHandler {
         entryType: "DEBIT",
         amountCents: -hold.amountCents,
         balanceAfterCents: wallet.cachedBalanceCents,
+        movementId,
         createdAt: now,
       });
 
@@ -104,9 +113,12 @@ export class CaptureHoldHandler {
         entryType: "CREDIT",
         amountCents: hold.amountCents,
         balanceAfterCents: systemWallet.cachedBalanceCents,
+        movementId,
         createdAt: now,
       });
 
+      // Persist (movement first — FK constraint)
+      await this.movementRepo.save(txCtx, movement);
       await this.holdRepo.save(txCtx, hold);
       await this.walletRepo.save(txCtx, wallet);
       await this.walletRepo.save(txCtx, systemWallet);
@@ -119,6 +131,6 @@ export class CaptureHoldHandler {
       transaction_id: txId,
     });
 
-    return { transactionId: txId };
+    return { transactionId: txId, movementId };
   }
 }

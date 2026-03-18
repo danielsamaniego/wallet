@@ -10,4 +10,5 @@ export interface TransferCommand {
 export interface TransferResult {
   sourceTransactionId: string;
   targetTransactionId: string;
+  movementId: string;
 }

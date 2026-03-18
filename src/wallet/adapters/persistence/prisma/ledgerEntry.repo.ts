@@ -30,6 +30,7 @@ export class PrismaLedgerEntryRepo implements ILedgerEntryRepository {
         entryType: e.entryType,
         amountCents: e.amountCents,
         balanceAfterCents: e.balanceAfterCents,
+        movementId: e.movementId,
         createdAt: BigInt(e.createdAt),
       })),
     });

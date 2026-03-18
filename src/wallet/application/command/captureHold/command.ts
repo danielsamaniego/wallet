@@ -6,4 +6,5 @@ export interface CaptureHoldCommand {
 
 export interface CaptureHoldResult {
   transactionId: string;
+  movementId: string;
 }

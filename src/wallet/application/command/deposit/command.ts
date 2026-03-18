@@ -8,4 +8,5 @@ export interface DepositCommand {
 
 export interface DepositResult {
   transactionId: string;
+  movementId: string;
 }

@@ -21,7 +21,7 @@ export function captureHoldHandler(handler: CaptureHoldHandler, logger: ILogger)
         platformId: ctx.platformId!,
       });
 
-      return c.json({ transaction_id: result.transactionId }, 201);
+      return c.json({ transaction_id: result.transactionId, movement_id: result.movementId }, 201);
     } catch (err) {
       return withError(c, logger, ctx, methodLogTag, err);
     }

@@ -2,8 +2,10 @@ import type { AppContext } from "../../../../shared/domain/kernel/context.js";
 import type { IIDGenerator } from "../../../../shared/domain/kernel/id.generator.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import { LedgerEntry } from "../../../domain/ledgerEntry/ledgerEntry.entity.js";
+import { Movement } from "../../../domain/movement/movement.entity.js";
 import type { IHoldRepository } from "../../../domain/ports/hold.repository.js";
 import type { ILedgerEntryRepository } from "../../../domain/ports/ledgerEntry.repository.js";
+import type { IMovementRepository } from "../../../domain/ports/movement.repository.js";
 import type { ITransactionManager } from "../../../domain/ports/transaction.manager.js";
 import type { ITransactionRepository } from "../../../domain/ports/transaction.repository.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
@@ -24,6 +26,7 @@ export class TransferHandler {
     private readonly holdRepo: IHoldRepository,
     private readonly transactionRepo: ITransactionRepository,
     private readonly ledgerEntryRepo: ILedgerEntryRepository,
+    private readonly movementRepo: IMovementRepository,
     private readonly idGen: IIDGenerator,
     private readonly logger: ILogger,
   ) {}
@@ -43,6 +46,7 @@ export class TransferHandler {
 
     const sourceTxId = this.idGen.newId();
     const targetTxId = this.idGen.newId();
+    const movementId = this.idGen.newId();
 
     await this.txManager.run(ctx, async (txCtx) => {
       const source = await this.walletRepo.findById(txCtx, cmd.sourceWalletId);
@@ -70,6 +74,9 @@ export class TransferHandler {
         available_balance_cents: Number(availableBalance),
       });
 
+      // Create movement (journal entry — groups both sides of the transfer)
+      const movement = Movement.create({ id: movementId, type: "transfer", createdAt: now });
+
       // Mutate
       source.withdraw(cmd.amountCents, availableBalance, now);
       target.deposit(cmd.amountCents, now);
@@ -86,6 +93,7 @@ export class TransferHandler {
         reference: cmd.reference ?? null,
         metadata: null,
         holdId: null,
+        movementId,
         createdAt: now,
       });
 
@@ -100,10 +108,11 @@ export class TransferHandler {
         reference: cmd.reference ?? null,
         metadata: null,
         holdId: null,
+        movementId,
         createdAt: now,
       });
 
-      // Ledger entries: 1 DEBIT on source (transfer_out), 1 CREDIT on target (transfer_in)
+      // Ledger entries: 1 DEBIT on source, 1 CREDIT on target — same movementId
       const debitEntry = LedgerEntry.create({
         id: this.idGen.newId(),
         transactionId: sourceTxId,
@@ -111,6 +120,7 @@ export class TransferHandler {
         entryType: "DEBIT",
         amountCents: -cmd.amountCents,
         balanceAfterCents: source.cachedBalanceCents,
+        movementId,
         createdAt: now,
       });
 
@@ -121,9 +131,12 @@ export class TransferHandler {
         entryType: "CREDIT",
         amountCents: cmd.amountCents,
         balanceAfterCents: target.cachedBalanceCents,
+        movementId,
         createdAt: now,
       });
 
+      // Persist (movement first — FK constraint)
+      await this.movementRepo.save(txCtx, movement);
       await this.walletRepo.save(txCtx, source);
       await this.walletRepo.save(txCtx, target);
       await this.transactionRepo.saveMany(txCtx, [outTx, inTx]);
@@ -138,6 +151,6 @@ export class TransferHandler {
       amount_cents: Number(cmd.amountCents),
     });
 
-    return { sourceTransactionId: sourceTxId, targetTransactionId: targetTxId };
+    return { sourceTransactionId: sourceTxId, targetTransactionId: targetTxId, movementId };
   }
 }

@@ -8,4 +8,5 @@ export interface WithdrawCommand {
 
 export interface WithdrawResult {
   transactionId: string;
+  movementId: string;
 }

@@ -58,12 +58,13 @@ Internal components and workflows.
 | Concept | Description |
 |---------|-------------|
 | **Wallet** | Per-owner, per-platform, per-currency balance container. Holds `cached_balance_cents` and `available_balance` (cached minus active holds). |
-| **Transaction** | Record of a financial operation (deposit, withdrawal, transfer, hold capture). Links to ledger entries; amount always positive. |
-| **LedgerEntry** | Single line in the double-entry ledger. CREDIT or DEBIT with `amount_cents` (signed) and `balance_after_cents`. Append-only, immutable. |
+| **Movement** | Journal entry that groups all transactions and ledger entries for a single financial operation. The accounting unit of atomicity — entries within a movement must sum to zero. |
+| **Transaction** | Per-wallet record of a financial operation (deposit, withdrawal, transfer, hold capture). Links to a movement and ledger entries; amount always positive. |
+| **LedgerEntry** | Single line in the double-entry ledger. CREDIT or DEBIT with `amount_cents` (signed) and `balance_after_cents`. Belongs to a movement. Append-only, immutable. |
 | **Hold** | Authorization that reserves funds without moving them. Lifecycle: active → captured \| voided \| expired. |
 | **Platform** | API consumer. Identified by API key; owns wallets for its users. |
 | **System Wallet** | Special wallet (e.g., per-currency omnibus) acting as counterparty for deposits and withdrawals. May have negative balance. |
-| **Amount** | Integer cents (smallest currency unit). No floats; like Stripe. |
+| **Amount** | Integer in smallest currency unit per ISO 4217 (e.g., cents for USD, yen for JPY, fils for BHD). No floats; like Stripe. Column names use `_cents` as convention. |
 | **Currency** | ISO 4217 code (e.g., USD, EUR). Each wallet has one currency. |
 
 ---
@@ -79,9 +80,9 @@ Internal components and workflows.
 ### Flow 2: Deposit
 
 1. Platform provides wallet ID, amount in cents, idempotency key.
-2. Service credits wallet and debits system wallet.
-3. Two ledger entries created (CREDIT for user, DEBIT for system).
-4. `cached_balance_cents` updated; transaction recorded.
+2. Service creates a movement (journal entry), credits wallet and debits system wallet.
+3. Two ledger entries created (CREDIT for user, DEBIT for system) under the same movement.
+4. `cached_balance_cents` updated; transaction recorded with `movement_id`.
 
 ### Flow 3: Withdraw
 
@@ -94,8 +95,9 @@ Internal components and workflows.
 
 1. Platform provides source wallet, target wallet, amount, idempotency key.
 2. Service validates both wallets active; source `available_balance >= amount`.
-3. Atomic debit from source, credit to target.
-4. Four ledger entries (debit + credit per wallet); two transactions (transfer_out, transfer_in).
+3. Creates one movement (journal entry) that groups both sides.
+4. Atomic debit from source, credit to target.
+5. Two ledger entries (debit source, credit target) under the same `movement_id`; two transactions (transfer_out, transfer_in) also sharing the same `movement_id`.
 
 ### Flow 5: Place Hold
 
@@ -136,14 +138,16 @@ Internal components and workflows.
 
 ### Amounts and Currency
 
-- All amounts stored as integer cents (BIGINT). No floating point.
+- All amounts stored as integers in the smallest currency unit per ISO 4217 (BIGINT). No floating point. The `_cents` column suffix is a naming convention; the actual unit depends on the currency's minor unit exponent (e.g., 2 for USD/EUR, 0 for JPY, 3 for BHD).
 - Each wallet has exactly one currency (ISO 4217).
 - `currency_code` must be a valid ISO 4217 uppercase code (e.g., USD, EUR). Domain validates against an allowed set; reject unknown codes.
 - **Cross-currency transfers are not allowed.** Source and target wallets must share the same `currency_code`. The transfer command must validate this before proceeding.
 
 ### Double-Entry Ledger
 
-- Every financial operation produces at least one debit and one credit.
+- Every financial operation creates a **Movement** (journal entry) with exactly one debit and one credit ledger entry.
+- Ledger entries within a movement **must sum to zero** — this is the core audit invariant: `SUM(amount_cents) GROUP BY movement_id = 0`.
+- For transfers, both sides (transfer_out + transfer_in) share the same `movement_id`, ensuring the transfer balances as a single accounting unit.
 - Ledger entries are append-only and immutable (DB trigger prevents UPDATE/DELETE).
 - `entry_type`: CREDIT or DEBIT; `amount_cents` is signed (+ for credit, - for debit).
 - `balance_after_cents` stores running balance snapshot after each entry.
