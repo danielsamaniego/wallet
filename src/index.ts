@@ -1,8 +1,11 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { setupHoldRoutes } from "./api/holds/setup.js";
 import { requestResponseLog } from "./api/middleware/requestResponseLog.js";
 import { trackingCanonical } from "./api/middleware/trackingCanonical.js";
+import { setupTransferRoutes } from "./api/transfers/setup.js";
+import { setupWalletRoutes } from "./api/wallets/setup.js";
 import { loadConfig } from "./config.js";
 import type { HonoVariables } from "./shared/kernel/context.js";
 import { buildRequestContext } from "./shared/kernel/context.js";
@@ -29,11 +32,10 @@ app.use("*", requestResponseLog(deps.logger));
 // Health check
 app.get("/health", (c) => c.json({ status: "ok" }));
 
-// Route groups will be registered here:
-// setupWalletRoutes(app, deps);
-// setupTransferRoutes(app, deps);
-// setupHoldRoutes(app, deps);
-// setupPlatformRoutes(app, deps);
+// Route groups
+setupWalletRoutes(app, deps);
+setupTransferRoutes(app, deps);
+setupHoldRoutes(app, deps);
 
 serve({ fetch: app.fetch, port: config.httpPort }, (info) => {
   console.log(`Wallet service running on http://localhost:${info.port}`);
