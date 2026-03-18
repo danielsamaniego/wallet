@@ -76,9 +76,11 @@ export class CaptureHoldHandler {
       // Create movement (journal entry)
       const movement = Movement.create({ id: movementId, type: "hold_capture", createdAt: now });
 
-      // Debit wallet, credit system wallet
+      // Debit user wallet
       wallet.withdraw(hold.amountCents, wallet.cachedBalanceCents, now);
-      systemWallet.deposit(hold.amountCents, now);
+
+      // System wallet: compute snapshot for ledger entry (approximate under concurrency)
+      const systemBalanceAfter = systemWallet.cachedBalanceCents + hold.amountCents;
 
       const tx = Transaction.create({
         id: txId,
@@ -112,7 +114,7 @@ export class CaptureHoldHandler {
         walletId: systemWallet.id,
         entryType: "CREDIT",
         amountCents: hold.amountCents,
-        balanceAfterCents: systemWallet.cachedBalanceCents,
+        balanceAfterCents: systemBalanceAfter,
         movementId,
         createdAt: now,
       });
@@ -121,7 +123,7 @@ export class CaptureHoldHandler {
       await this.movementRepo.save(txCtx, movement);
       await this.holdRepo.save(txCtx, hold);
       await this.walletRepo.save(txCtx, wallet);
-      await this.walletRepo.save(txCtx, systemWallet);
+      await this.walletRepo.adjustSystemWalletBalance(txCtx, systemWallet.id, hold.amountCents, now);
       await this.transactionRepo.save(txCtx, tx);
       await this.ledgerEntryRepo.saveMany(txCtx, [debitEntry, creditEntry]);
     });

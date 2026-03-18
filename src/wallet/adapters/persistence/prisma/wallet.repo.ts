@@ -58,6 +58,26 @@ export class PrismaWalletRepo implements IWalletRepository {
     }
   }
 
+  async adjustSystemWalletBalance(
+    ctx: AppContext,
+    walletId: string,
+    deltaCents: bigint,
+    now: number,
+  ): Promise<void> {
+    this.logger.debug(ctx, "WalletRepo | adjustSystemWalletBalance", {
+      wallet_id: walletId,
+      delta_cents: Number(deltaCents),
+    });
+    const db = this.client(ctx);
+    await db.wallet.update({
+      where: { id: walletId },
+      data: {
+        cachedBalanceCents: { increment: deltaCents },
+        updatedAt: BigInt(now),
+      },
+    });
+  }
+
   async findById(ctx: AppContext, walletId: string): Promise<Wallet | null> {
     this.logger.debug(ctx, "WalletRepo | findById", { wallet_id: walletId });
     const row = await this.client(ctx).wallet.findUnique({ where: { id: walletId } });

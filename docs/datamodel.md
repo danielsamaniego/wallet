@@ -131,7 +131,7 @@ Per-owner, per-platform, per-currency balance container. Uses optimistic locking
 | currency_code | string | ISO 4217 (USD, EUR, etc.) |
 | cached_balance_cents | BIGINT | Integer cents; denormalized balance |
 | status | string | active, frozen, closed |
-| version | int | Optimistic locking; incremented on every mutation (deposit, withdraw, transfer, captureHold, placeHold, voidHold, freeze, unfreeze, close). Intentionally not exposed in the API — clients use idempotency keys for retry, not version numbers |
+| version | int | Optimistic locking for user wallets; incremented on every mutation (deposit, withdraw, transfer, captureHold, placeHold, voidHold, freeze, unfreeze, close). System wallets bypass version check — they use atomic increment (`cached_balance_cents + delta`) to avoid hot-row contention. Not exposed in the API — clients use idempotency keys for retry, not version numbers |
 | is_system | boolean | True for system/omnibus wallets |
 | created_at | BIGINT | Unix ms |
 | updated_at | BIGINT | Unix ms |
@@ -284,6 +284,6 @@ Stores response for idempotent mutations. Prevents duplicate financial operation
 
 5. **Ledger entries**: Append-only. DB trigger prevents UPDATE and DELETE. Immutable audit trail.
 
-6. **Optimistic locking**: Wallets use `version`; concurrent updates must fail if version mismatch.
+6. **Optimistic locking**: User wallets use `version`; concurrent updates must fail if version mismatch. System wallets use atomic increment without version check to avoid being a concurrency bottleneck.
 
 7. **Idempotency**: Mutations (deposit, withdraw, transfer, hold capture) require idempotency keys. Store response in `IdempotencyRecord`; return cached response on duplicate key.

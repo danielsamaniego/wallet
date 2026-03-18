@@ -135,10 +135,16 @@ export class TransferHandler {
         createdAt: now,
       });
 
-      // Persist (movement first — FK constraint)
+      // Persist (movement first — FK constraint).
+      // Wallets saved in deterministic ID order to prevent deadlocks:
+      // concurrent transfers A→B and B→A both lock the lower-ID wallet
+      // first, so the lock cycle that causes deadlock cannot form.
       await this.movementRepo.save(txCtx, movement);
-      await this.walletRepo.save(txCtx, source);
-      await this.walletRepo.save(txCtx, target);
+      const [first, second] = source.id < target.id // Avoid deadlocks deterministically
+        ? [source, target]
+        : [target, source];
+      await this.walletRepo.save(txCtx, first);
+      await this.walletRepo.save(txCtx, second);
       await this.transactionRepo.saveMany(txCtx, [outTx, inTx]);
       await this.ledgerEntryRepo.saveMany(txCtx, [debitEntry, creditEntry]);
     });

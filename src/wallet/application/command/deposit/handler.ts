@@ -56,9 +56,11 @@ export class DepositHandler {
       // Create movement (journal entry)
       const movement = Movement.create({ id: movementId, type: "deposit", createdAt: now });
 
-      // Mutate aggregates
+      // Mutate user wallet aggregate
       wallet.deposit(cmd.amountCents, now);
-      systemWallet.withdraw(cmd.amountCents, 0n, now); // System wallet: no balance check
+
+      // System wallet: compute snapshot for ledger entry (approximate under concurrency)
+      const systemBalanceAfter = systemWallet.cachedBalanceCents - cmd.amountCents;
 
       // Create transaction
       const tx = Transaction.create({
@@ -94,7 +96,7 @@ export class DepositHandler {
         walletId: systemWallet.id,
         entryType: "DEBIT",
         amountCents: -cmd.amountCents,
-        balanceAfterCents: systemWallet.cachedBalanceCents,
+        balanceAfterCents: systemBalanceAfter,
         movementId,
         createdAt: now,
       });
@@ -102,7 +104,7 @@ export class DepositHandler {
       // Persist (movement first — FK constraint)
       await this.movementRepo.save(txCtx, movement);
       await this.walletRepo.save(txCtx, wallet);
-      await this.walletRepo.save(txCtx, systemWallet);
+      await this.walletRepo.adjustSystemWalletBalance(txCtx, systemWallet.id, -cmd.amountCents, now);
       await this.transactionRepo.save(txCtx, tx);
       await this.ledgerEntryRepo.saveMany(txCtx, [creditEntry, debitEntry]);
     });

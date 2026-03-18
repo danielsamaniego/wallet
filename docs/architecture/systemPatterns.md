@@ -89,13 +89,13 @@ See **[backend-architecture.md](backend-architecture.md)** § Logging for full d
 
 | Control | Use |
 |---------|-----|
-| Optimistic locking | All wallet mutations (single and multi-wallet), **including PlaceHold and VoidHold** which call `wallet.touchForHoldChange()` + `walletRepo.save()` to participate in version contention. `version` field checked on save; mismatch → `409 VERSION_CONFLICT`; client retries with same idempotency key. |
+| Optimistic locking | User wallet mutations (single and multi-wallet), **including PlaceHold and VoidHold** which call `wallet.touchForHoldChange()` + `walletRepo.save()` to participate in version contention. `version` field checked on save; mismatch → `409 VERSION_CONFLICT`; client retries with same idempotency key. **System wallets** use `adjustSystemWalletBalance()` with atomic increment instead — no version check needed, eliminates hot-row contention. |
 | Idempotency keys | All mutations. Atomic acquire pattern: INSERT pending record before execution; concurrent duplicates get `409 IDEMPOTENCY_KEY_IN_PROGRESS` or cached response. Transient errors (5xx, 409) are released, not cached. Request hash includes `method:path:body` so the same key on a different endpoint is rejected. Payload mismatch → `422 IDEMPOTENCY_PAYLOAD_MISMATCH`. |
 | DB constraints | Uniqueness, referential integrity, positive amounts, balance rules as safety net. |
 
 ### Why optimistic locking, not SELECT FOR UPDATE
 
-We use optimistic locking (version field) for **all** wallet mutations, including multi-wallet operations like transfers. We deliberately avoid `SELECT FOR UPDATE` (pessimistic locking) because:
+We use optimistic locking (version field) for **user wallet** mutations, including multi-wallet operations like transfers. System wallets use atomic increment (`cached_balance_cents + delta`) instead of version check — they have no balance constraints that require read-before-write. We deliberately avoid `SELECT FOR UPDATE` (pessimistic locking) because:
 
 1. **Hexagonal purity**: `SELECT FOR UPDATE` is a SQL-specific concept. Putting it in the domain port (`WalletRepository.findByIdForUpdate`) leaks infrastructure into the domain. If we switch to MongoDB, DynamoDB, or an event store, pessimistic row locking doesn't exist. The `version` field is database-agnostic — any persistence adapter can implement it.
 
