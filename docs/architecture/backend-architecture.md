@@ -27,7 +27,7 @@ The backend follows **DDD (Domain-Driven Design) + Hexagonal (Ports & Adapters) 
 - **Domain** and **app** may depend **only on**:
   - TypeScript/JavaScript standard library
   - Interfaces (ports) defined in the same module
-  - Project-internal shared packages (`shared/appError`, `shared/kernel`, `shared/observability`)
+  - Project-internal shared domain packages (`shared/domain/`). Never import from `shared/adapters/` in domain or app.
 - Concretions (Prisma, Pino, uuidv7, Zod) live in **adapters**.
 - Handlers receive repositories, services, and **IDGenerator** as **interfaces**; wiring injects concrete implementations.
 - **ID generation — UUID v7 only, from application code**: Domain treats IDs as plain strings. `IDGenerator` (port) is implemented exclusively by **UUID v7** (RFC 9562, time-ordered). The app generates all IDs; the database must never generate them. **Never** use UUID v4 or DB-generated IDs for entity IDs.
@@ -119,7 +119,7 @@ src/
 │   │   ├── ledgerEntry/
 │   │   ├── hold/
 │   │   └── ports/
-│   ├── app/
+│   ├── application/
 │   │   ├── command/          # createWallet, deposit, withdraw, transfer, placeHold, captureHold, voidHold, freezeWallet, closeWallet
 │   │   └── query/            # getWallet, getTransactions, getLedgerEntries
 │   ├── adapters/
@@ -128,7 +128,7 @@ src/
 │       └── http/             # driving adapters (HTTP handlers); one folder per endpoint
 ├── platform/
 │   ├── domain/
-│   ├── app/
+│   ├── application/
 │   │   ├── command/
 │   │   └── query/
 │   └── adapters/
@@ -136,7 +136,7 @@ src/
 │   ├── appError.ts           # AppError (Kind + Code + Message)
 │   ├── kernel/
 │   │   ├── idGenerator.ts    # port
-│   │   ├── context.ts        # RequestContext, tracking_id
+│   │   ├── context.ts        # AppContext, createAppContext, tracking_id
 │   │   └── adapters/
 │   │       └── uuidV7.ts     # UUID v7 implementation
 │   └── observability/
@@ -167,7 +167,7 @@ src/
 | Layer | Location | Role |
 |-------|----------|------|
 | **HTTP / Driving** | `adapters/ports/http/` | Parse request, validate format, map to Command/Query, call use case, return response. |
-| **Application** | `app/command/`, `app/query/` | Orchestrate domain and ports; use case logic. |
+| **Application** | `application/command/`, `application/query/` | Orchestrate domain and ports; use case logic. |
 
 ---
 
@@ -199,15 +199,38 @@ Each route group has its own setup module:
 
 ### Command handler (write)
 
-- Depends only on **interfaces** (repos, services, ports); no external libraries.
+Each command use case lives in its own directory with **two files**:
+
+- **`command.ts`** — Pure type definitions: the command interface (input) and optional result interface (output). No dependencies, no logic. This keeps the contract readable and importable without pulling in handler dependencies.
+- **`handler.ts`** — The handler class. Imports the command/result types from `./command.js`. Depends only on interfaces (repos, services, ports); no external libraries.
+
+```
+application/command/deposit/
+├── command.ts    ← DepositCommand, DepositResult (types only)
+└── handler.ts    ← DepositHandler (imports from command.ts)
+```
+
+Rules:
 - Validation at use-case level.
-- Transactional boundary (Prisma transaction).
+- Transactional boundary (Prisma transaction via TransactionManager).
 - Load aggregates → call aggregate methods → Save.
 - **May return**: IDs or minimal data for follow-up GET.
 - **Must not**: return full aggregates or rich DTOs.
 
 ### Query handler (read)
 
+Each query use case lives in its own directory with **two files**:
+
+- **`query.ts`** — Pure type definitions: the query interface (input), DTO interfaces (output), ReadStore interface (port), and pagination types. No dependencies.
+- **`handler.ts`** — The handler class. Imports types from `./query.js`.
+
+```
+application/query/getWallet/
+├── query.ts      ← GetWalletQuery, WalletDTO, WalletReadStore (types only)
+└── handler.ts    ← GetWalletHandler (imports from query.ts)
+```
+
+Rules:
 - Depends only on **interfaces** (ReadStore, etc.); no external libraries.
 - Validate params → call ReadStore → return DTO.
 - **Must not**: load aggregates to build response.
@@ -222,7 +245,7 @@ Each route group has its own setup module:
 
 ## Composite Read Models
 
-**Where to put them:** inside each BC in `app/query/`, e.g. `wallet/app/query/getTransactions/`, `wallet/app/query/getLedgerEntries/`.
+**Where to put them:** inside each BC in `application/query/`, e.g. `wallet/application/query/getTransactions/`, `wallet/application/query/getLedgerEntries/`.
 
 Each BC owns its composite read models (pagination, joins, aggregations). No dedicated `views/` BC.
 
@@ -285,7 +308,7 @@ export const ErrInsufficientFunds = (walletId: string) =>
 **Application** — defines use-case sentinels as `AppError`:
 
 ```typescript
-// wallet/app/command/deposit/handler.ts
+// wallet/application/command/deposit/handler.ts
 const ErrWalletNotFound = AppError.notFound("WALLET_NOT_FOUND", "wallet does not exist");
 ```
 
@@ -313,7 +336,7 @@ All error responses follow a consistent structure:
 
 ### Rules
 
-1. **Domain and app** import only `shared/appError` (no external deps). No Hono, no HTTP concepts.
+1. **Domain and app** import only from `shared/domain/` (no external deps). Never from `shared/adapters/`. No Hono, no HTTP concepts.
 2. **HTTP handlers** import `api/respond` for error translation. Never hardcode status-code mapping inline.
 3. **Use `AppError.is()`** for type checking. Never compare errors with `===`.
 4. Every new error must have a **unique, stable Code** (UPPER_SNAKE_CASE). Codes are part of the API contract.
@@ -323,15 +346,15 @@ All error responses follow a consistent structure:
 
 ## Logging
 
-**The entire backend** uses a single logging abstraction. Domain and app depend only on the **port** `Logger` (`shared/observability/logger.ts`); the concrete implementation (Pino) lives in `shared/observability/adapters/`. Wiring builds the logger chain: **PinoAdapter → SensitiveKeysFilter → SafeLogger**.
+**The entire backend** uses a single logging abstraction. Domain and app depend only on the **port** `ILogger` (`shared/domain/observability/logger.port.ts`); concrete implementations (PinoAdapter, SafeLogger, SensitiveKeysFilter) live in `shared/adapters/observability/`. Wiring builds the logger chain: **PinoAdapter → SensitiveKeysFilter → SafeLogger**.
 
 ### Logger port and SafeLogger
 
-- **Interface**: `Logger` in `shared/observability/logger.ts`. Domain and app must not import Pino; they depend only on the port.
+- **Interface**: `ILogger` in `shared/domain/observability/logger.port.ts`. Domain and app must not import Pino; they depend only on the port.
 - **SensitiveKeysFilter**: Wraps any `Logger`. Omits any key-value pair whose key is in the sensitive set (exact match, recursive through nested objects). Configured in wiring with keys: `password`, `token`, `authorization`, `secret`, `cookie`, `access_token`, `refresh_token`, `api_key`, `api_key_hash`.
 - **SafeLogger**: Wraps any `Logger` so that **under no circumstance does a logger failure stop execution**. Exceptions inside the logger are caught; only `fatal()` is allowed to terminate the process. Do not rely on the logger for control flow.
 
-**Standard methods** (all take `ctx: RequestContext`, `msg: string`, optional `extras?: Record<string, unknown>`):
+**Standard methods** (all take `ctx: AppContext`, `msg: string`, optional `extras?: Record<string, unknown>`):
 
 - `debug`, `info`, `warn`, `error`, `fatal`
 - `with(key, value): Logger` — returns a child logger that adds that key-value to every subsequent event
@@ -344,7 +367,7 @@ All error responses follow a consistent structure:
 
 ### Mandatory context fields
 
-Every log event includes these fields, read from `RequestContext`:
+Every log event includes these fields, read from `AppContext`:
 
 - **tracking_id** — UUID v7 per request (set by `trackingCanonical` middleware).
 - **platform_id** — Authenticated platform (set by `apiKeyAuth` middleware, when present).
@@ -354,7 +377,29 @@ On **canonical dispatch**, the adapter also adds:
 
 - **end_ts**, **duration_ms**, **canonical_meta**, **canonical_counters**.
 
-Always pass the `RequestContext` (built via `buildRequestContext(c)`) so these fields are included.
+Always pass the `AppContext` (built via `buildAppContext(c)`) so these fields are included.
+
+### Log level policy
+
+**Production goal: full traceability.** Every request must be reconstructable from logs alone. When something fails at 3 AM, the on-call engineer should be able to follow the `tracking_id` through every layer (HTTP → app handler → adapter → DB) and understand exactly what happened without attaching a debugger.
+
+| Level | When to use | Examples |
+|-------|-------------|----------|
+| **debug** | Entry/exit of every significant operation. Input parameters, computed intermediate values, adapter calls. In production, `debug` may be disabled — but the code must always emit them so they can be enabled on demand. | Handler start with command params, balance checks (cached, holds, available), adapter queries (findById, save), transaction begin/commit/rollback. |
+| **info** | Successful completion of a business operation, or noteworthy but non-error events that are always relevant in production. | Deposit success, wallet created, system wallet auto-created, hold expired on-access (not an error — expected domain behavior). |
+| **warn** | Something unexpected happened but the request can still continue, or a client error that may indicate a bug in the caller. | Validation failures (malformed JSON, Zod errors), optimistic locking version conflict (retry expected), hold expired when client tried to capture. |
+| **error** | An operation failed and the request cannot complete successfully. Server-side errors (5xx), infrastructure failures, unexpected exceptions. | Prisma connection failure, unhandled exception in handler (caught by `withError`), any `AppError` with Kind = Internal. |
+| **fatal** | The process cannot continue and must shut down. | Failed to bind port, database connection pool exhausted on startup, corrupt configuration. |
+
+**Rules:**
+
+1. **Always log at handler entry** (`debug`): log the command/query parameters so every request is traceable from the start.
+2. **Always log at handler success** (`info`): log the outcome (created IDs, affected entities) so the audit trail is complete.
+3. **Always log on early returns** (`warn` or `info`): if a handler returns early (validation failure, not-found, domain rule violation), there must be a log so the request doesn't "vanish" from observability.
+4. **Always log business-critical intermediate values** (`debug`): balance checks, hold sums, version numbers — anything that feeds a decision. When a production bug manifests as "wrong balance", these logs are the first thing we check.
+5. **Adapter methods must log their calls** (`debug`): every DB query should be traceable. Include the entity ID or key filter so we can correlate with slow-query logs.
+6. **Never log sensitive data**: the `SensitiveKeysFilter` handles known keys, but be mindful of extras — never log full request bodies containing PII, tokens, or credentials.
+7. **Client errors (4xx) are `warn`, not `error`**: a validation failure is the client's fault, not ours. Reserve `error` for things that page the on-call team.
 
 ### Log tag convention
 
@@ -402,10 +447,11 @@ Always pass the `RequestContext` (built via `buildRequestContext(c)`) so these f
 
 ## Concurrency
 
-- **Optimistic locking**: Single-wallet ops. On version mismatch → `409 VERSION_CONFLICT`; client retries with same idempotency key. No server-side retry.
-- **SELECT FOR UPDATE**: Multi-wallet atomic ops (transfers, hold capture). Lock in `ORDER BY id` to prevent deadlocks.
+- **Optimistic locking**: All wallet mutations (single and multi-wallet). On version mismatch → `409 VERSION_CONFLICT`; client retries with same idempotency key. No server-side retry.
 - **Idempotency keys**: All mutations. Atomic acquire pattern (INSERT pending → execute → complete). See `systemPatterns.md`.
 - **DB constraints**: Uniqueness, referential integrity, positive amounts as safety net.
+
+**No `SELECT FOR UPDATE`**: We use optimistic locking instead of pessimistic locking for all operations, including multi-wallet (transfers, hold capture). Pessimistic locking (`SELECT FOR UPDATE`) is a SQL-specific concept that would leak infrastructure details into the domain port. The `version` field is database-agnostic and catches all conflicts. See `systemPatterns.md` § "Why optimistic locking, not SELECT FOR UPDATE" for full rationale.
 
 ---
 
@@ -421,13 +467,20 @@ Adapters and read stores must convert BigInt values before returning DTOs. Never
 
 ---
 
-## RequestContext Helper
+## AppContext Helper
 
-Use `buildRequestContext(c)` from `shared/kernel/context.ts` to construct `RequestContext` from Hono context in HTTP handlers. Avoids repeating `c.get()` boilerplate:
+Use `buildAppContext(c)` from `shared/adapters/kernel/hono.context.ts` to construct `AppContext` from Hono context in HTTP handlers. Avoids repeating `c.get()` boilerplate:
 
 ```typescript
-import { buildRequestContext } from "../../shared/kernel/context.js";
-const ctx = buildRequestContext(c);
+import { buildAppContext } from "../../shared/adapters/kernel/hono.context.js";
+const ctx = buildAppContext(c);
+```
+
+For non-HTTP flows (background jobs, scripts, tests, domain events), use `createAppContext(idGen)` from `shared/domain/kernel/context.ts`. It generates a fresh `trackingId`, sets `startTs = Date.now()`, and creates a new `CanonicalAccumulator`:
+
+```typescript
+import { createAppContext } from "../../shared/domain/kernel/context.js";
+const ctx = createAppContext(idGen);
 ```
 
 ---
@@ -627,21 +680,23 @@ export const ErrWalletNotFound = (walletId: string) =>
 
 ### Repository port (write store)
 
-Repository ports live in `domain/ports/`. They accept and return **aggregates**, not DTOs. Single `save()` method for both insert and update (upsert pattern).
+Repository ports live in `domain/ports/`. They accept and return **aggregates**, not DTOs. **All methods receive `ctx: AppContext` as first parameter**, enabling adapters to log with full request traceability. Single `save()` method for both insert and update (upsert pattern).
 
 ```typescript
-// wallet/domain/ports/walletRepository.ts
+// wallet/domain/ports/wallet.repository.ts
 
-import type { Wallet } from "../wallet/aggregate.js";
+import type { AppContext } from "../../../shared/domain/kernel/context.js";
+import type { Wallet } from "../wallet/wallet.aggregate.js";
 
-export interface WalletRepository {
-  save(wallet: Wallet): Promise<void>;
-  findById(walletId: string): Promise<Wallet | null>;
-  findByOwner(ownerId: string, platformId: string, currencyCode: string): Promise<Wallet | null>;
-  findSystemWallet(platformId: string, currencyCode: string): Promise<Wallet | null>;
-  existsByOwner(ownerId: string, platformId: string, currencyCode: string): Promise<boolean>;
+export interface IWalletRepository {
+  save(ctx: AppContext, wallet: Wallet): Promise<void>;
+  findById(ctx: AppContext, walletId: string): Promise<Wallet | null>;
+  findSystemWallet(ctx: AppContext, platformId: string, currencyCode: string): Promise<Wallet | null>;
+  // ...
 }
 ```
+
+**Why `ctx` as first parameter**: Adapters receive `ILogger` in their constructor and use `ctx` to log with `tracking_id` and `platform_id` on every operation. When inside a transaction, `ctx.opCtx` carries the opaque transaction handle — the adapter inspects it internally to choose the right DB client. This keeps the domain layer transport-agnostic (it defines `AppContext`, not HTTP headers) while giving adapters full observability.
 
 **Why a single `save()`**: Uses `INSERT ... ON CONFLICT DO UPDATE` (upsert). The handler doesn't care if the aggregate is new or existing — one method handles both cases.
 
@@ -649,20 +704,18 @@ export interface WalletRepository {
 
 ### Repository adapter (Prisma)
 
-The adapter implements the port using Prisma. It maps between aggregate and Prisma model, and handles **optimistic locking** via `version`.
+The adapter implements the port using Prisma. It receives `ILogger` in the constructor for traceability, maps between aggregate and Prisma model, and handles **optimistic locking** via `version`.
 
 ```typescript
-// wallet/adapters/persistence/prisma/walletRepo.ts
+// wallet/adapters/persistence/prisma/wallet.repo.ts
 
 import type { PrismaClient } from "@prisma/client";
-import { Wallet } from "../../../domain/wallet/aggregate.js";
-import { ErrVersionConflict } from "../../../domain/wallet/errors.js";
-import type { WalletRepository } from "../../../domain/ports/walletRepository.js";
+import type { AppContext } from "../../../../shared/domain/kernel/context.js";
+import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 
-const mainLogTag = "WalletRepo";
-
-export class PrismaWalletRepo implements WalletRepository {
-  constructor(private readonly prisma: PrismaClient) {}
+export class PrismaWalletRepo implements IWalletRepository {
+  constructor(private readonly prisma: PrismaClient, private readonly logger: ILogger) {}
 
   async save(wallet: Wallet): Promise<void> {
     const methodLogTag = `${mainLogTag} | save`;
@@ -725,9 +778,9 @@ export class PrismaWalletRepo implements WalletRepository {
 Command handlers orchestrate the flow: load aggregate → call domain methods → persist changes. They depend **only on interfaces** (ports). No Prisma, no Hono.
 
 ```typescript
-// wallet/app/command/deposit/handler.ts
+// wallet/application/command/deposit/handler.ts
 
-import type { RequestContext } from "../../../../shared/kernel/context.js";
+import type { AppContext } from "../../../../shared/kernel/context.js";
 import type { IDGenerator } from "../../../../shared/kernel/idGenerator.js";
 import type { Logger } from "../../../../shared/observability/logger.js";
 import type { WalletRepository } from "../../../domain/ports/walletRepository.js";
@@ -753,7 +806,7 @@ export class DepositHandler {
     private readonly logger: Logger,
   ) {}
 
-  async handle(ctx: RequestContext, cmd: DepositCommand): Promise<DepositResult> {
+  async handle(ctx: AppContext, cmd: DepositCommand): Promise<DepositResult> {
     const methodLogTag = `${mainLogTag} | handle`;
 
     // 1. Load aggregate
@@ -805,10 +858,10 @@ export class DepositHandler {
 Query handlers return **DTOs**, not aggregates. They use a `ReadStore` port optimized for reads (can use JOINs, aggregations).
 
 ```typescript
-// wallet/app/query/getWallet/handler.ts
+// wallet/application/query/getWallet/handler.ts
 
 import { AppError } from "../../../../shared/appError.js";
-import type { RequestContext } from "../../../../shared/kernel/context.js";
+import type { AppContext } from "../../../../shared/kernel/context.js";
 import type { Logger } from "../../../../shared/observability/logger.js";
 
 export interface GetWalletQuery {
@@ -841,7 +894,7 @@ export class GetWalletHandler {
     private readonly logger: Logger,
   ) {}
 
-  async handle(ctx: RequestContext, query: GetWalletQuery): Promise<WalletDTO> {
+  async handle(ctx: AppContext, query: GetWalletQuery): Promise<WalletDTO> {
     const methodLogTag = `${mainLogTag} | handle`;
 
     const dto = await this.readStore.getById(query.walletId, query.platformId);
@@ -868,9 +921,9 @@ HTTP handlers live in `ports/http/<endpoint>/`. They parse the request, validate
 import type { Context } from "hono";
 import { z } from "zod";
 import { withError } from "../../../../api/respond/error.js";
-import { buildRequestContext } from "../../../../shared/kernel/context.js";
+import { buildAppContext } from "../../../../shared/kernel/context.js";
 import type { Logger } from "../../../../shared/observability/logger.js";
-import type { DepositHandler } from "../../../app/command/deposit/handler.js";
+import type { DepositHandler } from "../../../application/command/deposit/handler.js";
 
 const mainLogTag = "DepositHTTPHandler";
 
@@ -882,7 +935,7 @@ const RequestSchema = z.object({
 export function depositHandler(handler: DepositHandler, logger: Logger) {
   return async (c: Context) => {
     const methodLogTag = `${mainLogTag} | handle`;
-    const ctx = buildRequestContext(c);
+    const ctx = buildAppContext(c);
 
     // 1. Parse and validate request
     const body = await c.req.json();
@@ -933,8 +986,8 @@ import type { Dependencies } from "../../wiring.js";
 import type { HonoVariables } from "../../shared/kernel/context.js";
 
 // Import handlers and app-layer use cases
-import { DepositHandler } from "../../wallet/app/command/deposit/handler.js";
-import { GetWalletHandler } from "../../wallet/app/query/getWallet/handler.js";
+import { DepositHandler } from "../../wallet/application/command/deposit/handler.js";
+import { GetWalletHandler } from "../../wallet/application/query/getWallet/handler.js";
 import { depositHandler } from "../../wallet/ports/http/deposit/handler.js";
 import { getWalletHandler } from "../../wallet/ports/http/getWallet/handler.js";
 
@@ -987,17 +1040,7 @@ await prisma.$transaction(async (tx) => {
 - **Not needed** for single reads (queries)
 - **Not needed** for wallet creation (single insert, idempotent via unique constraint)
 
-**SELECT FOR UPDATE** (multi-wallet ops): Use raw SQL inside a Prisma transaction for deterministic locking.
-
-```typescript
-await prisma.$transaction(async (tx) => {
-  // Lock both wallets in ORDER BY id to prevent deadlocks
-  const [walletA, walletB] = ids[0] < ids[1] ? [ids[0], ids[1]] : [ids[1], ids[0]];
-  await tx.$queryRaw`SELECT 1 FROM wallets WHERE id = ${walletA} FOR UPDATE`;
-  await tx.$queryRaw`SELECT 1 FROM wallets WHERE id = ${walletB} FOR UPDATE`;
-  // Now safely mutate both wallets...
-});
-```
+**No SELECT FOR UPDATE**: Multi-wallet operations (transfers, hold capture) rely on optimistic locking via the `version` field, not pessimistic row locks. This keeps the domain layer database-agnostic. See `systemPatterns.md` § "Why optimistic locking, not SELECT FOR UPDATE" for the architectural rationale. If pessimistic locking becomes necessary under high contention, it can be added inside the Prisma adapter as an implementation detail without changing domain ports.
 
 ---
 

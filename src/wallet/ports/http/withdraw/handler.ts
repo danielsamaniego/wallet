@@ -1,10 +1,10 @@
 import type { Context } from "hono";
 import { z } from "zod";
 import { withError } from "../../../../api/respond/error.js";
-import type { HonoVariables } from "../../../../shared/kernel/context.js";
-import { buildRequestContext } from "../../../../shared/kernel/context.js";
-import type { Logger } from "../../../../shared/observability/logger.js";
-import type { WithdrawHandler } from "../../../app/command/withdraw/handler.js";
+import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.context.js";
+import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
+import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import type { WithdrawHandler } from "../../../application/command/withdraw/handler.js";
 
 const mainLogTag = "WithdrawHTTP";
 
@@ -13,18 +13,20 @@ const RequestSchema = z.object({
   reference: z.string().optional(),
 });
 
-export function withdrawHandler(handler: WithdrawHandler, logger: Logger) {
+export function withdrawHandler(handler: WithdrawHandler, logger: ILogger) {
   return async (c: Context<{ Variables: HonoVariables }>) => {
     const methodLogTag = `${mainLogTag} | handle`;
-    const ctx = buildRequestContext(c);
+    const ctx = buildAppContext(c);
 
     const body = await c.req.json().catch(() => null);
     if (!body) {
+      logger.warn(ctx, `${methodLogTag} invalid JSON body`);
       return c.json({ error: "INVALID_REQUEST", message: "invalid JSON body" }, 400);
     }
 
     const parsed = RequestSchema.safeParse(body);
     if (!parsed.success) {
+      logger.warn(ctx, `${methodLogTag} validation failed`, { reason: parsed.error.message });
       return c.json({ error: "INVALID_REQUEST", message: parsed.error.message }, 400);
     }
 
@@ -36,6 +38,7 @@ export function withdrawHandler(handler: WithdrawHandler, logger: Logger) {
         amountCents: BigInt(parsed.data.amount_cents),
         reference: parsed.data.reference,
         idempotencyKey: c.req.header("idempotency-key")!,
+        platformId: ctx.platformId!,
       });
 
       return c.json({ transaction_id: result.transactionId }, 201);

@@ -1,10 +1,10 @@
 import type { Context } from "hono";
 import { z } from "zod";
 import { withError } from "../../../../api/respond/error.js";
-import type { HonoVariables } from "../../../../shared/kernel/context.js";
-import { buildRequestContext } from "../../../../shared/kernel/context.js";
-import type { Logger } from "../../../../shared/observability/logger.js";
-import type { PlaceHoldHandler } from "../../../app/command/placeHold/handler.js";
+import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.context.js";
+import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
+import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import type { PlaceHoldHandler } from "../../../application/command/placeHold/handler.js";
 
 const mainLogTag = "PlaceHoldHTTP";
 
@@ -15,18 +15,20 @@ const RequestSchema = z.object({
   expires_at: z.number().int().positive().optional(),
 });
 
-export function placeHoldHandler(handler: PlaceHoldHandler, logger: Logger) {
+export function placeHoldHandler(handler: PlaceHoldHandler, logger: ILogger) {
   return async (c: Context<{ Variables: HonoVariables }>) => {
     const methodLogTag = `${mainLogTag} | handle`;
-    const ctx = buildRequestContext(c);
+    const ctx = buildAppContext(c);
 
     const body = await c.req.json().catch(() => null);
     if (!body) {
+      logger.warn(ctx, `${methodLogTag} invalid JSON body`);
       return c.json({ error: "INVALID_REQUEST", message: "invalid JSON body" }, 400);
     }
 
     const parsed = RequestSchema.safeParse(body);
     if (!parsed.success) {
+      logger.warn(ctx, `${methodLogTag} validation failed`, { reason: parsed.error.message });
       return c.json({ error: "INVALID_REQUEST", message: parsed.error.message }, 400);
     }
 
@@ -36,6 +38,7 @@ export function placeHoldHandler(handler: PlaceHoldHandler, logger: Logger) {
         amountCents: BigInt(parsed.data.amount_cents),
         reference: parsed.data.reference,
         expiresAt: parsed.data.expires_at,
+        platformId: ctx.platformId!,
       });
 
       return c.json({ hold_id: result.holdId }, 201);

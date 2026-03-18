@@ -22,7 +22,7 @@ Phase 1 scaffolding complete. The project skeleton is set up with:
 ## Active Decisions
 
 - **Amounts**: Integer cents (BigInt) — following Stripe's convention
-- **Concurrency**: Optimistic locking (version) for single-wallet ops, SELECT FOR UPDATE for transfers
+- **Concurrency**: Optimistic locking (version field) for all wallet mutations — no SELECT FOR UPDATE in domain (see systemPatterns.md)
 - **Ledger**: Double-entry, append-only, protected by PostgreSQL trigger
 - **Auth**: API key per platform (not user JWT)
 - **DI**: Manual wiring (no DI container)

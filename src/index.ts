@@ -7,8 +7,8 @@ import { trackingCanonical } from "./api/middleware/trackingCanonical.js";
 import { setupTransferRoutes } from "./api/transfers/setup.js";
 import { setupWalletRoutes } from "./api/wallets/setup.js";
 import { loadConfig } from "./config.js";
-import type { HonoVariables } from "./shared/kernel/context.js";
-import { buildRequestContext } from "./shared/kernel/context.js";
+import type { HonoVariables } from "./shared/adapters/kernel/hono.context.js";
+import { buildAppContext } from "./shared/adapters/kernel/hono.context.js";
 import { wire } from "./wiring.js";
 
 const config = loadConfig();
@@ -19,7 +19,7 @@ const app = new Hono<{ Variables: HonoVariables }>();
 // Global error handler — catches unhandled exceptions and returns
 // a generic 500 response without leaking internal details.
 app.onError((err, c) => {
-  const ctx = buildRequestContext(c);
+  const ctx = buildAppContext(c);
   deps.logger.error(ctx, "Unhandled exception", { error: err.message });
   return c.json({ error: "INTERNAL_ERROR", message: "an unexpected error occurred" }, 500);
 });

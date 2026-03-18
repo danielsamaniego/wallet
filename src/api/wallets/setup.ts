@@ -1,19 +1,24 @@
 import type { Hono } from "hono";
-import type { HonoVariables } from "../../shared/kernel/context.js";
-import { PrismaLedgerEntryReadStore } from "../../wallet/adapters/persistence/prisma/ledgerEntryReadStore.js";
-import { PrismaTransactionReadStore } from "../../wallet/adapters/persistence/prisma/transactionReadStore.js";
+import type { HonoVariables } from "../../shared/adapters/kernel/hono.context.js";
+import { PrismaHoldRepo } from "../../wallet/adapters/persistence/prisma/hold.repo.js";
+import { PrismaLedgerEntryReadStore } from "../../wallet/adapters/persistence/prisma/ledgerEntry.readstore.js";
+import { PrismaLedgerEntryRepo } from "../../wallet/adapters/persistence/prisma/ledgerEntry.repo.js";
 // Adapters
-import { PrismaUnitOfWork } from "../../wallet/adapters/persistence/prisma/unitOfWork.js";
-import { PrismaWalletReadStore } from "../../wallet/adapters/persistence/prisma/walletReadStore.js";
-import { CloseWalletHandler } from "../../wallet/app/command/closeWallet/handler.js";
+import { PrismaTransactionManager } from "../../wallet/adapters/persistence/prisma/transaction.manager.js";
+import { PrismaTransactionReadStore } from "../../wallet/adapters/persistence/prisma/transaction.readstore.js";
+import { PrismaTransactionRepo } from "../../wallet/adapters/persistence/prisma/transaction.repo.js";
+import { PrismaWalletReadStore } from "../../wallet/adapters/persistence/prisma/wallet.readstore.js";
+import { PrismaWalletRepo } from "../../wallet/adapters/persistence/prisma/wallet.repo.js";
+import { CloseWalletHandler } from "../../wallet/application/command/closeWallet/handler.js";
 // App handlers
-import { CreateWalletHandler } from "../../wallet/app/command/createWallet/handler.js";
-import { DepositHandler } from "../../wallet/app/command/deposit/handler.js";
-import { FreezeWalletHandler } from "../../wallet/app/command/freezeWallet/handler.js";
-import { WithdrawHandler } from "../../wallet/app/command/withdraw/handler.js";
-import { GetLedgerEntriesHandler } from "../../wallet/app/query/getLedgerEntries/handler.js";
-import { GetTransactionsHandler } from "../../wallet/app/query/getTransactions/handler.js";
-import { GetWalletHandler } from "../../wallet/app/query/getWallet/handler.js";
+import { CreateWalletHandler } from "../../wallet/application/command/createWallet/handler.js";
+import { DepositHandler } from "../../wallet/application/command/deposit/handler.js";
+import { FreezeWalletHandler } from "../../wallet/application/command/freezeWallet/handler.js";
+import { UnfreezeWalletHandler } from "../../wallet/application/command/unfreezeWallet/handler.js";
+import { WithdrawHandler } from "../../wallet/application/command/withdraw/handler.js";
+import { GetLedgerEntriesHandler } from "../../wallet/application/query/getLedgerEntries/handler.js";
+import { GetTransactionsHandler } from "../../wallet/application/query/getTransactions/handler.js";
+import { GetWalletHandler } from "../../wallet/application/query/getWallet/handler.js";
 import { closeWalletHandler } from "../../wallet/ports/http/closeWallet/handler.js";
 // HTTP handlers
 import { createWalletHandler } from "../../wallet/ports/http/createWallet/handler.js";
@@ -22,6 +27,7 @@ import { freezeWalletHandler } from "../../wallet/ports/http/freezeWallet/handle
 import { getLedgerEntriesHandler } from "../../wallet/ports/http/getLedgerEntries/handler.js";
 import { getTransactionsHandler } from "../../wallet/ports/http/getTransactions/handler.js";
 import { getWalletHandler } from "../../wallet/ports/http/getWallet/handler.js";
+import { unfreezeWalletHandler } from "../../wallet/ports/http/unfreezeWallet/handler.js";
 import { withdrawHandler } from "../../wallet/ports/http/withdraw/handler.js";
 import type { Dependencies } from "../../wiring.js";
 import { apiKeyAuth } from "../middleware/apiKeyAuth.js";
@@ -31,17 +37,37 @@ export function setupWalletRoutes(app: Hono<{ Variables: HonoVariables }>, deps:
   const { prisma, idGen, logger } = deps;
 
   // Adapters
-  const uow = new PrismaUnitOfWork(prisma);
-  const walletReadStore = new PrismaWalletReadStore(prisma);
-  const transactionReadStore = new PrismaTransactionReadStore(prisma);
-  const ledgerEntryReadStore = new PrismaLedgerEntryReadStore(prisma);
+  const txManager = new PrismaTransactionManager(prisma, logger);
+  const walletRepo = new PrismaWalletRepo(prisma, logger);
+  const holdRepo = new PrismaHoldRepo(prisma, logger);
+  const transactionRepo = new PrismaTransactionRepo(prisma, logger);
+  const ledgerEntryRepo = new PrismaLedgerEntryRepo(prisma, logger);
+  const walletReadStore = new PrismaWalletReadStore(prisma, logger);
+  const transactionReadStore = new PrismaTransactionReadStore(prisma, logger);
+  const ledgerEntryReadStore = new PrismaLedgerEntryReadStore(prisma, logger);
 
   // App handlers
-  const createWallet = new CreateWalletHandler(uow, idGen, logger);
-  const deposit = new DepositHandler(uow, idGen, logger);
-  const withdraw = new WithdrawHandler(uow, idGen, logger);
-  const freezeWallet = new FreezeWalletHandler(uow, logger);
-  const closeWallet = new CloseWalletHandler(uow, logger);
+  const createWallet = new CreateWalletHandler(txManager, walletRepo, idGen, logger);
+  const deposit = new DepositHandler(
+    txManager,
+    walletRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    idGen,
+    logger,
+  );
+  const withdraw = new WithdrawHandler(
+    txManager,
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    idGen,
+    logger,
+  );
+  const freezeWallet = new FreezeWalletHandler(txManager, walletRepo, logger);
+  const unfreezeWallet = new UnfreezeWalletHandler(txManager, walletRepo, logger);
+  const closeWallet = new CloseWalletHandler(txManager, walletRepo, holdRepo, logger);
   const getWallet = new GetWalletHandler(walletReadStore, logger);
   const getTransactions = new GetTransactionsHandler(transactionReadStore, logger);
   const getLedgerEntries = new GetLedgerEntriesHandler(ledgerEntryReadStore, logger);
@@ -55,6 +81,7 @@ export function setupWalletRoutes(app: Hono<{ Variables: HonoVariables }>, deps:
   app.post("/v1/wallets/:walletId/deposit", auth, idemp, depositHandler(deposit, logger));
   app.post("/v1/wallets/:walletId/withdraw", auth, idemp, withdrawHandler(withdraw, logger));
   app.post("/v1/wallets/:walletId/freeze", auth, freezeWalletHandler(freezeWallet, logger));
+  app.post("/v1/wallets/:walletId/unfreeze", auth, unfreezeWalletHandler(unfreezeWallet, logger));
   app.post("/v1/wallets/:walletId/close", auth, closeWalletHandler(closeWallet, logger));
 
   // Queries (reads — require auth only)

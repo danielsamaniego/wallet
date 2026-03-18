@@ -47,19 +47,23 @@ Before implementing domain logic, business rules, or data structures:
 | **Credentials** | Never hardcode; use environment variables |
 | **Timestamps** | Unix ms (number) everywhere: DB (BigInt), domain, ports, DTOs, API. Single representation, no conversion. |
 | **Amounts** | **Integer cents (BigInt).** All financial amounts are the smallest currency unit. `$1.99` = `199`. Never float, never decimal. API sends/receives `amount_cents: number`. |
-| **Entity IDs** | **UUID v7 only, generated in code.** App generates all IDs via `IDGenerator`; DB never generates them. Never UUID v4. |
+| **Entity IDs** | **UUID v7 only, generated in code.** App generates all IDs via `IIDGenerator`; DB never generates them. Never UUID v4. |
 | **API** | REST. All mutations require `Idempotency-Key` header. |
-| **Domain and app** | **No external third-party libraries.** No Prisma, Pino, uuidv7, Zod in domain or app. Allowed: TypeScript stdlib, interfaces (ports), and project-internal shared packages (`shared/appError`, `shared/kernel`, `shared/observability`). Third-party libs live only in **adapters**. |
+| **Domain and app** | **No external third-party libraries.** No Prisma, Pino, uuidv7, Zod, Hono in domain or app. Allowed: TypeScript stdlib, interfaces (ports), and `shared/domain/` only. Never import from `shared/adapters/` in domain or app layers — that's an architecture violation. Third-party libs live only in **adapters**. |
 | **CQRS** | Commands (write) and Queries (read) are separate. Commands may return minimal data (created ID) — never full aggregates or rich DTOs. **No Event Sourcing** (ledger_entries is the audit trail). **No Event-Driven** (BCs communicate synchronously). See `backend-architecture.md` § CQRS. |
+| **CQRS file structure** | Each command use case has **two files**: `command.ts` (pure types: command + result interfaces) and `handler.ts` (handler class). Each query has `query.ts` (query + DTO + ReadStore interfaces) and `handler.ts`. This separates the contract from the implementation. |
 | **Queries** | Use ReadStore ports (return DTOs directly). Do not load aggregates for reads. |
-| **Logging** | Use `Logger` (port); wired as PinoAdapter → SensitiveKeysFilter → SafeLogger. mainLogTag per file, methodLogTag per method; every message starts with methodLogTag. See `docs/architecture/backend-architecture.md` § Logging. |
+| **Logging** | Use `ILogger` (port); wired as PinoAdapter → SensitiveKeysFilter → SafeLogger. mainLogTag per file, methodLogTag per method; every message starts with methodLogTag. **Production goal: full traceability** — every request must be reconstructable from logs alone. `debug`: handler entry with params, intermediate values, adapter calls, tx begin/commit/rollback. `info`: business operation success, noteworthy domain events. `warn`: client errors (validation, malformed JSON), optimistic locking conflicts. `error`: server-side failures (5xx), infrastructure errors. `fatal`: process must shut down. Always log handler entry (`debug`) and success (`info`). Always log early returns. Adapter methods log every DB call (`debug`). Client errors are `warn`, not `error`. See `docs/architecture/backend-architecture.md` § Logging. |
 | **Error handling** | Use `AppError` (Kind + Code + Message). Domain: factory functions returning `AppError`. App: sentinel errors as `AppError`. HTTP handlers: `withError(c, logger, ctx, tag, err)` — maps Kind → HTTP status, returns `{"error": "CODE", "message": "..."}`. Every error needs a unique UPPER_SNAKE_CASE Code. |
+| **Naming: interfaces** | All interfaces start with `I` prefix: `IWalletRepository`, `ILogger`, `IIDGenerator`, `ITransactionManager`, `IWalletReadStore`, etc. Class implementations do NOT have the prefix: `PrismaWalletRepo`, `SafeLogger`, `UUIDV7Generator`. |
+| **Naming: files** | Dotted suffix convention: `wallet.aggregate.ts`, `hold.entity.ts`, `wallet.errors.ts`, `wallet.repository.ts` (port), `wallet.repo.ts` (adapter), `wallet.readstore.ts`, `transaction.manager.ts`, `idempotency.store.ts`, `logger.port.ts`, `sensitive.filter.ts`, `id.generator.ts`. Command/query types: `command.ts` / `query.ts`. Handler classes: `handler.ts`. |
 | **Struct ordering** | Constructor (static `create`/factory) goes immediately after the class definition, before methods. Order: class → constructor/factory → methods. |
 | **API endpoints** | **Never add endpoints without documenting them.** Each directory under `src/api/` must have an **API.md** with method, path, request/response structure, errors, and curl examples. |
-| **Concurrency** | Single-wallet ops: optimistic locking (`version` field); mismatch → `409 VERSION_CONFLICT`, client retries. Multi-wallet ops (transfers): `SELECT FOR UPDATE` with deterministic lock order (`ORDER BY id`). All mutations: idempotency keys with atomic acquire pattern. Safety net: DB `CHECK` constraints. |
+| **Concurrency** | All wallet mutations: optimistic locking (`version` field); mismatch → `409 VERSION_CONFLICT`, client retries. No `SELECT FOR UPDATE` in domain ports (infrastructure leak — see `systemPatterns.md`). All mutations: idempotency keys with atomic acquire pattern. Safety net: DB `CHECK` constraints. |
 | **Ledger** | Double-entry bookkeeping. Every financial op produces exactly 2 LedgerEntry records (debit + credit). `ledger_entries` is **immutable** (append-only): never UPDATE, never DELETE. Protected by PostgreSQL trigger. |
-| **BigInt serialization** | Prisma BigInt → use `shared/kernel/bigint.ts` (`toSafeNumber`, `toNumber`, `bigIntReplacer`). Never expose raw `bigint` in API responses. |
-| **RequestContext** | Use `buildRequestContext(c)` from `shared/kernel/context.ts` in HTTP handlers. Never build `RequestContext` manually with `c.get()`. |
+| **BigInt serialization** | Prisma BigInt → use `shared/domain/kernel/bigint.ts` (`toSafeNumber`, `toNumber`, `bigIntReplacer`). Never expose raw `bigint` in API responses. |
+| **AppContext** | Use `buildAppContext(c)` from `shared/adapters/kernel/hono.context.ts` in HTTP handlers. For non-HTTP flows (jobs, scripts, tests), use `createAppContext(idGen)` from `shared/domain/kernel/context.ts`. Never build `AppContext` manually with `c.get()`. |
+| **Outbound ports convention** | All outbound port methods (repositories, read stores, transaction manager) receive `ctx: AppContext` as their **first parameter**. Adapters receive `ILogger` in their constructor. This enables adapters to log with full traceability (`tracking_id`, `platform_id`) without leaking infrastructure into the domain. |
 | **Currency** | `currency_code` must be valid ISO 4217 uppercase. Cross-currency transfers not allowed. |
 | **System wallets** | One per (platform, currency), `owner_id = "SYSTEM"`, `is_system = true`. Auto-created on first wallet creation for that platform/currency. Cannot be frozen or closed. |
 
@@ -92,9 +96,8 @@ Before implementing domain logic, business rules, or data structures:
 | `src/api/respond/` | HTTP error response helper (`withError`); maps AppError Kind → HTTP status |
 | `src/wallet/` | Bounded context: Wallet (wallets, transactions, ledger, holds) |
 | `src/platform/` | Bounded context: Platform (API key management) |
-| `src/shared/appError.ts` | Application error type (Kind + Code + Message); no external deps |
-| `src/shared/kernel/` | Cross-cutting: IDGenerator port, RequestContext, HonoVariables, `buildRequestContext` helper, `bigint.ts` serialization utils, adapters (UUID v7) |
-| `src/shared/observability/` | Logger port, SafeLogger, SensitiveKeysFilter, CanonicalAccumulator; adapters (Pino) |
+| `src/shared/domain/` | **Domain-safe shared code.** Domain and app layers may ONLY import from here. Contains: `appError.ts`, `kernel/` (AppContext, createAppContext, IIDGenerator, bigint utils), `observability/` (ILogger port, CanonicalAccumulator). Zero external dependencies. |
+| `src/shared/adapters/` | **Infrastructure shared code.** Only adapters, HTTP handlers, wiring, and middleware may import from here. Contains: `kernel/` (HonoVariables, buildAppContext, UUIDV7Generator), `observability/` (PinoAdapter, SafeLogger, SensitiveKeysFilter). |
 | `prisma/` | Prisma schema and migrations |
 | `prisma/immutable_ledger.sql` | PostgreSQL trigger + constraints for append-only ledger |
 | `docs/` | Domain, data model, architecture documentation |

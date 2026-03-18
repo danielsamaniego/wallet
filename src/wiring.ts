@@ -1,14 +1,14 @@
-import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import type { IdempotencyStore } from "./api/middleware/idempotency.js";
+import { PrismaClient } from "@prisma/client";
+import type { IIdempotencyStore } from "./api/middleware/idempotency.js";
 import type { Config } from "./config.js";
-import { UUIDV7Generator } from "./shared/kernel/adapters/uuidV7.js";
-import type { IDGenerator } from "./shared/kernel/idGenerator.js";
-import { PinoAdapter } from "./shared/observability/adapters/pinoAdapter.js";
-import type { Logger } from "./shared/observability/logger.js";
-import { SafeLogger } from "./shared/observability/safe.js";
-import { SensitiveKeysFilter } from "./shared/observability/sensitiveFilter.js";
-import { PrismaIdempotencyStore } from "./wallet/adapters/persistence/prisma/idempotencyStore.js";
+import { UUIDV7Generator } from "./shared/adapters/kernel/uuidV7.js";
+import { PinoAdapter } from "./shared/adapters/observability/pino.adapter.js";
+import { SafeLogger } from "./shared/adapters/observability/safe.logger.js";
+import { SensitiveKeysFilter } from "./shared/adapters/observability/sensitive.filter.js";
+import type { IIDGenerator } from "./shared/domain/kernel/id.generator.js";
+import type { ILogger } from "./shared/domain/observability/logger.port.js";
+import { PrismaIdempotencyStore } from "./wallet/adapters/persistence/prisma/idempotency.store.js";
 
 /**
  * Dependencies holds all injected dependencies for the API.
@@ -16,10 +16,10 @@ import { PrismaIdempotencyStore } from "./wallet/adapters/persistence/prisma/ide
 export interface Dependencies {
   config: Config;
   prisma: PrismaClient;
-  idGen: IDGenerator;
-  logger: Logger;
+  idGen: IIDGenerator;
+  logger: ILogger;
   validateApiKey: (apiKey: string) => Promise<{ platformId: string } | null>;
-  idempotencyStore: IdempotencyStore;
+  idempotencyStore: IIdempotencyStore;
 }
 
 const sensitiveKeys = [
@@ -63,9 +63,14 @@ export function wire(config: Config): Dependencies {
 
     if (!platform || platform.status !== "active") return null;
 
-    const { createHash } = await import("node:crypto");
+    const { createHash, timingSafeEqual } = await import("node:crypto");
     const hash = createHash("sha256").update(secret).digest("hex");
-    if (hash !== platform.apiKeyHash) return null;
+    if (
+      hash.length !== platform.apiKeyHash.length ||
+      !timingSafeEqual(Buffer.from(hash), Buffer.from(platform.apiKeyHash))
+    ) {
+      return null;
+    }
 
     return { platformId: platform.id };
   };

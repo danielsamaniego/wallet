@@ -1,8 +1,8 @@
 import type { Context } from "hono";
 
-import { AppError, ErrorKind } from "../../shared/appError.js";
-import type { RequestContext } from "../../shared/kernel/context.js";
-import type { Logger } from "../../shared/observability/logger.js";
+import { AppError, ErrorKind } from "../../shared/domain/appError.js";
+import type { AppContext } from "../../shared/domain/kernel/context.js";
+import type { ILogger } from "../../shared/domain/observability/logger.port.js";
 
 const kindStatus: Record<ErrorKind, number> = {
   [ErrorKind.Validation]: 400,
@@ -28,8 +28,8 @@ export function httpStatus(kind: ErrorKind): number {
  */
 export function withError(
   c: Context,
-  logger: Logger,
-  ctx: RequestContext,
+  logger: ILogger,
+  ctx: AppContext,
   logTag: string,
   err: unknown,
 ): Response {

@@ -22,7 +22,7 @@
 - **Holds/authorizations**: Reserve funds without moving; capture, void, or expire
 - **Transaction ledger**: Double-entry, append-only, immutable audit trail
 - **Idempotency**: Safe retries for mutations via idempotency keys
-- **Race-condition protection**: Optimistic locking, `SELECT FOR UPDATE`, DB constraints
+- **Race-condition protection**: Optimistic locking (version field), idempotency keys, DB constraints
 
 ## Technical Conventions
 

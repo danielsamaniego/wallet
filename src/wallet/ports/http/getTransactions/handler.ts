@@ -1,16 +1,16 @@
 import type { Context } from "hono";
 import { withError } from "../../../../api/respond/error.js";
-import type { HonoVariables } from "../../../../shared/kernel/context.js";
-import { buildRequestContext } from "../../../../shared/kernel/context.js";
-import type { Logger } from "../../../../shared/observability/logger.js";
-import type { GetTransactionsHandler } from "../../../app/query/getTransactions/handler.js";
+import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.context.js";
+import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
+import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import type { GetTransactionsHandler } from "../../../application/query/getTransactions/handler.js";
 
 const mainLogTag = "GetTransactionsHTTP";
 
-export function getTransactionsHandler(handler: GetTransactionsHandler, logger: Logger) {
+export function getTransactionsHandler(handler: GetTransactionsHandler, logger: ILogger) {
   return async (c: Context<{ Variables: HonoVariables }>) => {
     const methodLogTag = `${mainLogTag} | handle`;
-    const ctx = buildRequestContext(c);
+    const ctx = buildAppContext(c);
 
     const walletId = c.req.param("walletId")!;
     const limit = Math.min(Number(c.req.query("limit") ?? "50"), 100);

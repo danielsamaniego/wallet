@@ -1,21 +1,21 @@
 import type { Context } from "hono";
 import { withError } from "../../../../api/respond/error.js";
-import type { HonoVariables } from "../../../../shared/kernel/context.js";
-import { buildRequestContext } from "../../../../shared/kernel/context.js";
-import type { Logger } from "../../../../shared/observability/logger.js";
-import type { VoidHoldHandler } from "../../../app/command/voidHold/handler.js";
+import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.context.js";
+import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
+import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import type { VoidHoldHandler } from "../../../application/command/voidHold/handler.js";
 
 const mainLogTag = "VoidHoldHTTP";
 
-export function voidHoldHandler(handler: VoidHoldHandler, logger: Logger) {
+export function voidHoldHandler(handler: VoidHoldHandler, logger: ILogger) {
   return async (c: Context<{ Variables: HonoVariables }>) => {
     const methodLogTag = `${mainLogTag} | handle`;
-    const ctx = buildRequestContext(c);
+    const ctx = buildAppContext(c);
 
     const holdId = c.req.param("holdId")!;
 
     try {
-      await handler.handle(ctx, { holdId });
+      await handler.handle(ctx, { holdId, platformId: ctx.platformId! });
       return c.json({ status: "voided" }, 200);
     } catch (err) {
       return withError(c, logger, ctx, methodLogTag, err);

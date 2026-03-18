@@ -8,7 +8,7 @@
 - [x] Makefile (dev, test, lint, db commands)
 - [x] Shared: AppError (Kind + Code + Message)
 - [x] Shared: IDGenerator interface + UUID v7 adapter
-- [x] Shared: RequestContext + HonoVariables types
+- [x] Shared: AppContext + createAppContext factory + HonoVariables types
 - [x] Shared: Logger interface with canonical log support
 - [x] Shared: SafeLogger (never throws)
 - [x] Shared: SensitiveKeysFilter (omits sensitive keys)

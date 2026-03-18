@@ -1,8 +1,8 @@
 import type { MiddlewareHandler } from "hono";
 
-import type { HonoVariables } from "../../shared/kernel/context.js";
-import { buildRequestContext } from "../../shared/kernel/context.js";
-import type { Logger } from "../../shared/observability/logger.js";
+import type { HonoVariables } from "../../shared/adapters/kernel/hono.context.js";
+import { buildAppContext } from "../../shared/adapters/kernel/hono.context.js";
+import type { ILogger } from "../../shared/domain/observability/logger.port.js";
 
 const mainLogTag = "RequestResponseLog";
 
@@ -15,12 +15,12 @@ const mainLogTag = "RequestResponseLog";
  * downstream handlers (c.req.json(), etc.) would receive an empty body.
  */
 export function requestResponseLog(
-  logger: Logger,
+  logger: ILogger,
 ): MiddlewareHandler<{ Variables: HonoVariables }> {
   const methodLogTag = `${mainLogTag} | Middleware`;
 
   return async (c, next) => {
-    const ctx = buildRequestContext(c);
+    const ctx = buildAppContext(c);
 
     const path = c.req.path;
     const method = c.req.method;

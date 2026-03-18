@@ -1,9 +1,13 @@
 import type { Hono } from "hono";
-import type { HonoVariables } from "../../shared/kernel/context.js";
-import { PrismaUnitOfWork } from "../../wallet/adapters/persistence/prisma/unitOfWork.js";
-import { CaptureHoldHandler } from "../../wallet/app/command/captureHold/handler.js";
-import { PlaceHoldHandler } from "../../wallet/app/command/placeHold/handler.js";
-import { VoidHoldHandler } from "../../wallet/app/command/voidHold/handler.js";
+import type { HonoVariables } from "../../shared/adapters/kernel/hono.context.js";
+import { PrismaHoldRepo } from "../../wallet/adapters/persistence/prisma/hold.repo.js";
+import { PrismaLedgerEntryRepo } from "../../wallet/adapters/persistence/prisma/ledgerEntry.repo.js";
+import { PrismaTransactionManager } from "../../wallet/adapters/persistence/prisma/transaction.manager.js";
+import { PrismaTransactionRepo } from "../../wallet/adapters/persistence/prisma/transaction.repo.js";
+import { PrismaWalletRepo } from "../../wallet/adapters/persistence/prisma/wallet.repo.js";
+import { CaptureHoldHandler } from "../../wallet/application/command/captureHold/handler.js";
+import { PlaceHoldHandler } from "../../wallet/application/command/placeHold/handler.js";
+import { VoidHoldHandler } from "../../wallet/application/command/voidHold/handler.js";
 import { captureHoldHandler } from "../../wallet/ports/http/captureHold/handler.js";
 import { placeHoldHandler } from "../../wallet/ports/http/placeHold/handler.js";
 import { voidHoldHandler } from "../../wallet/ports/http/voidHold/handler.js";
@@ -14,10 +18,23 @@ import { idempotency } from "../middleware/idempotency.js";
 export function setupHoldRoutes(app: Hono<{ Variables: HonoVariables }>, deps: Dependencies) {
   const { prisma, idGen, logger } = deps;
 
-  const uow = new PrismaUnitOfWork(prisma);
-  const placeHold = new PlaceHoldHandler(uow, idGen, logger);
-  const captureHold = new CaptureHoldHandler(uow, idGen, logger);
-  const voidHold = new VoidHoldHandler(uow, logger);
+  const txManager = new PrismaTransactionManager(prisma, logger);
+  const walletRepo = new PrismaWalletRepo(prisma, logger);
+  const holdRepo = new PrismaHoldRepo(prisma, logger);
+  const transactionRepo = new PrismaTransactionRepo(prisma, logger);
+  const ledgerEntryRepo = new PrismaLedgerEntryRepo(prisma, logger);
+
+  const placeHold = new PlaceHoldHandler(txManager, walletRepo, holdRepo, idGen, logger);
+  const captureHold = new CaptureHoldHandler(
+    txManager,
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    idGen,
+    logger,
+  );
+  const voidHold = new VoidHoldHandler(txManager, walletRepo, holdRepo, logger);
 
   const auth = apiKeyAuth(deps.validateApiKey);
   const idemp = idempotency(deps.idempotencyStore);

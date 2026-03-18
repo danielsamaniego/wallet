@@ -171,11 +171,8 @@ Internal components and workflows.
 
 ### Concurrency and Safety
 
-- **Optimistic locking**: Wallets have `version`; updates must match current version. On version mismatch (0 rows updated), the command returns `409 Conflict` with code `VERSION_CONFLICT`. The platform (client) retries with the same idempotency key. No automatic server-side retry — the client controls retry policy.
-- **SELECT FOR UPDATE**: Used for multi-wallet atomic operations (transfers, hold capture with counterpart). Lock wallets in deterministic order (`ORDER BY id`) to prevent deadlocks.
-- **When to use which**:
-  - **Optimistic locking only**: Single-wallet mutations (deposit, withdraw, freeze, close).
-  - **SELECT FOR UPDATE**: Any operation touching 2+ wallets atomically (transfer, hold capture to counterpart wallet). The `version` field is still incremented inside the locked transaction.
+- **Optimistic locking**: Wallets have `version`; all mutations (single and multi-wallet) must match current version. On version mismatch (0 rows updated), the command returns `409 Conflict` with code `VERSION_CONFLICT`. The platform (client) retries with the same idempotency key. No automatic server-side retry — the client controls retry policy.
+- **No pessimistic locking (SELECT FOR UPDATE)**: We deliberately avoid `SELECT FOR UPDATE` in the domain layer. It is a SQL-specific concept that would leak infrastructure into domain ports, breaking hexagonal architecture. If we switched to MongoDB or DynamoDB, pessimistic row locking doesn't exist. Optimistic locking via `version` is database-agnostic and catches all conflicts. If high-contention scenarios require it, pessimistic locking can be added inside the persistence adapter as an implementation detail, transparent to the domain.
 - **Idempotency keys**: Required for all mutations (deposit, withdraw, transfer, hold capture). Duplicate keys return the cached response without re-executing. See Idempotency section.
 - **DB constraints**: Uniqueness, referential integrity, positive amounts, and balance checks as safety net.
 

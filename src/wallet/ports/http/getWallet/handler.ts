@@ -1,16 +1,16 @@
 import type { Context } from "hono";
 import { withError } from "../../../../api/respond/error.js";
-import type { HonoVariables } from "../../../../shared/kernel/context.js";
-import { buildRequestContext } from "../../../../shared/kernel/context.js";
-import type { Logger } from "../../../../shared/observability/logger.js";
-import type { GetWalletHandler } from "../../../app/query/getWallet/handler.js";
+import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.context.js";
+import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
+import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import type { GetWalletHandler } from "../../../application/query/getWallet/handler.js";
 
 const mainLogTag = "GetWalletHTTP";
 
-export function getWalletHandler(handler: GetWalletHandler, logger: Logger) {
+export function getWalletHandler(handler: GetWalletHandler, logger: ILogger) {
   return async (c: Context<{ Variables: HonoVariables }>) => {
     const methodLogTag = `${mainLogTag} | handle`;
-    const ctx = buildRequestContext(c);
+    const ctx = buildAppContext(c);
 
     const walletId = c.req.param("walletId")!;
 

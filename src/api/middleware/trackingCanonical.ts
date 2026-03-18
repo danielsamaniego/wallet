@@ -1,8 +1,9 @@
 import type { MiddlewareHandler } from "hono";
-import type { HonoVariables, RequestContext } from "../../shared/kernel/context.js";
-import type { IDGenerator } from "../../shared/kernel/idGenerator.js";
-import { CanonicalAccumulator } from "../../shared/observability/canonical.js";
-import type { Logger } from "../../shared/observability/logger.js";
+import type { HonoVariables } from "../../shared/adapters/kernel/hono.context.js";
+import type { AppContext } from "../../shared/domain/kernel/context.js";
+import type { IIDGenerator } from "../../shared/domain/kernel/id.generator.js";
+import { CanonicalAccumulator } from "../../shared/domain/observability/canonical.js";
+import type { ILogger } from "../../shared/domain/observability/logger.port.js";
 
 const canonicalDispatchMsg = "Canonical log | request completed";
 
@@ -12,8 +13,8 @@ const canonicalDispatchMsg = "Canonical log | request completed";
  * Runs first in the middleware chain so all subsequent handlers have tracking context.
  */
 export function trackingCanonical(
-  idGen: IDGenerator,
-  logger: Logger,
+  idGen: IIDGenerator,
+  logger: ILogger,
 ): MiddlewareHandler<{ Variables: HonoVariables }> {
   return async (c, next) => {
     const trackingId = idGen.newId();
@@ -24,15 +25,15 @@ export function trackingCanonical(
     c.set("startTs", startTs);
     c.set("canonical", canonical);
 
-    // Build a proper RequestContext for the canonical dispatch.
+    // Build a proper AppContext for the canonical dispatch.
     // platformId is not yet available (set later by apiKeyAuth route middleware).
-    const ctx: RequestContext = { trackingId, startTs, canonical };
+    const ctx: AppContext = { trackingId, startTs, canonical };
 
     try {
       await next();
     } finally {
       // Re-read platformId from Hono context in case apiKeyAuth set it during handler execution.
-      const finalCtx: RequestContext = {
+      const finalCtx: AppContext = {
         ...ctx,
         platformId: c.get("platformId"),
       };

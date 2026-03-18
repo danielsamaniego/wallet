@@ -1,30 +1,32 @@
 import type { Context } from "hono";
 import { z } from "zod";
 import { withError } from "../../../../api/respond/error.js";
-import type { HonoVariables } from "../../../../shared/kernel/context.js";
-import { buildRequestContext } from "../../../../shared/kernel/context.js";
-import type { Logger } from "../../../../shared/observability/logger.js";
-import type { CreateWalletHandler } from "../../../app/command/createWallet/handler.js";
+import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.context.js";
+import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
+import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import type { CreateWalletHandler } from "../../../application/command/createWallet/handler.js";
 
 const mainLogTag = "CreateWalletHTTP";
 
 const RequestSchema = z.object({
   owner_id: z.string().min(1),
-  currency_code: z.string().length(3),
+  currency_code: z.string().regex(/^[A-Z]{3}$/, "currency_code must be 3 uppercase letters"),
 });
 
-export function createWalletHandler(handler: CreateWalletHandler, logger: Logger) {
+export function createWalletHandler(handler: CreateWalletHandler, logger: ILogger) {
   return async (c: Context<{ Variables: HonoVariables }>) => {
     const methodLogTag = `${mainLogTag} | handle`;
-    const ctx = buildRequestContext(c);
+    const ctx = buildAppContext(c);
 
     const body = await c.req.json().catch(() => null);
     if (!body) {
+      logger.warn(ctx, `${methodLogTag} invalid JSON body`);
       return c.json({ error: "INVALID_REQUEST", message: "invalid JSON body" }, 400);
     }
 
     const parsed = RequestSchema.safeParse(body);
     if (!parsed.success) {
+      logger.warn(ctx, `${methodLogTag} validation failed`, { reason: parsed.error.message });
       return c.json({ error: "INVALID_REQUEST", message: parsed.error.message }, 400);
     }
 

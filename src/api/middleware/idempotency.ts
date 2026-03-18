@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
-import type { HonoVariables } from "../../shared/kernel/context.js";
+import type { HonoVariables } from "../../shared/adapters/kernel/hono.context.js";
 
 const IDEMPOTENCY_HEADER = "idempotency-key";
 
@@ -15,7 +15,7 @@ export interface IdempotencyRecord {
 }
 
 /**
- * IdempotencyStore provides atomic operations for idempotency records.
+ * IIdempotencyStore provides atomic operations for idempotency records.
  *
  * Implementations must guarantee:
  * - `acquire` is atomic: concurrent calls with the same key must result in
@@ -23,7 +23,7 @@ export interface IdempotencyRecord {
  *   Use INSERT ... ON CONFLICT or equivalent to prevent race conditions.
  * - `complete` updates the pending record with the actual response.
  */
-export interface IdempotencyStore {
+export interface IIdempotencyStore {
   /**
    * Atomically attempt to acquire the idempotency key.
    * - Returns `null` if this caller won the race (key inserted as "pending").
@@ -63,7 +63,7 @@ export interface IdempotencyStore {
  * enforcement via the transactions.idempotency_key unique constraint.
  */
 export function idempotency(
-  store: IdempotencyStore,
+  store: IIdempotencyStore,
 ): MiddlewareHandler<{ Variables: HonoVariables }> {
   return async (c, next) => {
     if (c.req.method === "GET" || c.req.method === "HEAD") {
