@@ -180,6 +180,8 @@ Internal components and workflows.
 
 - All mutations require an `Idempotency-Key` header.
 - The idempotency store uses an **atomic acquire pattern**: INSERT a pending record before handler execution. If the INSERT conflicts (key already exists), return the stored response. This prevents race conditions where two concurrent requests with the same key both execute.
+- **Transient error handling**: Responses with status `>= 500` or `409` (e.g. VERSION_CONFLICT) are NOT cached. The pending idempotency record is deleted (`release`) so the client can safely retry with the same key. Only deterministic responses (2xx, 400, 404, 422) are cached.
+- **Payload mismatch detection**: A SHA-256 hash of the request body is stored alongside the idempotency record. If a retry arrives with the same key but a different body, the middleware returns `422 IDEMPOTENCY_PAYLOAD_MISMATCH` instead of the cached response.
 - Idempotency records have a 48h TTL (`expires_at`).
 - **Cleanup**: A periodic batch job (cron) must delete records where `expires_at < now()`. Without cleanup, the `idempotency_records` table grows indefinitely. At scale (1M+ tx/day), consider partitioning by `created_at` via `pg_partman`.
 

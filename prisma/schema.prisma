@@ -107,6 +107,7 @@ model IdempotencyRecord {
   id             String @id /// UUID v7, app-generated
   idempotencyKey String @unique @map("idempotency_key")
   platformId     String @map("platform_id")
+  requestHash    String @default("") @map("request_hash") /// SHA-256 of request body for payload mismatch detection
   responseStatus Int    @map("response_status")
   responseBody   Json   @map("response_body")
   createdAt      BigInt @map("created_at") /// Unix ms

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { MiddlewareHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
@@ -8,6 +9,7 @@ const IDEMPOTENCY_HEADER = "idempotency-key";
 export interface IdempotencyRecord {
   idempotencyKey: string;
   platformId: string;
+  requestHash: string;
   responseStatus: number;
   responseBody: unknown;
   createdAt: number;
@@ -33,6 +35,7 @@ export interface IIdempotencyStore {
   acquire(
     idempotencyKey: string,
     platformId: string,
+    requestHash: string,
     createdAt: number,
     expiresAt: number,
   ): Promise<IdempotencyRecord | null>;
@@ -46,6 +49,12 @@ export interface IIdempotencyStore {
     responseStatus: number,
     responseBody: unknown,
   ): Promise<void>;
+
+  /**
+   * Delete a pending record so the idempotency key can be reused.
+   * Called when the handler fails with a transient error (e.g. VERSION_CONFLICT, 5xx).
+   */
+  release(idempotencyKey: string, platformId: string): Promise<void>;
 }
 
 /**
@@ -92,8 +101,12 @@ export function idempotency(
     const now = Date.now();
     const expiresAt = now + 48 * 60 * 60 * 1000;
 
+    // Hash request body for payload mismatch detection
+    const rawBody = await c.req.text();
+    const requestHash = createHash("sha256").update(rawBody).digest("hex");
+
     // Atomic acquire: INSERT pending record or return existing
-    const existing = await store.acquire(key, platformId, now, expiresAt);
+    const existing = await store.acquire(key, platformId, requestHash, now, expiresAt);
 
     if (existing) {
       // Key already processed — return cached response
@@ -107,6 +120,18 @@ export function idempotency(
           409,
         );
       }
+
+      // Payload mismatch: same key, different body
+      if (existing.requestHash !== requestHash) {
+        return c.json(
+          {
+            error: "IDEMPOTENCY_PAYLOAD_MISMATCH",
+            message: "idempotency key was already used with a different request body",
+          },
+          422,
+        );
+      }
+
       return c.json(
         existing.responseBody as object,
         existing.responseStatus as ContentfulStatusCode,
@@ -116,13 +141,22 @@ export function idempotency(
     // This request won the race — execute handler
     await next();
 
-    // Store the actual response
+    const status = c.res.status;
+
+    // Transient errors (5xx, 409 Conflict) must NOT be cached —
+    // release the key so clients can retry with the same idempotency key.
+    if (status >= 500 || status === 409) {
+      store.release(key, platformId).catch(() => {});
+      return;
+    }
+
+    // Deterministic responses (2xx, 4xx validation/domain) are safe to cache
     const responseBody = await c.res
       .clone()
       .json()
       .catch(() => null);
 
-    store.complete(key, platformId, c.res.status, responseBody).catch(() => {
+    store.complete(key, platformId, status, responseBody).catch(() => {
       // Non-critical: record stays pending; will be overwritten on next acquire after TTL
     });
   };

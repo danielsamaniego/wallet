@@ -13,6 +13,7 @@ export class PrismaIdempotencyStore implements IIdempotencyStore {
   async acquire(
     idempotencyKey: string,
     platformId: string,
+    requestHash: string,
     createdAt: number,
     expiresAt: number,
   ): Promise<IdempotencyRecord | null> {
@@ -25,6 +26,7 @@ export class PrismaIdempotencyStore implements IIdempotencyStore {
       return {
         idempotencyKey: existing.idempotencyKey,
         platformId: existing.platformId,
+        requestHash: existing.requestHash,
         responseStatus: existing.responseStatus,
         responseBody: existing.responseBody,
         createdAt: Number(existing.createdAt),
@@ -39,6 +41,7 @@ export class PrismaIdempotencyStore implements IIdempotencyStore {
           id: this.idGen.newId(),
           idempotencyKey,
           platformId,
+          requestHash,
           responseStatus: 0,
           responseBody: {},
           createdAt: BigInt(createdAt),
@@ -55,6 +58,7 @@ export class PrismaIdempotencyStore implements IIdempotencyStore {
         return {
           idempotencyKey: existing.idempotencyKey,
           platformId: existing.platformId,
+          requestHash: existing.requestHash,
           responseStatus: existing.responseStatus,
           responseBody: existing.responseBody,
           createdAt: Number(existing.createdAt),
@@ -77,6 +81,12 @@ export class PrismaIdempotencyStore implements IIdempotencyStore {
         responseStatus,
         responseBody: responseBody as any,
       },
+    });
+  }
+
+  async release(idempotencyKey: string, _platformId: string): Promise<void> {
+    await this.prisma.idempotencyRecord.delete({
+      where: { idempotencyKey },
     });
   }
 }

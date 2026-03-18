@@ -82,7 +82,7 @@ See **[backend-architecture.md](backend-architecture.md)** § Logging for full d
 - PostgreSQL via Prisma ORM.
 - Optimistic locking: `version` field on wallets; updates must match current version.
 - **Double-entry ledger**: Every operation produces 2 entries (debit + credit). `ledger_entries` is immutable (DB trigger + REVOKE UPDATE/DELETE).
-- Idempotency records: TTL 48h; stored responses for safe retries.
+- Idempotency records: TTL 48h; stored responses for safe retries. Includes `request_hash` (SHA-256) for payload mismatch detection.
 - DB constraints enforce uniqueness and referential integrity as safety net.
 
 ## Concurrency Controls
@@ -90,7 +90,7 @@ See **[backend-architecture.md](backend-architecture.md)** § Logging for full d
 | Control | Use |
 |---------|-----|
 | Optimistic locking | All wallet mutations (single and multi-wallet). `version` field checked on save; mismatch → `409 VERSION_CONFLICT`; client retries with same idempotency key. |
-| Idempotency keys | All mutations. Atomic acquire pattern: INSERT pending record before execution; concurrent duplicates get `409 IDEMPOTENCY_KEY_IN_PROGRESS` or cached response. |
+| Idempotency keys | All mutations. Atomic acquire pattern: INSERT pending record before execution; concurrent duplicates get `409 IDEMPOTENCY_KEY_IN_PROGRESS` or cached response. Transient errors (5xx, 409) are released, not cached. Payload mismatch → `422 IDEMPOTENCY_PAYLOAD_MISMATCH`. |
 | DB constraints | Uniqueness, referential integrity, positive amounts, balance rules as safety net. |
 
 ### Why optimistic locking, not SELECT FOR UPDATE

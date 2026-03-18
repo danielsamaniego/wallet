@@ -78,6 +78,7 @@ erDiagram
         uuid id PK
         string idempotency_key UK
         uuid platform_id FK
+        string request_hash
         int response_status
         json response_body
         bigint created_at
@@ -210,6 +211,7 @@ Stores response for idempotent mutations. Prevents duplicate financial operation
 | id | UUID | Primary key; app generates UUID v7 |
 | idempotency_key | string | Unique per platform |
 | platform_id | UUID | FK → Platform |
+| request_hash | string | SHA-256 of request body; for payload mismatch detection |
 | response_status | int | HTTP status of original response |
 | response_body | JSON | Cached response body |
 | created_at | BIGINT | Unix ms |
