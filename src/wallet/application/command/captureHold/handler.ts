@@ -77,7 +77,7 @@ export class CaptureHoldHandler {
       const movement = Movement.create({ id: movementId, type: "hold_capture", createdAt: now });
 
       // Debit wallet, credit system wallet
-      wallet.withdraw(hold.amountCents, hold.amountCents, now);
+      wallet.withdraw(hold.amountCents, wallet.cachedBalanceCents, now);
       systemWallet.deposit(hold.amountCents, now);
 
       const tx = Transaction.create({

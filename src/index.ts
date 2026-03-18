@@ -7,6 +7,7 @@ import { trackingCanonical } from "./api/middleware/trackingCanonical.js";
 import { setupTransferRoutes } from "./api/transfers/setup.js";
 import { setupWalletRoutes } from "./api/wallets/setup.js";
 import { loadConfig } from "./config.js";
+import { startExpireHoldsJob } from "./jobs/expireHolds.js";
 import type { HonoVariables } from "./shared/adapters/kernel/hono.context.js";
 import { buildAppContext } from "./shared/adapters/kernel/hono.context.js";
 import { wire } from "./wiring.js";
@@ -36,6 +37,9 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 setupWalletRoutes(app, deps);
 setupTransferRoutes(app, deps);
 setupHoldRoutes(app, deps);
+
+// Background cron jobs
+startExpireHoldsJob(deps.prisma, deps.logger, deps.idGen);
 
 serve({ fetch: app.fetch, port: config.httpPort }, (info) => {
   console.log(`Wallet service running on http://localhost:${info.port}`);

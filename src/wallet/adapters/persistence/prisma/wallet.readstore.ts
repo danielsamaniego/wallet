@@ -22,9 +22,14 @@ export class PrismaWalletReadStore implements IWalletReadStore {
 
     if (!row) return null;
 
-    // Calculate available balance: cached - active holds
+    // Calculate available balance: cached - active holds (excluding expired by time)
+    const now = BigInt(Date.now());
     const holdSum = await this.prisma.hold.aggregate({
-      where: { walletId: row.id, status: "active" },
+      where: {
+        walletId: row.id,
+        status: "active",
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
       _sum: { amountCents: true },
     });
 

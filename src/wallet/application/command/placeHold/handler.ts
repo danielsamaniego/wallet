@@ -63,6 +63,10 @@ export class PlaceHoldHandler {
         );
       }
 
+      // Participate in optimistic locking so concurrent PlaceHold/VoidHold
+      // on the same wallet contend for the version and only one wins.
+      wallet.touchForHoldChange(now); // Just update the updatedAt timestamp.
+
       const hold = Hold.create({
         id: holdId,
         walletId: wallet.id,
@@ -72,6 +76,7 @@ export class PlaceHoldHandler {
         now,
       });
 
+      await this.walletRepo.save(txCtx, wallet);// If version mismatch, the save will fail with VERSION_CONFLICT.
       await this.holdRepo.save(txCtx, hold);
     });
 

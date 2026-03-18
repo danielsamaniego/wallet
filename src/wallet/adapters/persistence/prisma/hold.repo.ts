@@ -47,14 +47,16 @@ export class PrismaHoldRepo implements IHoldRepository {
 
   async findActiveByWallet(ctx: AppContext, walletId: string): Promise<Hold[]> {
     this.logger.debug(ctx, "HoldRepo | findActiveByWallet", { wallet_id: walletId });
-    const rows = await this.client(ctx).hold.findMany({ where: { walletId, status: "active" } });
+    const rows = await this.client(ctx).hold.findMany({
+      where: this.activeHoldFilter(walletId),
+    });
     return rows.map((r) => this.toDomain(r));
   }
 
   async sumActiveHolds(ctx: AppContext, walletId: string): Promise<bigint> {
     this.logger.debug(ctx, "HoldRepo | sumActiveHolds", { wallet_id: walletId });
     const result = await this.client(ctx).hold.aggregate({
-      where: { walletId, status: "active" },
+      where: this.activeHoldFilter(walletId),
       _sum: { amountCents: true },
     });
     return result._sum.amountCents ?? 0n;
@@ -62,7 +64,17 @@ export class PrismaHoldRepo implements IHoldRepository {
 
   async countActiveHolds(ctx: AppContext, walletId: string): Promise<number> {
     this.logger.debug(ctx, "HoldRepo | countActiveHolds", { wallet_id: walletId });
-    return this.client(ctx).hold.count({ where: { walletId, status: "active" } });
+    return this.client(ctx).hold.count({ where: this.activeHoldFilter(walletId) });
+  }
+
+  /** Filter: status = 'active' AND not expired by time. */
+  private activeHoldFilter(walletId: string) {
+    const now = BigInt(Date.now());
+    return {
+      walletId,
+      status: "active" as const,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    };
   }
 
   private toDomain(row: {

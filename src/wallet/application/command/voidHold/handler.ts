@@ -47,6 +47,12 @@ export class VoidHoldHandler {
       }
 
       hold.void_(now);
+
+      // Participate in optimistic locking so concurrent VoidHold/CaptureHold
+      // on the same wallet contend for the version and only one wins.
+      wallet.touchForHoldChange(now); // Just update the updatedAt timestamp.
+
+      await this.walletRepo.save(txCtx, wallet); // If version mismatch, the save will fail with VERSION_CONFLICT.
       await this.holdRepo.save(txCtx, hold);
     });
 

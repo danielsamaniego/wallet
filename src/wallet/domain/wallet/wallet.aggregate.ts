@@ -183,6 +183,14 @@ export class Wallet {
     this.touch(now);
   }
 
+  /** Bump version without mutating balance. Used by PlaceHold/VoidHold to participate in optimistic locking. */
+  touchForHoldChange(now: number): void {
+    if (this._status !== "active") {
+      throw AppError.domainRule("WALLET_NOT_ACTIVE", `wallet ${this._id} is not active`);
+    }
+    this.touch(now);
+  }
+
   private touch(now: number): void {
     this._updatedAt = now;
   }
