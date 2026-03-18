@@ -96,8 +96,8 @@ export class TransferHandler {
         createdAt: now,
       });
 
-      // Ledger entries (4 total: debit source, credit source counterpart, debit target counterpart, credit target)
-      const sourceDebit = LedgerEntry.create({
+      // Ledger entries: 1 DEBIT on source (transfer_out), 1 CREDIT on target (transfer_in)
+      const debitEntry = LedgerEntry.create({
         id: this.idGen.newId(),
         transactionId: sourceTxId,
         walletId: source.id,
@@ -107,27 +107,7 @@ export class TransferHandler {
         createdAt: now,
       });
 
-      const sourceCredit = LedgerEntry.create({
-        id: this.idGen.newId(),
-        transactionId: sourceTxId,
-        walletId: target.id,
-        entryType: "CREDIT",
-        amountCents: cmd.amountCents,
-        balanceAfterCents: target.cachedBalanceCents,
-        createdAt: now,
-      });
-
-      const targetDebit = LedgerEntry.create({
-        id: this.idGen.newId(),
-        transactionId: targetTxId,
-        walletId: source.id,
-        entryType: "DEBIT",
-        amountCents: -cmd.amountCents,
-        balanceAfterCents: source.cachedBalanceCents,
-        createdAt: now,
-      });
-
-      const targetCredit = LedgerEntry.create({
+      const creditEntry = LedgerEntry.create({
         id: this.idGen.newId(),
         transactionId: targetTxId,
         walletId: target.id,
@@ -140,7 +120,7 @@ export class TransferHandler {
       await repos.wallets.save(source);
       await repos.wallets.save(target);
       await repos.transactions.saveMany([outTx, inTx]);
-      await repos.ledgerEntries.saveMany([sourceDebit, sourceCredit, targetDebit, targetCredit]);
+      await repos.ledgerEntries.saveMany([debitEntry, creditEntry]);
     });
 
     this.logger.info(ctx, `${methodLogTag} transfer success`, {
