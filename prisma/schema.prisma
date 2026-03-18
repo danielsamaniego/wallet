@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  /// Prisma 7.x: connection URL configured in prisma.config.ts (for migrate)
+  /// and via PrismaClient constructor (for runtime). See src/wiring.ts.
+}
+
+/// Platform that integrates the wallet service. Authenticates via API key.
+model Platform {
+  id         String   @id /// UUID v7, app-generated
+  name       String
+  apiKeyHash String   @map("api_key_hash")
+  apiKeyId   String   @unique @map("api_key_id") /// Public key identifier
+  status     String   @default("active") /// active | suspended | revoked
+  createdAt  BigInt   @map("created_at") /// Unix ms
+  updatedAt  BigInt   @map("updated_at") /// Unix ms
+  wallets    Wallet[]
+
+  @@map("platforms")
+}
+
+/// User wallet. Balance stored as integer cents (smallest currency unit).
+/// Optimistic locking via version field.
+model Wallet {
+  id                 String        @id /// UUID v7, app-generated
+  ownerId            String        @map("owner_id") /// External user ID from platform
+  platformId         String        @map("platform_id")
+  platform           Platform      @relation(fields: [platformId], references: [id])
+  currencyCode       String        @map("currency_code") /// ISO 4217 (USD, EUR, etc.)
+  cachedBalanceCents BigInt        @default(0) @map("cached_balance_cents") /// Integer cents
+  status             String        @default("active") /// active | frozen | closed
+  version            Int           @default(0) /// Optimistic locking
+  isSystem           Boolean       @default(false) @map("is_system") /// True for system/omnibus wallets
+  createdAt          BigInt        @map("created_at") /// Unix ms
+  updatedAt          BigInt        @map("updated_at") /// Unix ms
+  transactions              Transaction[] @relation("WalletTransactions")
+  counterpartTransactions   Transaction[] @relation("CounterpartTransactions")
+  ledgerEntries             LedgerEntry[]
+  holds                     Hold[]
+
+  @@unique([ownerId, platformId, currencyCode])
+  @@index([platformId, status])
+  @@map("wallets")
+}
+
+/// Financial transaction record. amount_cents is always positive.
+model Transaction {
+  id                  String        @id /// UUID v7, app-generated
+  walletId            String        @map("wallet_id")
+  wallet              Wallet        @relation("WalletTransactions", fields: [walletId], references: [id])
+  counterpartWalletId String?       @map("counterpart_wallet_id")
+  counterpartWallet   Wallet?       @relation("CounterpartTransactions", fields: [counterpartWalletId], references: [id])
+  type                String /// deposit | withdrawal | transfer_in | transfer_out | hold_capture
+  amountCents         BigInt        @map("amount_cents") /// Always positive, integer cents
+  status              String        @default("completed") /// completed | failed | reversed
+  idempotencyKey      String?       @unique @map("idempotency_key")
+  reference           String? /// External reference from caller
+  metadata            Json? /// Arbitrary JSON metadata
+  holdId              String?       @map("hold_id") /// If from a captured hold
+  createdAt           BigInt        @map("created_at") /// Unix ms
+
+  ledgerEntries LedgerEntry[]
+
+  @@index([walletId, createdAt])
+  @@index([idempotencyKey])
+  @@map("transactions")
+}
+
+/// Immutable double-entry ledger entry. Append-only — never update or delete.
+/// Protected by DB trigger and REVOKE permissions.
+model LedgerEntry {
+  id                String      @id /// UUID v7, app-generated
+  transactionId     String      @map("transaction_id")
+  transaction       Transaction @relation(fields: [transactionId], references: [id])
+  walletId          String      @map("wallet_id")
+  wallet            Wallet      @relation(fields: [walletId], references: [id])
+  entryType         String      @map("entry_type") /// CREDIT | DEBIT
+  amountCents       BigInt      @map("amount_cents") /// + for credit, - for debit
+  balanceAfterCents BigInt      @map("balance_after_cents") /// Balance snapshot after this entry
+  createdAt         BigInt      @map("created_at") /// Unix ms
+
+  @@index([walletId, createdAt])
+  @@index([transactionId])
+  @@map("ledger_entries")
+}
+
+/// Hold (authorization) — reserves funds without moving them.
+model Hold {
+  id          String  @id /// UUID v7, app-generated
+  walletId    String  @map("wallet_id")
+  wallet      Wallet  @relation(fields: [walletId], references: [id])
+  amountCents BigInt  @map("amount_cents") /// Always positive, integer cents
+  status      String  @default("active") /// active | captured | voided | expired
+  reference   String?
+  expiresAt   BigInt? @map("expires_at") /// Unix ms, optional auto-expiry
+  createdAt   BigInt  @map("created_at") /// Unix ms
+  updatedAt   BigInt  @map("updated_at") /// Unix ms
+
+  @@index([walletId, status])
+  @@map("holds")
+}
+
+/// Idempotency record — prevents duplicate financial operations. TTL 48h.
+model IdempotencyRecord {
+  id             String @id /// UUID v7, app-generated
+  idempotencyKey String @unique @map("idempotency_key")
+  platformId     String @map("platform_id")
+  responseStatus Int    @map("response_status")
+  responseBody   Json   @map("response_body")
+  createdAt      BigInt @map("created_at") /// Unix ms
+  expiresAt      BigInt @map("expires_at") /// Unix ms
+
+  @@index([idempotencyKey, platformId])
+  @@map("idempotency_records")
+}

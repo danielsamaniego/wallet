@@ -1,0 +1,39 @@
+---
+description: Wallet Service context and conventions — always applied
+alwaysApply: true
+---
+
+# Wallet Service Context
+
+Before implementing any change, **read the relevant docs** from `docs/`:
+
+| Task type | Read these files |
+|-----------|-----------------|
+| Domain, business logic, data model | `docs/domain.md`, `docs/datamodel.md` |
+| Backend, architecture, API | `docs/architecture/backend-architecture.md`, `docs/architecture/systemPatterns.md` |
+| Database, migrations | `docs/architecture/database-migrations.md` |
+| General | `docs/projectbrief.md` |
+
+Project rules and conventions are in `AGENTS.md`. Do not assume; load the files and apply what they specify.
+
+**Dependency rule**: Domain and app must not use any external third-party library. No Prisma, Pino, uuidv7, Zod in domain or app. Allowed: TypeScript stdlib, interfaces (ports), and project-internal shared packages (`shared/appError`, `shared/kernel`, `shared/observability`). Third-party libs live only in adapters.
+
+**Entity IDs — UUID v7 only, in application**: App generates IDs via `IDGenerator`; DB never generates them. Never UUID v4.
+
+**Amounts — Integer cents (BigInt)**: All financial amounts are the smallest currency unit. `$1.99` = `199`. Never float, never decimal. API sends/receives `amount_cents: number`.
+
+**Timestamps**: Unix ms everywhere — DB (BigInt), domain, ports, DTOs, API. Single representation, no conversion.
+
+**Queries**: Use ReadStore ports (return DTOs). Do not load aggregates for reads.
+
+**Logging**: Use `Logger` (port); wired as PinoAdapter → SensitiveKeysFilter → SafeLogger. mainLogTag per file, methodLogTag per method; every message starts with methodLogTag.
+
+**Error handling**: Use `AppError` (Kind + Code + Message). Domain: factory functions returning `AppError`. HTTP handlers: `withError(c, logger, ctx, tag, err)` — maps Kind → HTTP status, returns `{"error": "CODE", "message": "..."}`. Every error needs a unique UPPER_SNAKE_CASE Code.
+
+**Concurrency**: Single-wallet ops: optimistic locking (version field). Multi-wallet ops: SELECT FOR UPDATE with ORDER BY id. All mutations: idempotency keys required.
+
+**Ledger**: Double-entry bookkeeping. Every financial op = 2 LedgerEntry records (debit + credit). `ledger_entries` is immutable (append-only): never UPDATE, never DELETE.
+
+**API endpoints**: Never add or change endpoints without documenting them. Each directory under `src/api/` must have an **API.md**.
+
+**Responses to user**: Always in Spanish. Code and documentation in English.

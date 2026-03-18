@@ -1,0 +1,55 @@
+## OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+*.code-workspace
+
+## Logs
+*.log
+
+## Env / secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+
+## Node
+node_modules/
+**/node_modules/
+
+## Build output
+dist/
+build/
+*.tsbuildinfo
+
+## Coverage
+coverage/
+*.lcov
+
+## Prisma
+prisma/*.db
+prisma/*.db-journal
+
+## Prisma generated client (regenerated via `pnpm db:generate`)
+node_modules/.prisma/
+
+## Docker / runtime data
+postgres_data/
+docker-data/
+
+## Turbo / cache
+.turbo/
+.cache/
+
+## pnpm
+.pnpm-store/
+
+## Temp
+tmp/
+*.tmp
+*.swp
+*~
