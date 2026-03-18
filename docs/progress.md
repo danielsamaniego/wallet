@@ -28,20 +28,29 @@
 - [x] AGENTS.md
 - [x] .cursor/rules/wallet-context.mdc
 
+## Implemented
+
+- [x] Wallet bounded context: domain (aggregate, value objects, errors, Movement entity)
+- [x] Wallet bounded context: app (command handlers: create, deposit, withdraw, transfer, placeHold, captureHold, voidHold, freeze, unfreeze, close)
+- [x] Wallet bounded context: app (query handlers: getWallet, getTransactions, getLedgerEntries)
+- [x] Wallet bounded context: adapters (Prisma repositories, read stores, Movement repo)
+- [x] Wallet bounded context: ports/http (all endpoint handlers + DTOs)
+- [x] Movement entity (journal entry) for true double-entry ledger grouping
+- [x] Hold expiration background job (30s interval, marks zombie holds as 'expired'; queries also filter by expires_at as defense in depth)
+- [x] Concurrency audit: PlaceHold + VoidHold participate in optimistic locking
+- [x] CaptureHold validates real wallet balance
+- [x] Expired holds excluded from available_balance queries
+- [x] Idempotency: transient error release, payload mismatch detection, method+path scoping
+
 ## What's Left to Build
 
-- [ ] Wallet bounded context: domain (aggregate, value objects, errors)
-- [ ] Wallet bounded context: app (command handlers: create, deposit, withdraw, transfer, hold, capture, void, freeze, close)
-- [ ] Wallet bounded context: app (query handlers: getWallet, getTransactions, getLedgerEntries)
-- [ ] Wallet bounded context: adapters (Prisma repositories, read stores)
-- [ ] Wallet bounded context: ports/http (all endpoint handlers + DTOs)
-- [ ] Wallet API documentation (API.md)
 - [ ] Platform bounded context: domain, app, adapters, ports/http
 - [ ] Platform API documentation (API.md)
 - [ ] Rate limiting middleware
 - [ ] Hash chain tamper detection (ledger entries)
 - [ ] Reconciliation background job
-- [ ] Hold expiration background job
+- [x] Idempotency record TTL cleanup job (60s interval)
+- [ ] Server-side retry for VERSION_CONFLICT (2-3 attempts)
 - [ ] Vercel / Cloudflare deploy configuration
 - [ ] Integration tests
 - [ ] API overview (src/api/API.md)

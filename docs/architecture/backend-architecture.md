@@ -112,12 +112,16 @@ src/
 │   └── platforms/            # /v1/platforms/* route group (API key management)
 │       ├── setup.ts
 │       └── API.md
+├── jobs/                     # Background cron jobs
+│   ├── expireHolds.ts        # Marks zombie holds (status='active', expires_at < now) as 'expired'; 30s interval
+│   └── cleanupIdempotencyRecords.ts  # Deletes expired idempotency records (expires_at < now); 60s interval
 ├── wallet/
 │   ├── domain/
 │   │   ├── wallet/
 │   │   ├── transaction/
 │   │   ├── ledgerEntry/
 │   │   ├── hold/
+│   │   ├── movement/          # Movement (journal entry) — groups entries that must sum to zero
 │   │   └── ports/
 │   ├── application/
 │   │   ├── command/          # createWallet, deposit, withdraw, transfer, placeHold, captureHold, voidHold, freezeWallet, closeWallet

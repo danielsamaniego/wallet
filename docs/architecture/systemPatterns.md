@@ -89,8 +89,8 @@ See **[backend-architecture.md](backend-architecture.md)** § Logging for full d
 
 | Control | Use |
 |---------|-----|
-| Optimistic locking | All wallet mutations (single and multi-wallet). `version` field checked on save; mismatch → `409 VERSION_CONFLICT`; client retries with same idempotency key. |
-| Idempotency keys | All mutations. Atomic acquire pattern: INSERT pending record before execution; concurrent duplicates get `409 IDEMPOTENCY_KEY_IN_PROGRESS` or cached response. Transient errors (5xx, 409) are released, not cached. Payload mismatch → `422 IDEMPOTENCY_PAYLOAD_MISMATCH`. |
+| Optimistic locking | All wallet mutations (single and multi-wallet), **including PlaceHold and VoidHold** which call `wallet.touchForHoldChange()` + `walletRepo.save()` to participate in version contention. `version` field checked on save; mismatch → `409 VERSION_CONFLICT`; client retries with same idempotency key. |
+| Idempotency keys | All mutations. Atomic acquire pattern: INSERT pending record before execution; concurrent duplicates get `409 IDEMPOTENCY_KEY_IN_PROGRESS` or cached response. Transient errors (5xx, 409) are released, not cached. Request hash includes `method:path:body` so the same key on a different endpoint is rejected. Payload mismatch → `422 IDEMPOTENCY_PAYLOAD_MISMATCH`. |
 | DB constraints | Uniqueness, referential integrity, positive amounts, balance rules as safety net. |
 
 ### Why optimistic locking, not SELECT FOR UPDATE
@@ -116,7 +116,7 @@ Prisma returns `BigInt` fields as native `bigint`, which does not serialize to J
 ## Idempotency Record Cleanup
 
 - Records have 48h TTL (`expires_at` field).
-- A periodic batch job (cron) must `DELETE FROM idempotency_records WHERE expires_at < now()`.
+- A background job (`src/jobs/cleanupIdempotencyRecords.ts`) runs every 60s and deletes records where `expires_at < now()`.
 - At scale (1M+ tx/day), consider partitioning `idempotency_records` by `created_at` using `pg_partman`.
 
 ## Hold Expiration

@@ -131,7 +131,7 @@ Per-owner, per-platform, per-currency balance container. Uses optimistic locking
 | currency_code | string | ISO 4217 (USD, EUR, etc.) |
 | cached_balance_cents | BIGINT | Integer cents; denormalized balance |
 | status | string | active, frozen, closed |
-| version | int | Optimistic locking; incremented on update |
+| version | int | Optimistic locking; incremented on every mutation (deposit, withdraw, transfer, captureHold, placeHold, voidHold, freeze, unfreeze, close). Intentionally not exposed in the API — clients use idempotency keys for retry, not version numbers |
 | is_system | boolean | True for system/omnibus wallets |
 | created_at | BIGINT | Unix ms |
 | updated_at | BIGINT | Unix ms |
@@ -228,6 +228,8 @@ Authorization that reserves funds without moving them. Lifecycle: active → cap
 | expires_at | BIGINT? | Unix ms; optional auto-expiry |
 | created_at | BIGINT | Unix ms |
 | updated_at | BIGINT | Unix ms |
+
+**Expiration**: Detected **on-access** (capture/void checks `expires_at`) and **via cron job** (every 30s, marks holds with `status='active'` and `expires_at < now` as `expired`). Queries (`sumActiveHolds`, `countActiveHolds`, available balance) also filter by `expires_at > now` as defense in depth.
 
 **Relationships:**
 - Belongs to Wallet

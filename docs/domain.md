@@ -175,7 +175,7 @@ Internal components and workflows.
 
 ### Concurrency and Safety
 
-- **Optimistic locking**: Wallets have `version`; all mutations (single and multi-wallet) must match current version. On version mismatch (0 rows updated), the command returns `409 Conflict` with code `VERSION_CONFLICT`. The platform (client) retries with the same idempotency key. No automatic server-side retry — the client controls retry policy.
+- **Optimistic locking**: Wallets have `version`; **all** mutations must match current version — this includes deposits, withdrawals, transfers, captures, freezes, **PlaceHold**, and **VoidHold** (which call `wallet.touchForHoldChange()` + `walletRepo.save()` to participate in version contention even though they don't mutate balance). On version mismatch (0 rows updated), the command returns `409 Conflict` with code `VERSION_CONFLICT`. The platform (client) retries with the same idempotency key. No automatic server-side retry — the client controls retry policy.
 - **No pessimistic locking (SELECT FOR UPDATE)**: We deliberately avoid `SELECT FOR UPDATE` in the domain layer. It is a SQL-specific concept that would leak infrastructure into domain ports, breaking hexagonal architecture. If we switched to MongoDB or DynamoDB, pessimistic row locking doesn't exist. Optimistic locking via `version` is database-agnostic and catches all conflicts. If high-contention scenarios require it, pessimistic locking can be added inside the persistence adapter as an implementation detail, transparent to the domain.
 - **Idempotency keys**: Required for all mutations (deposit, withdraw, transfer, hold capture). Duplicate keys return the cached response without re-executing. See Idempotency section.
 - **DB constraints**: Uniqueness, referential integrity, positive amounts, and balance checks as safety net.
@@ -185,9 +185,9 @@ Internal components and workflows.
 - All mutations require an `Idempotency-Key` header.
 - The idempotency store uses an **atomic acquire pattern**: INSERT a pending record before handler execution. If the INSERT conflicts (key already exists), return the stored response. This prevents race conditions where two concurrent requests with the same key both execute.
 - **Transient error handling**: Responses with status `>= 500` or `409` (e.g. VERSION_CONFLICT) are NOT cached. The pending idempotency record is deleted (`release`) so the client can safely retry with the same key. Only deterministic responses (2xx, 400, 404, 422) are cached.
-- **Payload mismatch detection**: A SHA-256 hash of the request body is stored alongside the idempotency record. If a retry arrives with the same key but a different body, the middleware returns `422 IDEMPOTENCY_PAYLOAD_MISMATCH` instead of the cached response.
+- **Payload mismatch detection**: A SHA-256 hash of `method:path:body` is stored alongside the idempotency record. Including the HTTP method and path ensures the same key used on a different endpoint is rejected (per IETF draft recommendation). If a retry arrives with the same key but a different hash, the middleware returns `422 IDEMPOTENCY_PAYLOAD_MISMATCH` instead of the cached response.
 - Idempotency records have a 48h TTL (`expires_at`).
-- **Cleanup**: A periodic batch job (cron) must delete records where `expires_at < now()`. Without cleanup, the `idempotency_records` table grows indefinitely. At scale (1M+ tx/day), consider partitioning by `created_at` via `pg_partman`.
+- **Cleanup**: A background job (`cleanupIdempotencyRecords`, 60s interval) deletes records where `expires_at < now()`. At scale (1M+ tx/day), consider partitioning by `created_at` via `pg_partman`.
 
 ---
 

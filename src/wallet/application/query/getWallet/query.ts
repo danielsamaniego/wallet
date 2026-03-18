@@ -3,6 +3,12 @@ export interface GetWalletQuery {
   platformId: string;
 }
 
+/**
+ * Wallet read DTO exposed to API consumers.
+ * `version` is intentionally omitted — it is an internal optimistic locking
+ * detail, not part of the public contract. Clients use idempotency keys
+ * to handle VERSION_CONFLICT retries, not raw version numbers.
+ */
 export interface WalletDTO {
   id: string;
   owner_id: string;
