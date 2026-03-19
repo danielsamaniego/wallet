@@ -91,7 +91,11 @@ export class PrismaWalletRepo implements IWalletRepository {
     platformId: string,
     currencyCode: string,
   ): Promise<Wallet | null> {
-    this.logger.debug(ctx, "WalletRepo | findByOwner", { owner_id: ownerId, platform_id: platformId, currency_code: currencyCode });
+    this.logger.debug(ctx, "WalletRepo | findByOwner", {
+      owner_id: ownerId,
+      platform_id: platformId,
+      currency_code: currencyCode,
+    });
     const row = await this.client(ctx).wallet.findUnique({
       where: {
         ownerId_platformId_currencyCode: {
@@ -110,7 +114,10 @@ export class PrismaWalletRepo implements IWalletRepository {
     platformId: string,
     currencyCode: string,
   ): Promise<Wallet | null> {
-    this.logger.debug(ctx, "WalletRepo | findSystemWallet", { platform_id: platformId, currency_code: currencyCode });
+    this.logger.debug(ctx, "WalletRepo | findSystemWallet", {
+      platform_id: platformId,
+      currency_code: currencyCode,
+    });
     const row = await this.client(ctx).wallet.findUnique({
       where: {
         ownerId_platformId_currencyCode: {
@@ -130,7 +137,11 @@ export class PrismaWalletRepo implements IWalletRepository {
     platformId: string,
     currencyCode: string,
   ): Promise<boolean> {
-    this.logger.debug(ctx, "WalletRepo | existsByOwner", { owner_id: ownerId, platform_id: platformId, currency_code: currencyCode });
+    this.logger.debug(ctx, "WalletRepo | existsByOwner", {
+      owner_id: ownerId,
+      platform_id: platformId,
+      currency_code: currencyCode,
+    });
     const count = await this.client(ctx).wallet.count({
       where: { ownerId, platformId, currencyCode: currencyCode.toUpperCase() },
     });

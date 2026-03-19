@@ -32,7 +32,8 @@ function isRetryable(err: unknown): boolean {
   if (typeof err === "object" && err !== null) {
     const e = err as Record<string, unknown>;
     if (e.code === "P2034") return true;
-    if (typeof e.message === "string" && e.message.includes("could not serialize access")) return true;
+    if (typeof e.message === "string" && e.message.includes("could not serialize access"))
+      return true;
   }
 
   return false;

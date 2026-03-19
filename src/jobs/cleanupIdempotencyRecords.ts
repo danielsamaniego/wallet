@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
-import type { IIDGenerator } from "../shared/domain/kernel/id.generator.js";
 import { createAppContext } from "../shared/domain/kernel/context.js";
+import type { IIDGenerator } from "../shared/domain/kernel/id.generator.js";
 import type { ILogger } from "../shared/domain/observability/logger.port.js";
 
 const logTag = "CleanupIdempotencyJob";

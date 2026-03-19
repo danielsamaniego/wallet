@@ -104,7 +104,12 @@ export class DepositHandler {
       // Persist (movement first — FK constraint)
       await this.movementRepo.save(txCtx, movement);
       await this.walletRepo.save(txCtx, wallet);
-      await this.walletRepo.adjustSystemWalletBalance(txCtx, systemWallet.id, -cmd.amountCents, now);
+      await this.walletRepo.adjustSystemWalletBalance(
+        txCtx,
+        systemWallet.id,
+        -cmd.amountCents,
+        now,
+      );
       await this.transactionRepo.save(txCtx, tx);
       await this.ledgerEntryRepo.saveMany(txCtx, [creditEntry, debitEntry]);
     });

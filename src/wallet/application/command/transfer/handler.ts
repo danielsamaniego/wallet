@@ -140,9 +140,10 @@ export class TransferHandler {
       // concurrent transfers A→B and B→A both lock the lower-ID wallet
       // first, so the lock cycle that causes deadlock cannot form.
       await this.movementRepo.save(txCtx, movement);
-      const [first, second] = source.id < target.id // Avoid deadlocks deterministically
-        ? [source, target]
-        : [target, source];
+      const [first, second] =
+        source.id < target.id // Avoid deadlocks deterministically
+          ? [source, target]
+          : [target, source];
       await this.walletRepo.save(txCtx, first);
       await this.walletRepo.save(txCtx, second);
       await this.transactionRepo.saveMany(txCtx, [outTx, inTx]);

@@ -76,7 +76,7 @@ export class PlaceHoldHandler {
         now,
       });
 
-      await this.walletRepo.save(txCtx, wallet);// If version mismatch, the save will fail with VERSION_CONFLICT.
+      await this.walletRepo.save(txCtx, wallet); // If version mismatch, the save will fail with VERSION_CONFLICT.
       await this.holdRepo.save(txCtx, hold);
     });
 

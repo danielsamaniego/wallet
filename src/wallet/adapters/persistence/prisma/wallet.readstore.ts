@@ -10,11 +10,7 @@ export class PrismaWalletReadStore implements IWalletReadStore {
     private readonly logger: ILogger,
   ) {}
 
-  async getById(
-    ctx: AppContext,
-    walletId: string,
-    platformId: string,
-  ): Promise<WalletDTO | null> {
+  async getById(ctx: AppContext, walletId: string, platformId: string): Promise<WalletDTO | null> {
     this.logger.debug(ctx, "WalletReadStore | getById", { wallet_id: walletId });
     const row = await this.prisma.wallet.findFirst({
       where: { id: walletId, platformId },

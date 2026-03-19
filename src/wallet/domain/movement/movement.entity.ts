@@ -11,11 +11,7 @@ export class Movement {
     this._createdAt = 0;
   }
 
-  static create(params: {
-    id: string;
-    type: MovementType;
-    createdAt: number;
-  }): Movement {
+  static create(params: { id: string; type: MovementType; createdAt: number }): Movement {
     const m = new Movement();
     Object.assign(m, {
       _id: params.id,
@@ -24,12 +20,8 @@ export class Movement {
     });
     return m;
   }
-
-  static reconstruct(params: {
-    id: string;
-    type: MovementType;
-    createdAt: number;
-  }): Movement {
+ 
+  static reconstruct(params: { id: string; type: MovementType; createdAt: number }): Movement {
     const m = new Movement();
     Object.assign(m, {
       _id: params.id,

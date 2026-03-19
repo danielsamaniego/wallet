@@ -38,8 +38,11 @@ async function verifyDatabaseSafetyNets(prisma: PrismaClient): Promise<void> {
 
   if (constraints.length < 3) {
     const found = constraints.map((c) => c.conname);
-    const missing = ["wallets_positive_balance", "holds_positive_amount", "transactions_positive_amount"]
-      .filter((name) => !found.includes(name));
+    const missing = [
+      "wallets_positive_balance",
+      "holds_positive_amount",
+      "transactions_positive_amount",
+    ].filter((name) => !found.includes(name));
     throw new Error(
       `FATAL: missing DB safety constraints: ${missing.join(", ")}. ` +
         "Run: cat prisma/immutable_ledger.sql | docker exec -i <container> psql -U wallet -d wallet",

@@ -123,7 +123,12 @@ export class CaptureHoldHandler {
       await this.movementRepo.save(txCtx, movement);
       await this.holdRepo.save(txCtx, hold);
       await this.walletRepo.save(txCtx, wallet);
-      await this.walletRepo.adjustSystemWalletBalance(txCtx, systemWallet.id, hold.amountCents, now);
+      await this.walletRepo.adjustSystemWalletBalance(
+        txCtx,
+        systemWallet.id,
+        hold.amountCents,
+        now,
+      ); 
       await this.transactionRepo.save(txCtx, tx);
       await this.ledgerEntryRepo.saveMany(txCtx, [debitEntry, creditEntry]);
     });
