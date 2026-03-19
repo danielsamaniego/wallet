@@ -15,13 +15,12 @@ Standalone backend service providing digital wallet functionality as a platform 
 | Framework | [Hono](https://hono.dev) |
 | Language | TypeScript 5+ (strict) |
 | Database | PostgreSQL 16 |
-| ORM | Prisma |
+| ORM | Prisma 7 |
 | Validation | Zod |
 | Logging | Pino (structured JSON) |
 | IDs | UUID v7 (RFC 9562) |
 | Testing | Vitest |
 | Linting | Biome |
-| Deploy | Vercel / Cloudflare Workers |
 
 ## Architecture
 
@@ -29,43 +28,131 @@ Standalone backend service providing digital wallet functionality as a platform 
 - **Double-entry bookkeeping** — every financial operation produces exactly 2 ledger entries
 - **Integer cents** — all amounts stored as BIGINT (smallest currency unit, like Stripe)
 - **Immutable ledger** — `ledger_entries` is append-only (PostgreSQL trigger prevents UPDATE/DELETE)
-- **Concurrency safety** — optimistic locking, SELECT FOR UPDATE, idempotency keys, DB constraints
+- **Concurrency safety** — optimistic locking, idempotency keys, DB constraints
 
 See `docs/architecture/` for full details.
 
-## Quick Start
+---
+
+## Local Development
+
+**Prerequisites:** Node.js 22+, pnpm, Docker
+
+### First time (from scratch)
 
 ```bash
-# Prerequisites: Node.js 22+, pnpm, Docker
-
-# Clone and install
-pnpm install
-
-# Start PostgreSQL
-make up
-
-# Run migrations
-pnpm db:push
-
-# Apply immutable ledger constraints
-# psql $DATABASE_URL -f prisma/immutable_ledger.sql
-
-# Start dev server
-make dev
+pnpm install          # Install dependencies
+pnpm start:local      # Docker up → wait → schema push → constraints → seed
+pnpm dev              # Start dev server with hot reload (http://localhost:3000)
 ```
 
-## Development
+### Reset (wipe all data and start fresh)
 
 ```bash
-make dev          # Start dev server with hot reload
-make test         # Run tests
-make lint         # Lint check
-make lint-fix     # Lint fix
-make fmt          # Format code
-make db-generate  # Regenerate Prisma client
-make db-migrate   # Run Prisma migrations
-make db-studio    # Open Prisma Studio
+pnpm reset:local      # docker down -v → full start:local
+pnpm dev
 ```
+
+### Code changes (no schema changes)
+
+```bash
+pnpm dev              # tsx watch auto-reloads on file changes
+```
+
+### Schema or constraint changes
+
+```bash
+pnpm db:update        # Push schema → apply constraints → regenerate Prisma client
+                      # Preserves existing data
+```
+
+### All available scripts
+
+```bash
+# Development
+pnpm dev              # Dev server with hot reload
+pnpm build            # Compile TypeScript
+pnpm start            # Run compiled output (node dist/index.js)
+pnpm test             # Run tests
+pnpm test:watch       # Tests in watch mode
+pnpm lint             # Lint check
+pnpm lint:fix         # Lint fix
+pnpm fmt              # Format code
+
+# Docker (local PostgreSQL)
+pnpm docker:up        # Start PostgreSQL container
+pnpm docker:down      # Stop PostgreSQL container
+pnpm docker:logs      # Tail container logs
+pnpm docker:wait      # Wait until PostgreSQL is ready
+
+# Database
+pnpm db:push          # Sync schema.prisma → database (no migration history)
+pnpm db:migrate       # Create and apply Prisma migration (auditable)
+pnpm db:generate      # Regenerate Prisma client
+pnpm db:seed          # Seed test platform + API key
+pnpm db:constraints   # Apply immutable ledger trigger + CHECK constraints
+pnpm db:update        # db:push + db:constraints + db:generate (preserves data)
+pnpm db:studio        # Open Prisma Studio GUI
+
+# Composite
+pnpm start:local      # Full local setup (docker + schema + constraints + seed)
+pnpm reset:local      # Nuclear reset (docker down -v + start:local)
+```
+
+---
+
+## Production Deployment
+
+Production runs as a plain Node.js process against a managed PostgreSQL instance (Neon, Supabase, AWS RDS, etc.). **No Docker.**
+
+### Environment variables
+
+```bash
+DATABASE_URL=postgresql://user:pass@host:5432/wallet?schema=public
+HTTP_PORT=3000
+LOG_LEVEL=info
+```
+
+### Deploy steps
+
+```bash
+# 1. Install dependencies
+pnpm install --frozen-lockfile
+
+# 2. Generate Prisma client
+pnpm db:generate
+
+# 3. Apply pending migrations
+prisma migrate deploy --config prisma/prisma.config.ts
+
+# 4. Apply immutable ledger constraints
+psql $DATABASE_URL -f prisma/immutable_ledger.sql
+
+# 5. Build
+pnpm build
+
+# 6. Start
+pnpm start   # node dist/index.js
+```
+
+### CI/CD pipeline (typical)
+
+1. `pnpm install --frozen-lockfile`
+2. `pnpm lint && pnpm test`
+3. `pnpm build`
+4. `prisma migrate deploy --config prisma/prisma.config.ts`
+5. `psql $DATABASE_URL -f prisma/immutable_ledger.sql`
+6. Deploy artifact / restart process
+
+### Production rules
+
+- **Never** run `db:push` in production — use `prisma migrate deploy` only
+- **Never** auto-migrate at app startup — run migrations as a separate deploy step
+- **Never** run seed in production
+- Apply `immutable_ledger.sql` after every migration that touches `ledger_entries`, `wallets`, `holds`, or `transactions`
+- The app verifies triggers and constraints exist on startup — it will refuse to start if missing
+
+---
 
 ## Project Structure
 

@@ -16,7 +16,8 @@ Wallet bounded context fully implemented and audited. All critical concurrency b
 - Concurrency hardening: PlaceHold + VoidHold participate in optimistic locking
 - CaptureHold validates real wallet balance
 - Idempotency: transient error release, payload mismatch (SHA-256 of method:path:body), endpoint scoping
-- Docker Compose (PostgreSQL 16), Makefile, Dockerfile
+- Docker Compose (PostgreSQL 16 for local dev), Dockerfile
+- pnpm scripts for all workflows: `start:local`, `reset:local`, `db:update`, `dev`
 - Full documentation set + concurrency audit
 
 ## Next Steps
@@ -25,7 +26,7 @@ Wallet bounded context fully implemented and audited. All critical concurrency b
 2. **Rate limiting**: Add rate limiting middleware
 3. **Idempotency cleanup**: TTL cleanup job for expired idempotency records
 4. **Server-side retry**: Optional retry loop (2-3 attempts) for VERSION_CONFLICT
-5. **Deploy**: Configuration for Vercel / Cloudflare Workers
+5. **Deploy**: Production configuration (managed PostgreSQL + Node.js process)
 6. **Tests**: Integration tests
 
 ## Active Decisions

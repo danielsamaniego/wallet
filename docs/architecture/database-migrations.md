@@ -85,7 +85,16 @@ Entity IDs are **UUID v7** (RFC 9562). The **application** generates all IDs via
 
 ## Custom SQL: Immutable Ledger
 
-After Prisma migrations, apply custom SQL for ledger immutability and safety constraints:
+After Prisma migrations, apply custom SQL for ledger immutability and safety constraints.
+
+**Local development:**
+
+```bash
+pnpm db:constraints
+# or as part of: pnpm db:update
+```
+
+**Production / CI:**
 
 ```bash
 psql $DATABASE_URL -f prisma/immutable_ledger.sql
@@ -93,10 +102,9 @@ psql $DATABASE_URL -f prisma/immutable_ledger.sql
 
 **Contents** (`prisma/immutable_ledger.sql`):
 - **Trigger** on `ledger_entries`: Prevents UPDATE and DELETE; table is append-only.
-- **REVOKE**: Optional explicit revoke of UPDATE/DELETE on `ledger_entries`.
 - **Constraints**: `wallets` (positive balance unless `is_system`), `holds` (positive amount), `transactions` (positive amount).
 
-This file is **not** part of Prisma migrations; it is applied manually or via a separate deploy step after migrations run.
+This file is **not** part of Prisma migrations; it is applied manually or via a separate deploy step after migrations run. The SQL uses `DROP ... IF EXISTS` / `ADD CONSTRAINT` so it is idempotent and safe to re-run.
 
 ---
 
@@ -118,12 +126,26 @@ Use descriptive names: `add_hold_expiry`, `add_ledger_index`, etc.
 
 ## Production Practices
 
+Production runs as a **plain Node.js process** against a managed PostgreSQL (Neon, Supabase, AWS RDS, etc.). No Docker.
+
 ### 1) Never auto-migrate in production
 
-- Use `prisma migrate deploy` as a separate deploy step before app deployment.
-- **Never** run `db push` in production.
+- Use `prisma migrate deploy --config prisma/prisma.config.ts` as a separate deploy step before app deployment.
+- **Never** run `db:push` in production.
+- **Never** run seed in production.
 
-### 2) Large changes in 2 phases (expand/contract)
+### 2) Deploy sequence
+
+```bash
+pnpm install --frozen-lockfile
+pnpm db:generate
+prisma migrate deploy --config prisma/prisma.config.ts
+psql $DATABASE_URL -f prisma/immutable_ledger.sql
+pnpm build
+pnpm start
+```
+
+### 3) Large changes in 2 phases (expand/contract)
 
 **Phase A (Expand):**
 - Add nullable column or new table.
@@ -135,14 +157,18 @@ Use descriptive names: `add_hold_expiry`, `add_ledger_index`, etc.
 - Harden constraints: set NOT NULL, add CHECK, etc.
 - Remove legacy columns when safe.
 
-### 3) Avoid long locks
+### 4) Avoid long locks
 
 - For large tables, consider `CREATE INDEX CONCURRENTLY` (requires custom SQL migration; cannot run inside Prisma transaction).
 - Schedule heavy migrations outside peak hours.
 
-### 4) Dirty state
+### 5) Dirty state
 
 If a migration fails, Prisma marks the database as dirty. Do not apply further migrations until the issue is fixed. Fix the migration or create a forward-fix before proceeding.
+
+### 6) Startup verification
+
+The app verifies on startup that the immutable ledger trigger and CHECK constraints exist. If any are missing, it logs a `FATAL` error and refuses to start. This is intentional — never disable this check.
 
 ---
 
@@ -150,10 +176,12 @@ If a migration fails, Prisma marks the database as dirty. Do not apply further m
 
 Typical pipeline:
 
-1. Build
-2. Run `prisma migrate deploy`
-3. Apply `prisma/immutable_ledger.sql` (if changed)
-4. Deploy / rollout
+1. `pnpm install --frozen-lockfile`
+2. `pnpm lint && pnpm test`
+3. `pnpm build`
+4. `prisma migrate deploy --config prisma/prisma.config.ts`
+5. `psql $DATABASE_URL -f prisma/immutable_ledger.sql`
+6. Deploy artifact / restart process
 
 Avoid auto-running migrations on app startup in production; prefer explicit control.
 

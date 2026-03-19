@@ -3,9 +3,9 @@
 ## What Works
 
 - [x] Project initialized (pnpm, TypeScript strict, Biome, Vitest)
-- [x] Docker Compose (PostgreSQL 16)
+- [x] Docker Compose (PostgreSQL 16 for local dev)
 - [x] Dockerfile (multi-stage Node.js)
-- [x] Makefile (dev, test, lint, db commands)
+- [x] pnpm scripts for all workflows (`start:local`, `reset:local`, `db:update`, etc.)
 - [x] Shared: AppError (Kind + Code + Message)
 - [x] Shared: IDGenerator interface + UUID v7 adapter
 - [x] Shared: AppContext + createAppContext factory + HonoVariables types
@@ -51,7 +51,7 @@
 - [ ] Reconciliation background job
 - [x] Idempotency record TTL cleanup job (60s interval)
 - [ ] Server-side retry for VERSION_CONFLICT (2-3 attempts)
-- [ ] Vercel / Cloudflare deploy configuration
+- [ ] Production deploy configuration (managed PostgreSQL + Node.js process)
 - [ ] Integration tests
 - [ ] API overview (src/api/API.md)
 

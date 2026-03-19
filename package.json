@@ -12,10 +12,22 @@
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
     "fmt": "biome format --write src/",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:push": "prisma db push",
-    "db:studio": "prisma studio"
+
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:wait": "until docker exec wallet-postgres-1 pg_isready -U wallet -d wallet > /dev/null 2>&1; do sleep 1; done && echo 'PostgreSQL is ready.'",
+
+    "db:generate": "prisma generate --config prisma/prisma.config.ts",
+    "db:migrate": "prisma migrate dev --config prisma/prisma.config.ts",
+    "db:push": "prisma db push --config prisma/prisma.config.ts",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:constraints": "cat prisma/immutable_ledger.sql | docker exec -i wallet-postgres-1 psql -U wallet -d wallet",
+    "db:studio": "prisma studio --config prisma/prisma.config.ts",
+    "db:update": "pnpm db:push && pnpm db:constraints && pnpm db:generate",
+
+    "start:local": "pnpm docker:up && pnpm docker:wait && pnpm db:push && pnpm db:constraints && pnpm db:seed",
+    "reset:local": "docker compose down -v && pnpm start:local"
   },
   "keywords": [
     "wallet",

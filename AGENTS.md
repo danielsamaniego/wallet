@@ -73,8 +73,8 @@ Before implementing domain logic, business rules, or data structures:
 
 - **Framework:** Hono — REST API
 - **Language:** TypeScript 5+ (strict mode)
-- **Runtime:** Node.js (Vercel) / Workerd (Cloudflare Workers)
-- **ORM:** Prisma (PostgreSQL)
+- **Runtime:** Node.js 22+
+- **ORM:** Prisma 7 (PostgreSQL)
 - **Database:** PostgreSQL 16
 - **Validation:** Zod (request schemas)
 - **UUID:** uuidv7 (RFC 9562)
@@ -82,7 +82,8 @@ Before implementing domain logic, business rules, or data structures:
 - **Testing:** Vitest
 - **Linting:** Biome
 - **Package manager:** pnpm
-- **Orchestration:** Docker Compose (PostgreSQL for dev)
+- **Local DB:** Docker Compose (PostgreSQL container)
+- **Production:** Plain Node.js process + managed PostgreSQL (no Docker)
 
 ---
 
@@ -109,7 +110,7 @@ Before implementing domain logic, business rules, or data structures:
 1. **Domain changes**: Update `docs/domain.md` and `docs/datamodel.md` before or with code.
 2. **Progress**: Update `docs/activeContext.md` and `docs/progress.md` after significant work.
 3. **Architecture**: Follow `docs/architecture/backend-architecture.md` and `docs/architecture/systemPatterns.md`. Domain and app depend only on interfaces.
-4. **Migrations**: Use Prisma Migrate; see `docs/architecture/database-migrations.md`. Apply `prisma/immutable_ledger.sql` after migrations for trigger + constraints.
+4. **Migrations**: Use Prisma Migrate; see `docs/architecture/database-migrations.md`. Locally: `pnpm db:update`. Production: `prisma migrate deploy` then `psql $DATABASE_URL -f prisma/immutable_ledger.sql`.
 5. **New endpoint**: Create handler, register in setup.ts, document in API.md.
 
 ---
