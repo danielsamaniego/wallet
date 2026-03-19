@@ -1,26 +1,20 @@
-import type { Context } from "hono";
-import { withError } from "../../../../api/respond/error.js";
-import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.context.js";
-import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
-import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
+import { validationHook } from "../../../../api/validation.js";
+import { buildAppContext, factory } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { VoidHoldHandler } from "../../../application/command/voidHold/handler.js";
-import { parsePathId } from "../../../../api/validation.js";
 
-const mainLogTag = "VoidHoldHTTP";
+const ParamSchema = z.object({ holdId: z.string().min(1).max(255) });
 
-export function voidHoldHandler(handler: VoidHoldHandler, logger: ILogger) {
-  return async (c: Context<{ Variables: HonoVariables }>) => {
-    const methodLogTag = `${mainLogTag} | handle`;
-    const ctx = buildAppContext(c);
+export function voidHoldRoute(handler: VoidHoldHandler) {
+  return factory.createHandlers(
+    zValidator("param", ParamSchema, validationHook),
+    async (c) => {
+      const { holdId } = c.req.valid("param");
+      const ctx = buildAppContext(c);
 
-    const holdId = parsePathId(c.req.param("holdId"));
-    if (!holdId) return c.json({ error: "INVALID_REQUEST", message: "invalid holdId" }, 400);
-
-    try {
       await handler.handle(ctx, { holdId, platformId: ctx.platformId! });
       return c.json({ status: "voided" }, 200);
-    } catch (err) {
-      return withError(c, logger, ctx, methodLogTag, err);
-    }
-  };
+    },
+  );
 }

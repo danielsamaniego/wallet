@@ -1,24 +1,25 @@
-import type { Context } from "hono";
-import { withError } from "../../../../api/respond/error.js";
-import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.context.js";
-import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
-import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
+import { validationHook } from "../../../../api/validation.js";
+import { buildAppContext, factory } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { GetTransactionsHandler } from "../../../application/query/getTransactions/handler.js";
-import { parsePathId } from "../../../../api/validation.js";
 
-const mainLogTag = "GetTransactionsHTTP";
+const ParamSchema = z.object({ walletId: z.string().min(1).max(255) });
 
-export function getTransactionsHandler(handler: GetTransactionsHandler, logger: ILogger) {
-  return async (c: Context<{ Variables: HonoVariables }>) => {
-    const methodLogTag = `${mainLogTag} | handle`;
-    const ctx = buildAppContext(c);
+const QuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z.string().optional(),
+});
 
-    const walletId = parsePathId(c.req.param("walletId"));
-    if (!walletId) return c.json({ error: "INVALID_REQUEST", message: "invalid walletId" }, 400);
-    const limit = Math.min(Number(c.req.query("limit") ?? "50"), 100);
-    const cursor = c.req.query("cursor");
+export function getTransactionsRoute(handler: GetTransactionsHandler) {
+  return factory.createHandlers(
+    zValidator("param", ParamSchema, validationHook),
+    zValidator("query", QuerySchema, validationHook),
+    async (c) => {
+      const { walletId } = c.req.valid("param");
+      const { limit, cursor } = c.req.valid("query");
+      const ctx = buildAppContext(c);
 
-    try {
       const result = await handler.handle(ctx, {
         walletId,
         platformId: ctx.platformId!,
@@ -27,8 +28,6 @@ export function getTransactionsHandler(handler: GetTransactionsHandler, logger: 
       });
 
       return c.json(result, 200);
-    } catch (err) {
-      return withError(c, logger, ctx, methodLogTag, err);
-    }
-  };
+    },
+  );
 }

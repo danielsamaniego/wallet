@@ -1,45 +1,28 @@
-import type { Context } from "hono";
+import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { withError } from "../../../../api/respond/error.js";
-import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.context.js";
-import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
-import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import { validationHook } from "../../../../api/validation.js";
+import { buildAppContext, factory } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { CreateWalletHandler } from "../../../application/command/createWallet/handler.js";
 
-const mainLogTag = "CreateWalletHTTP";
-
-const RequestSchema = z.object({
+const BodySchema = z.object({
   owner_id: z.string().min(1).max(255),
   currency_code: z.string().regex(/^[A-Z]{3}$/, "currency_code must be 3 uppercase letters"),
 });
 
-export function createWalletHandler(handler: CreateWalletHandler, logger: ILogger) {
-  return async (c: Context<{ Variables: HonoVariables }>) => {
-    const methodLogTag = `${mainLogTag} | handle`;
-    const ctx = buildAppContext(c);
+export function createWalletRoute(handler: CreateWalletHandler) {
+  return factory.createHandlers(
+    zValidator("json", BodySchema, validationHook),
+    async (c) => {
+      const data = c.req.valid("json");
+      const ctx = buildAppContext(c);
 
-    const body = await c.req.json().catch(() => null);
-    if (!body) {
-      logger.warn(ctx, `${methodLogTag} invalid JSON body`);
-      return c.json({ error: "INVALID_REQUEST", message: "invalid JSON body" }, 400);
-    }
-
-    const parsed = RequestSchema.safeParse(body);
-    if (!parsed.success) {
-      logger.warn(ctx, `${methodLogTag} validation failed`, { reason: parsed.error.message });
-      return c.json({ error: "INVALID_REQUEST", message: parsed.error.message }, 400);
-    }
-
-    try {
       const result = await handler.handle(ctx, {
-        ownerId: parsed.data.owner_id,
+        ownerId: data.owner_id,
         platformId: ctx.platformId!,
-        currencyCode: parsed.data.currency_code,
+        currencyCode: data.currency_code,
       });
 
       return c.json({ wallet_id: result.walletId }, 201);
-    } catch (err) {
-      return withError(c, logger, ctx, methodLogTag, err);
-    }
-  };
+    },
+  );
 }

@@ -1,51 +1,34 @@
-import type { Context } from "hono";
+import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { withError } from "../../../../api/respond/error.js";
-import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.context.js";
-import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
-import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import { validationHook } from "../../../../api/validation.js";
+import { buildAppContext, factory } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { DepositHandler } from "../../../application/command/deposit/handler.js";
-import { parsePathId } from "../../../../api/validation.js";
 
-const mainLogTag = "DepositHTTP";
+const ParamSchema = z.object({ walletId: z.string().min(1).max(255) });
 
-const RequestSchema = z.object({
+const BodySchema = z.object({
   amount_cents: z.number().int().positive(),
   reference: z.string().max(500).optional(),
 });
 
-export function depositHandler(handler: DepositHandler, logger: ILogger) {
-  return async (c: Context<{ Variables: HonoVariables }>) => {
-    const methodLogTag = `${mainLogTag} | handle`;
-    const ctx = buildAppContext(c);
+export function depositRoute(handler: DepositHandler) {
+  return factory.createHandlers(
+    zValidator("param", ParamSchema, validationHook),
+    zValidator("json", BodySchema, validationHook),
+    async (c) => {
+      const { walletId } = c.req.valid("param");
+      const data = c.req.valid("json");
+      const ctx = buildAppContext(c);
 
-    const body = await c.req.json().catch(() => null);
-    if (!body) {
-      logger.warn(ctx, `${methodLogTag} invalid JSON body`);
-      return c.json({ error: "INVALID_REQUEST", message: "invalid JSON body" }, 400);
-    }
-
-    const parsed = RequestSchema.safeParse(body);
-    if (!parsed.success) {
-      logger.warn(ctx, `${methodLogTag} validation failed`, { reason: parsed.error.message });
-      return c.json({ error: "INVALID_REQUEST", message: parsed.error.message }, 400);
-    }
-
-    const walletId = parsePathId(c.req.param("walletId"));
-    if (!walletId) return c.json({ error: "INVALID_REQUEST", message: "invalid walletId" }, 400);
-
-    try {
       const result = await handler.handle(ctx, {
         walletId,
-        amountCents: BigInt(parsed.data.amount_cents),
-        reference: parsed.data.reference,
+        amountCents: BigInt(data.amount_cents),
+        reference: data.reference,
         idempotencyKey: c.req.header("idempotency-key")!,
         platformId: ctx.platformId!,
       });
 
       return c.json({ transaction_id: result.transactionId, movement_id: result.movementId }, 201);
-    } catch (err) {
-      return withError(c, logger, ctx, methodLogTag, err);
-    }
-  };
+    },
+  );
 }

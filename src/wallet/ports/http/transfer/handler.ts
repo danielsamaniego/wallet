@@ -1,43 +1,28 @@
-import type { Context } from "hono";
+import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { withError } from "../../../../api/respond/error.js";
-import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.context.js";
-import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
-import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import { validationHook } from "../../../../api/validation.js";
+import { buildAppContext, factory } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { TransferHandler } from "../../../application/command/transfer/handler.js";
 
-const mainLogTag = "TransferHTTP";
-
-const RequestSchema = z.object({
+const BodySchema = z.object({
   source_wallet_id: z.string().min(1).max(255),
   target_wallet_id: z.string().min(1).max(255),
   amount_cents: z.number().int().positive(),
   reference: z.string().max(500).optional(),
 });
 
-export function transferHandler(handler: TransferHandler, logger: ILogger) {
-  return async (c: Context<{ Variables: HonoVariables }>) => {
-    const methodLogTag = `${mainLogTag} | handle`;
-    const ctx = buildAppContext(c);
+export function transferRoute(handler: TransferHandler) {
+  return factory.createHandlers(
+    zValidator("json", BodySchema, validationHook),
+    async (c) => {
+      const data = c.req.valid("json");
+      const ctx = buildAppContext(c);
 
-    const body = await c.req.json().catch(() => null);
-    if (!body) {
-      logger.warn(ctx, `${methodLogTag} invalid JSON body`);
-      return c.json({ error: "INVALID_REQUEST", message: "invalid JSON body" }, 400);
-    }
-
-    const parsed = RequestSchema.safeParse(body);
-    if (!parsed.success) {
-      logger.warn(ctx, `${methodLogTag} validation failed`, { reason: parsed.error.message });
-      return c.json({ error: "INVALID_REQUEST", message: parsed.error.message }, 400);
-    }
-
-    try {
       const result = await handler.handle(ctx, {
-        sourceWalletId: parsed.data.source_wallet_id,
-        targetWalletId: parsed.data.target_wallet_id,
-        amountCents: BigInt(parsed.data.amount_cents),
-        reference: parsed.data.reference,
+        sourceWalletId: data.source_wallet_id,
+        targetWalletId: data.target_wallet_id,
+        amountCents: BigInt(data.amount_cents),
+        reference: data.reference,
         idempotencyKey: c.req.header("idempotency-key")!,
         platformId: ctx.platformId!,
       });
@@ -50,8 +35,6 @@ export function transferHandler(handler: TransferHandler, logger: ILogger) {
         },
         201,
       );
-    } catch (err) {
-      return withError(c, logger, ctx, methodLogTag, err);
-    }
-  };
+    },
+  );
 }

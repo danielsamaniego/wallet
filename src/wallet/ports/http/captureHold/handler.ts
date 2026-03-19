@@ -1,22 +1,18 @@
-import type { Context } from "hono";
-import { withError } from "../../../../api/respond/error.js";
-import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.context.js";
-import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
-import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
+import { validationHook } from "../../../../api/validation.js";
+import { buildAppContext, factory } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { CaptureHoldHandler } from "../../../application/command/captureHold/handler.js";
-import { parsePathId } from "../../../../api/validation.js";
 
-const mainLogTag = "CaptureHoldHTTP";
+const ParamSchema = z.object({ holdId: z.string().min(1).max(255) });
 
-export function captureHoldHandler(handler: CaptureHoldHandler, logger: ILogger) {
-  return async (c: Context<{ Variables: HonoVariables }>) => {
-    const methodLogTag = `${mainLogTag} | handle`;
-    const ctx = buildAppContext(c);
+export function captureHoldRoute(handler: CaptureHoldHandler) {
+  return factory.createHandlers(
+    zValidator("param", ParamSchema, validationHook),
+    async (c) => {
+      const { holdId } = c.req.valid("param");
+      const ctx = buildAppContext(c);
 
-    const holdId = parsePathId(c.req.param("holdId"));
-    if (!holdId) return c.json({ error: "INVALID_REQUEST", message: "invalid holdId" }, 400);
-
-    try {
       const result = await handler.handle(ctx, {
         holdId,
         idempotencyKey: c.req.header("idempotency-key")!,
@@ -24,8 +20,6 @@ export function captureHoldHandler(handler: CaptureHoldHandler, logger: ILogger)
       });
 
       return c.json({ transaction_id: result.transactionId, movement_id: result.movementId }, 201);
-    } catch (err) {
-      return withError(c, logger, ctx, methodLogTag, err);
-    }
-  };
+    },
+  );
 }
