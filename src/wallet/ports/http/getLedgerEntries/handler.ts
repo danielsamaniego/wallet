@@ -4,6 +4,7 @@ import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.cont
 import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import type { GetLedgerEntriesHandler } from "../../../application/query/getLedgerEntries/handler.js";
+import { parsePathId } from "../../../../api/validation.js";
 
 const mainLogTag = "GetLedgerEntriesHTTP";
 
@@ -12,7 +13,8 @@ export function getLedgerEntriesHandler(handler: GetLedgerEntriesHandler, logger
     const methodLogTag = `${mainLogTag} | handle`;
     const ctx = buildAppContext(c);
 
-    const walletId = c.req.param("walletId")!;
+    const walletId = parsePathId(c.req.param("walletId"));
+    if (!walletId) return c.json({ error: "INVALID_REQUEST", message: "invalid walletId" }, 400);
     const limit = Math.min(Number(c.req.query("limit") ?? "50"), 100);
     const cursor = c.req.query("cursor");
 

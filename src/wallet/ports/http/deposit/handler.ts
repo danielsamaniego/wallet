@@ -5,12 +5,13 @@ import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.cont
 import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import type { DepositHandler } from "../../../application/command/deposit/handler.js";
+import { parsePathId } from "../../../../api/validation.js";
 
 const mainLogTag = "DepositHTTP";
 
 const RequestSchema = z.object({
   amount_cents: z.number().int().positive(),
-  reference: z.string().optional(),
+  reference: z.string().max(500).optional(),
 });
 
 export function depositHandler(handler: DepositHandler, logger: ILogger) {
@@ -30,7 +31,8 @@ export function depositHandler(handler: DepositHandler, logger: ILogger) {
       return c.json({ error: "INVALID_REQUEST", message: parsed.error.message }, 400);
     }
 
-    const walletId = c.req.param("walletId")!;
+    const walletId = parsePathId(c.req.param("walletId"));
+    if (!walletId) return c.json({ error: "INVALID_REQUEST", message: "invalid walletId" }, 400);
 
     try {
       const result = await handler.handle(ctx, {

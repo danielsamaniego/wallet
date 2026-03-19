@@ -477,9 +477,9 @@ Verificado: 10 deposits concurrentes → 5 exitosos, 5 conflictos (409), 0 error
 
 ---
 
-### DISEÑO-4: `immutable_ledger.sql` no se aplica automáticamente
+### ~~DISEÑO-4: `immutable_ledger.sql` no se aplica automáticamente~~ RESUELTO
 
-**Severidad:** MEDIA
+**Severidad:** ~~MEDIA~~ **RESUELTO**
 **Archivo:** [prisma/immutable_ledger.sql](prisma/immutable_ledger.sql)
 
 **Lo que descubrí durante el audit:** Cuando ejecuté `prisma db push --force-reset`, la DB se recreó limpia y los triggers/constraints desaparecieron silenciosamente. Mi primera corrida del test de `DELETE FROM ledger_entries` **borró 28 registros** sin que nada lo impidiera.
@@ -502,6 +502,8 @@ if (!check.length) {
 ```
 
 O incluir el SQL en el pipeline de migraciones de Prisma.
+
+**Resolución implementada:** `verifyDatabaseSafetyNets()` en `index.ts` verifica al startup que existen el trigger `ledger_entries_immutable` y los 3 CHECK constraints (`wallets_positive_balance`, `holds_positive_amount`, `transactions_positive_amount`). Si falta alguno, la app no arranca y muestra un mensaje con el comando exacto para aplicarlos.
 
 ---
 
@@ -559,45 +561,24 @@ Sin rate limiting, un atacante puede:
 
 ---
 
-### HARDENING-2: Max string lengths
+### ~~HARDENING-2: Max string lengths~~ RESUELTO
 
-**Severidad:** BAJA
-**Archivos:** [createWallet/handler.ts:12](src/wallet/ports/http/createWallet/handler.ts#L12), [deposit/handler.ts:13](src/wallet/ports/http/deposit/handler.ts#L13), [placeHold/handler.ts:14](src/wallet/ports/http/placeHold/handler.ts#L14)
+**Severidad:** ~~BAJA~~ **RESUELTO**
 
-```typescript
-// createWallet
-owner_id: z.string().min(1),       // ← sin max
-// deposit, withdraw, placeHold
-reference: z.string().optional(),   // ← sin min ni max
-```
+**Resolución implementada:** Agregado `.max()` en todos los Zod schemas de request body:
 
-Probé con un `owner_id` de 10,000 caracteres — aceptado. PostgreSQL `TEXT` no tiene límite, así que un atacante puede inflar la DB con strings arbitrariamente largos.
-
-**Recomendación:** `.max(255)` en `owner_id` y `reference`. `.max(100)` en `currency_code` (ya validado por regex pero belt-and-suspenders).
+- `owner_id`: `.min(1).max(255)` (createWallet)
+- `source_wallet_id`, `target_wallet_id`, `wallet_id`: `.min(1).max(255)` (transfer, placeHold)
+- `reference`: `.max(500).optional()` (deposit, withdraw, transfer, placeHold)
+- `currency_code`: ya limitado por regex `/^[A-Z]{3}$/`
 
 ---
 
-### HARDENING-3: Validación de path parameters
+### ~~HARDENING-3: Validación de path parameters~~ RESUELTO
 
-**Severidad:** BAJA
-**Evidencia:**
+**Severidad:** ~~BAJA~~ **RESUELTO**
 
-```
-// Con Zod (body) — validado:
-const parsed = RequestSchema.safeParse(body);
-
-// Sin Zod (path params) — sin validar:
-const walletId = c.req.param("walletId")!;   // 10 handlers
-const holdId = c.req.param("holdId")!;        // 3 handlers
-```
-
-Handlers que usan `c.req.param()!` sin validación:
-- `getWallet`, `deposit`, `withdraw`, `freezeWallet`, `unfreezeWallet`, `closeWallet`, `getTransactions`, `getLedgerEntries` — `walletId`
-- `captureHold`, `voidHold` — `holdId`
-
-No es explotable (el `findById` downstream devuelve null → 404), pero es inconsistente y un string de 1MB como walletId se loguea y envía a la DB antes de fallar.
-
-**Recomendación:** `z.string().min(1).max(100)` en todos los path params.
+**Resolución implementada:** Nuevo helper `parsePathId()` en `ports/http/params.ts` valida con `z.string().min(1).max(255)`. Los 10 handlers ahora usan `parsePathId(c.req.param("..."))` y retornan 400 si el param es inválido. Elimina el non-null assertion `!` y previene que strings gigantes lleguen a la DB.
 
 ---
 
@@ -743,7 +724,7 @@ capture hold de 60: 0 < 60 → FALLA (incorrectamente)
 |---|--------|----------|----------|
 | ~~1~~ | ~~Lock ordering en transfers~~ | | **RESUELTO** — wallets persistidos en orden determinístico por ID |
 | ~~2~~ | ~~System wallet sin version check~~ | | **RESUELTO** — `adjustSystemWalletBalance` con atomic increment |
-| 3 | Verificar trigger al startup | 1h | `index.ts` o `wiring.ts` |
+| ~~3~~ | ~~Verificar trigger al startup~~ | | **RESUELTO** — `verifyDatabaseSafetyNets()` en startup |
 | 4 | Rate limiting básico | 4-8h | Nuevo middleware |
 
 ### Deuda técnica (post-launch)
@@ -752,8 +733,8 @@ capture hold de 60: 0 < 60 → FALLA (incorrectamente)
 |---|--------|----------|----------|
 | 5 | Idempotency recovery via UNIQUE constraint | 4-6h | `transaction.repo.ts`, `transaction.errors.ts`, `errors.ts`, 4 handlers, `idempotency.ts` |
 | ~~6~~ | ~~Explicit isolation level~~ | | **RESUELTO** — Serializable + serialization failure retry + 409 mapping |
-| 7 | Max string lengths | 1h | Todos los Zod schemas |
-| 8 | Path param validation | 1h | Todos los HTTP handlers |
+| ~~7~~ | ~~Max string lengths~~ | | **RESUELTO** — `.max(255)` en IDs, `.max(500)` en reference |
+| ~~8~~ | ~~Path param validation~~ | | **RESUELTO** — `parsePathId()` en 10 handlers |
 | 9 | Status CHECK constraints | 30 min | `immutable_ledger.sql` |
 | ~~10~~ | ~~Server-side retry~~ | | **RESUELTO** — retry loop en `PrismaTransactionManager` (max 3) |
 | 11 | Graceful shutdown | 2h | `index.ts` |

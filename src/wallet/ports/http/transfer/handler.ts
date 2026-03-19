@@ -9,10 +9,10 @@ import type { TransferHandler } from "../../../application/command/transfer/hand
 const mainLogTag = "TransferHTTP";
 
 const RequestSchema = z.object({
-  source_wallet_id: z.string().min(1),
-  target_wallet_id: z.string().min(1),
+  source_wallet_id: z.string().min(1).max(255),
+  target_wallet_id: z.string().min(1).max(255),
   amount_cents: z.number().int().positive(),
-  reference: z.string().optional(),
+  reference: z.string().max(500).optional(),
 });
 
 export function transferHandler(handler: TransferHandler, logger: ILogger) {

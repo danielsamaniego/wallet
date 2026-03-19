@@ -4,6 +4,7 @@ import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.cont
 import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import type { GetWalletHandler } from "../../../application/query/getWallet/handler.js";
+import { parsePathId } from "../../../../api/validation.js";
 
 const mainLogTag = "GetWalletHTTP";
 
@@ -12,7 +13,8 @@ export function getWalletHandler(handler: GetWalletHandler, logger: ILogger) {
     const methodLogTag = `${mainLogTag} | handle`;
     const ctx = buildAppContext(c);
 
-    const walletId = c.req.param("walletId")!;
+    const walletId = parsePathId(c.req.param("walletId"));
+    if (!walletId) return c.json({ error: "INVALID_REQUEST", message: "invalid walletId" }, 400);
 
     try {
       const dto = await handler.handle(ctx, {

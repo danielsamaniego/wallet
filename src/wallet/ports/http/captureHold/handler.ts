@@ -4,6 +4,7 @@ import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.cont
 import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import type { CaptureHoldHandler } from "../../../application/command/captureHold/handler.js";
+import { parsePathId } from "../../../../api/validation.js";
 
 const mainLogTag = "CaptureHoldHTTP";
 
@@ -12,7 +13,8 @@ export function captureHoldHandler(handler: CaptureHoldHandler, logger: ILogger)
     const methodLogTag = `${mainLogTag} | handle`;
     const ctx = buildAppContext(c);
 
-    const holdId = c.req.param("holdId")!;
+    const holdId = parsePathId(c.req.param("holdId"));
+    if (!holdId) return c.json({ error: "INVALID_REQUEST", message: "invalid holdId" }, 400);
 
     try {
       const result = await handler.handle(ctx, {

@@ -4,6 +4,7 @@ import type { HonoVariables } from "../../../../shared/adapters/kernel/hono.cont
 import { buildAppContext } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import type { VoidHoldHandler } from "../../../application/command/voidHold/handler.js";
+import { parsePathId } from "../../../../api/validation.js";
 
 const mainLogTag = "VoidHoldHTTP";
 
@@ -12,7 +13,8 @@ export function voidHoldHandler(handler: VoidHoldHandler, logger: ILogger) {
     const methodLogTag = `${mainLogTag} | handle`;
     const ctx = buildAppContext(c);
 
-    const holdId = c.req.param("holdId")!;
+    const holdId = parsePathId(c.req.param("holdId"));
+    if (!holdId) return c.json({ error: "INVALID_REQUEST", message: "invalid holdId" }, 400);
 
     try {
       await handler.handle(ctx, { holdId, platformId: ctx.platformId! });

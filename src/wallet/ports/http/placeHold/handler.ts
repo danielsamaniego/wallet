@@ -9,9 +9,9 @@ import type { PlaceHoldHandler } from "../../../application/command/placeHold/ha
 const mainLogTag = "PlaceHoldHTTP";
 
 const RequestSchema = z.object({
-  wallet_id: z.string().min(1),
+  wallet_id: z.string().min(1).max(255),
   amount_cents: z.number().int().positive(),
-  reference: z.string().optional(),
+  reference: z.string().max(500).optional(),
   expires_at: z.number().int().positive().optional(),
 });
 
