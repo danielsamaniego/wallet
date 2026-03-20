@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import type { MiddlewareHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-
 import type { HonoVariables } from "../../shared/adapters/kernel/hono.context.js";
+import { errorResponse } from "../respond/error.js";
 
 const IDEMPOTENCY_HEADER = "idempotency-key";
 
@@ -82,19 +82,15 @@ export function idempotency(
 
     const key = c.req.header(IDEMPOTENCY_HEADER);
     if (!key) {
-      return c.json(
-        { error: "MISSING_IDEMPOTENCY_KEY", message: "Idempotency-Key header is required" },
-        400,
-      );
+      return errorResponse(c, "MISSING_IDEMPOTENCY_KEY", "Idempotency-Key header is required", 400);
     }
 
     const platformId = c.get("platformId");
     if (!platformId) {
-      return c.json(
-        {
-          error: "MISSING_PLATFORM_CONTEXT",
-          message: "apiKeyAuth middleware must run before idempotency",
-        },
+      return errorResponse(
+        c,
+        "MISSING_PLATFORM_CONTEXT",
+        "apiKeyAuth middleware must run before idempotency",
         500,
       );
     }
@@ -116,26 +112,25 @@ export function idempotency(
       // Key already processed — return cached response
       if (existing.responseStatus === 0) {
         // Another request is still processing this key (pending)
-        return c.json(
-          {
-            error: "IDEMPOTENCY_KEY_IN_PROGRESS",
-            message: "this request is already being processed",
-          },
+        return errorResponse(
+          c,
+          "IDEMPOTENCY_KEY_IN_PROGRESS",
+          "this request is already being processed",
           409,
         );
       }
 
       // Payload mismatch: same key, different body
       if (existing.requestHash !== requestHash) {
-        return c.json(
-          {
-            error: "IDEMPOTENCY_PAYLOAD_MISMATCH",
-            message: "idempotency key was already used with a different request body",
-          },
+        return errorResponse(
+          c,
+          "IDEMPOTENCY_PAYLOAD_MISMATCH",
+          "idempotency key was already used with a different request body",
           422,
         );
       }
 
+      // Replay cached response (not an error — skip errorResponse)
       return c.json(
         existing.responseBody as object,
         existing.responseStatus as ContentfulStatusCode,
