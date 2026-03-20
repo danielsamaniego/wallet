@@ -1,10 +1,8 @@
 import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
 import { validationHook } from "../../../../shared/adapters/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { VoidHoldHandler } from "../../../application/command/voidHold/handler.js";
-
-const ParamSchema = z.object({ holdId: z.string().min(1).max(255) });
+import { ParamSchema } from "./schemas.js";
 
 export function voidHoldRoute(handler: VoidHoldHandler) {
   return handlerFactory.createHandlers(

@@ -20,16 +20,17 @@ export class GetTransactionsHandler {
 
     this.logger.debug(ctx, `${methodLogTag} start`, {
       wallet_id: query.walletId,
-      limit: query.limit,
-      cursor: query.cursor ?? null,
+      limit: query.listing.limit,
+      cursor: query.listing.cursor ?? null,
+      filters_count: query.listing.filters.length,
+      sort: query.listing.sort.map((s) => `${s.field}:${s.direction}`),
     });
 
     const result = await this.readStore.getByWallet(
       ctx,
       query.walletId,
       query.platformId,
-      query.limit,
-      query.cursor,
+      query.listing,
     );
 
     if (!result) {

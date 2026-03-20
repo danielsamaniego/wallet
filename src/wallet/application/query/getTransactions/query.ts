@@ -1,8 +1,9 @@
+import type { ListingQuery } from "../../../../shared/domain/kernel/listing.js";
+
 export interface GetTransactionsQuery {
   walletId: string;
   platformId: string;
-  limit: number;
-  cursor?: string;
+  listing: ListingQuery;
 }
 
 export interface TransactionDTO {
@@ -31,7 +32,6 @@ export interface ITransactionReadStore {
     ctx: AppContext,
     walletId: string,
     platformId: string,
-    limit: number,
-    cursor?: string,
+    listing: ListingQuery,
   ): Promise<PaginatedTransactions | null>;
 }

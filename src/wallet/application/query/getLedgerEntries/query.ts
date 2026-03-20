@@ -1,8 +1,9 @@
+import type { ListingQuery } from "../../../../shared/domain/kernel/listing.js";
+
 export interface GetLedgerEntriesQuery {
   walletId: string;
   platformId: string;
-  limit: number;
-  cursor?: string;
+  listing: ListingQuery;
 }
 
 export interface LedgerEntryDTO {
@@ -27,7 +28,6 @@ export interface ILedgerEntryReadStore {
     ctx: AppContext,
     walletId: string,
     platformId: string,
-    limit: number,
-    cursor?: string,
+    listing: ListingQuery,
   ): Promise<PaginatedLedgerEntries | null>;
 }

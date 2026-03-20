@@ -1,15 +1,8 @@
 import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
 import { validationHook } from "../../../../shared/adapters/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { WithdrawHandler } from "../../../application/command/withdraw/handler.js";
-
-const ParamSchema = z.object({ walletId: z.string().min(1).max(255) });
-
-const BodySchema = z.object({
-  amount_cents: z.number().int().positive(),
-  reference: z.string().max(500).optional(),
-});
+import { BodySchema, ParamSchema } from "./schemas.js";
 
 export function withdrawRoute(handler: WithdrawHandler) {
   return handlerFactory.createHandlers(

@@ -79,6 +79,9 @@ model Transaction {
   ledgerEntries LedgerEntry[]
 
   @@index([walletId, createdAt])
+  @@index([walletId, type, createdAt])
+  @@index([walletId, status, createdAt])
+  @@index([walletId, amountCents])
   @@index([idempotencyKey])
   @@index([movementId])
   @@map("transactions")
@@ -100,6 +103,7 @@ model LedgerEntry {
   createdAt         BigInt      @map("created_at") /// Unix ms
 
   @@index([walletId, createdAt])
+  @@index([walletId, entryType, createdAt])
   @@index([transactionId])
   @@index([movementId])
   @@map("ledger_entries")

@@ -1,13 +1,8 @@
 import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
 import { validationHook } from "../../../../shared/adapters/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { CreateWalletHandler } from "../../../application/command/createWallet/handler.js";
-
-const BodySchema = z.object({
-  owner_id: z.string().min(1).max(255),
-  currency_code: z.string().regex(/^[A-Z]{3}$/, "currency_code must be 3 uppercase letters"),
-});
+import { BodySchema } from "./schemas.js";
 
 export function createWalletRoute(handler: CreateWalletHandler) {
   return handlerFactory.createHandlers(

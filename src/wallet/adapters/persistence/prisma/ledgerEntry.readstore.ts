@@ -1,6 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
+import { buildPrismaListing } from "../../../../shared/adapters/kernel/listing.prisma.js";
 import { toNumber, toSafeNumber } from "../../../../shared/domain/kernel/bigint.js";
 import type { AppContext } from "../../../../shared/domain/kernel/context.js";
+import { encodeCursor } from "../../../../shared/domain/kernel/listing.js";
+import type { ListingQuery } from "../../../../shared/domain/kernel/listing.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import type {
   ILedgerEntryReadStore,
@@ -18,8 +21,7 @@ export class PrismaLedgerEntryReadStore implements ILedgerEntryReadStore {
     ctx: AppContext,
     walletId: string,
     platformId: string,
-    limit: number,
-    cursor?: string,
+    listing: ListingQuery,
   ): Promise<PaginatedLedgerEntries | null> {
     this.logger.debug(ctx, "LedgerEntryReadStore | getByWallet", { wallet_id: walletId });
     // Verify wallet belongs to platform
@@ -35,15 +37,27 @@ export class PrismaLedgerEntryReadStore implements ILedgerEntryReadStore {
       return null;
     }
 
-    const rows = await this.prisma.ledgerEntry.findMany({
-      where: { walletId },
-      orderBy: { createdAt: "desc" },
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    });
+    const { where, orderBy, take } = buildPrismaListing(
+      { walletId },
+      listing.filters,
+      listing.sort,
+      listing.limit,
+      listing.cursor,
+    );
 
-    const hasMore = rows.length > limit;
-    const items = hasMore ? rows.slice(0, limit) : rows;
+    const rows = await this.prisma.ledgerEntry.findMany({ where, orderBy, take });
+
+    const hasMore = rows.length > listing.limit;
+    const items = hasMore ? rows.slice(0, listing.limit) : rows;
+
+    let nextCursor: string | null = null;
+    if (hasMore && items.length > 0) {
+      const lastRow = items[items.length - 1]!;
+      nextCursor = encodeCursor(
+        listing.sort,
+        lastRow as unknown as Record<string, unknown>,
+      );
+    }
 
     this.logger.debug(ctx, "LedgerEntryReadStore | getByWallet result", {
       wallet_id: walletId,
@@ -53,7 +67,7 @@ export class PrismaLedgerEntryReadStore implements ILedgerEntryReadStore {
 
     return {
       ledger_entries: items.map((r) => this.toDTO(r)),
-      next_cursor: hasMore && items.length > 0 ? items[items.length - 1]!.id : null,
+      next_cursor: nextCursor,
     };
   }
 
