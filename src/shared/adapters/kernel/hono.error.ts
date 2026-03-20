@@ -44,7 +44,7 @@ export function errorResponse(
 }
 
 /**
- * Shared validation hook for @hono/zod-validator.
+ * Shared validation hook for hono-openapi validator.
  * Returns a structured 400 response when validation fails.
  */
 // biome-ignore lint/suspicious/noExplicitAny: reusable hook across all zValidator schemas

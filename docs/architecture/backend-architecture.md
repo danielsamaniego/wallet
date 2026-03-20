@@ -100,17 +100,13 @@ src/
 │   │   ├── apiKeyAuth.ts
 │   │   └── idempotency.ts
 │   ├── wallets/              # /v1/wallets/* route group
-│   │   ├── setup.ts
-│   │   └── API.md
+│   │   └── setup.ts
 │   ├── transfers/            # /v1/transfers/* route group
-│   │   ├── setup.ts
-│   │   └── API.md
+│   │   └── setup.ts
 │   ├── holds/                # /v1/holds/* route group
-│   │   ├── setup.ts
-│   │   └── API.md
+│   │   └── setup.ts
 │   └── platforms/            # /v1/platforms/* route group (API key management)
-│       ├── setup.ts
-│       └── API.md
+│       └── setup.ts
 ├── jobs/                     # Background cron jobs
 │   ├── expireHolds.ts        # Marks zombie holds (status='active', expires_at < now) as 'expired'; 30s interval
 │   └── cleanupIdempotencyRecords.ts  # Deletes expired idempotency records (expires_at < now); 60s interval
@@ -128,7 +124,11 @@ src/
 │   ├── adapters/
 │   │   └── persistence/prisma/  # outgoing adapters (repositories, read stores)
 │   └── ports/
-│       └── http/             # driving adapters (HTTP handlers); one folder per endpoint
+│       └── http/             # driving adapters; one folder per endpoint
+│           ├── deposit/
+│           │   ├── schemas.ts   # Zod request + response schemas
+│           │   └── handler.ts   # describeRoute + validators + handler
+│           └── .../             # same pattern for all endpoints
 ├── platform/
 │   ├── domain/
 │   ├── application/
@@ -136,19 +136,27 @@ src/
 │   │   └── query/
 │   └── adapters/
 ├── shared/
-│   ├── appError.ts           # AppError (Kind + Code + Message)
-│   ├── kernel/
-│   │   ├── idGenerator.ts    # port
-│   │   ├── context.ts        # AppContext, createAppContext, tracking_id
-│   │   └── adapters/
-│   │       └── uuidV7.ts     # UUID v7 implementation
-│   └── observability/
-│       ├── logger.ts         # Logger port
-│       ├── canonical.ts      # canonical accumulator
-│       ├── sensitiveFilter.ts
-│       ├── safe.ts           # SafeLogger
-│       └── adapters/
-│           └── pinoAdapter.ts
+│   ├── domain/
+│   │   ├── appError.ts           # AppError (Kind + Code + Message)
+│   │   ├── kernel/
+│   │   │   ├── context.ts        # AppContext, createAppContext
+│   │   │   ├── id.generator.ts   # IIDGenerator port
+│   │   │   ├── bigint.ts         # toSafeNumber, toNumber, bigIntReplacer
+│   │   │   └── listing.ts        # ListingQuery, ListingConfig, cursor encode/decode
+│   │   └── observability/
+│   │       ├── logger.port.ts    # ILogger port
+│   │       └── canonical.ts      # CanonicalAccumulator
+│   └── adapters/
+│       ├── kernel/
+│       │   ├── hono.context.ts   # HonoVariables, buildAppContext, handlerFactory
+│       │   ├── hono.error.ts     # errorResponse, validationHook, ErrorResponseSchema
+│       │   ├── uuidV7.ts         # UUID v7 implementation
+│       │   ├── listing.zod.ts    # createListingQuerySchema (Zod schema factory)
+│       │   └── listing.prisma.ts # buildPrismaListing (Prisma query builder)
+│       └── observability/
+│           ├── pino.adapter.ts
+│           ├── safe.logger.ts
+│           └── sensitive.filter.ts
 ├── index.ts
 ├── wiring.ts
 └── config.ts
@@ -187,14 +195,14 @@ Each route group has its own setup module:
 
 `index.ts` creates the app, registers middleware, and calls each `setup(app, deps)` to wire routes.
 
-### API documentation (mandatory)
+### API documentation (auto-generated)
 
-**Every directory under `api/` that exposes HTTP endpoints must have an API.md file.** Each API.md must include, per endpoint:
+API documentation is **auto-generated** from Zod schemas and `describeRoute()` metadata via `hono-openapi` + `@scalar/hono-api-reference`. No manual API docs.
 
-- HTTP method and path
-- Request: headers (including Idempotency-Key where required), body structure
-- Response: success body and status; error codes and body
-- Curl examples
+- `/openapi` — OpenAPI 3.1 JSON spec (generated at runtime from route metadata)
+- `/docs` — Interactive Scalar UI for exploring and testing the API
+
+Request schemas (`ParamSchema`, `BodySchema`, `QueryParamsSchema`) are autodiscovered from `validator()` calls. Response schemas use `resolver(ResponseSchema)` in `describeRoute()`.
 
 ---
 
@@ -240,9 +248,99 @@ Rules:
 
 ### HTTP handler (ports/http/)
 
-- Parse request; validate format; map to Command/Query; call use case; map response; set status codes.
+Each endpoint folder has **two files**:
+
+- **`schemas.ts`** — Zod request schemas (`ParamSchema`, `BodySchema`, `QueryParamsSchema`) and `ResponseSchema`. Single source of truth for validation and OpenAPI documentation.
+- **`handler.ts`** — Imports from `schemas.ts`. Uses `describeRoute()` (tags, summary, responses with `resolver()`) + `validator()` from `hono-openapi` + the async handler function, all inside `handlerFactory.createHandlers()`.
+
+```
+ports/http/deposit/
+├── schemas.ts    ← ParamSchema, BodySchema, ResponseSchema (Zod)
+└── handler.ts    ← describeRoute + validators + handler logic
+```
+
+**Handler pattern:**
+
+```typescript
+import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
+import { ErrorResponseSchema, validationHook } from "shared/adapters/kernel/hono.error.js";
+import { BodySchema, ParamSchema, ResponseSchema } from "./schemas.js";
+
+export function depositRoute(handler: DepositHandler) {
+  return handlerFactory.createHandlers(
+    describeRoute({
+      tags: ["Wallets"],
+      summary: "Deposit funds into a wallet",
+      responses: {
+        201: { description: "Deposit completed", content: { "application/json": { schema: resolver(ResponseSchema) } } },
+        400: { description: "Validation error", content: { "application/json": { schema: resolver(ErrorResponseSchema) } } },
+        404: { description: "Wallet not found", content: { "application/json": { schema: resolver(ErrorResponseSchema) } } },
+      },
+    }),
+    zValidator("param", ParamSchema, validationHook),
+    zValidator("json", BodySchema, validationHook),
+    async (c) => {
+      const { walletId } = c.req.valid("param");
+      const data = c.req.valid("json");
+      const ctx = buildAppContext(c);
+      const result = await handler.handle(ctx, { ... });
+      return c.json({ transaction_id: result.transactionId, movement_id: result.movementId }, 201);
+    },
+  );
+}
+```
+
+Rules:
 - **All mutations require Idempotency-Key header.**
-- Infra layer (driving adapter); distinct from Command/Query handlers (application layer). One folder per endpoint (e.g. `createWallet/`, `deposit/`, `getWallet/`).
+- No try/catch — errors propagate to the global `onError`.
+- Use `validator` from `hono-openapi` (aliased as `zValidator`), **not** `@hono/zod-validator`.
+- Every endpoint must have `describeRoute()` with `resolver(ResponseSchema)` and `resolver(ErrorResponseSchema)`.
+- Setup files receive pre-wired app handlers from `Dependencies` and only do routing.
+
+### Listing endpoints (paginated queries)
+
+Paginated GET endpoints use the **reusable listing system** for Stripe-style filtering, dynamic sorting, and keyset cursor pagination.
+
+**In `schemas.ts`**, define a `ListingConfig` and generate the query schema:
+
+```typescript
+import { createListingQuerySchema } from "shared/adapters/kernel/listing.zod.js";
+import type { ListingConfig } from "shared/domain/kernel/listing.js";
+
+const listingConfig: ListingConfig = {
+  filterableFields: [
+    { apiName: "type", prismaName: "type", type: "enum", operators: ["eq", "in"],
+      enumValues: ["deposit", "withdrawal", "transfer_in", "transfer_out"] },
+    { apiName: "amount_cents", prismaName: "amountCents", type: "bigint",
+      operators: ["eq", "gt", "gte", "lt", "lte"] },
+    { apiName: "created_at", prismaName: "createdAt", type: "bigint",
+      operators: ["gt", "gte", "lt", "lte"] },
+  ],
+  sortableFields: [
+    { apiName: "created_at", prismaName: "createdAt" },
+    { apiName: "amount_cents", prismaName: "amountCents" },
+  ],
+  defaultSort: [{ field: "createdAt", direction: "desc" }],
+  maxLimit: 100,
+  defaultLimit: 50,
+};
+
+export const QueryParamsSchema = createListingQuerySchema(listingConfig);
+```
+
+**Supported query param formats:**
+
+```
+?filter[type]=deposit              # eq
+?filter[type]=deposit,withdrawal   # implicit in (CSV)
+?filter[amount_cents][gte]=1000    # explicit operator
+?sort=-amount_cents,created_at     # multi-field, - prefix = desc
+?limit=20&cursor=eyJ...            # keyset cursor pagination
+```
+
+**In the handler**, use `zValidator("query", QueryParamsSchema, validationHook)` — the schema auto-validates filters, sort, limit, and cursor (including sort signature mismatch detection).
+
+**In the readstore**, use `buildPrismaListing()` from `listing.prisma.ts` to convert the `ListingQuery` into Prisma `where`/`orderBy`/`take` clauses with keyset WHERE pagination.
 
 ---
 

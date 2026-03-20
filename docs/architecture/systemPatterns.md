@@ -78,7 +78,24 @@ See **[backend-architecture.md](backend-architecture.md)** § Logging for full d
 - REST for all operations.
 - All mutations (deposit, withdraw, transfer, hold capture) **require** `Idempotency-Key` header.
 - API key authentication for all non-health endpoints.
-- **API.md mandatory** per endpoint group under `api/`.
+- **Auto-generated OpenAPI docs** via `hono-openapi` + `@scalar/hono-api-reference`:
+  - `/openapi` — OpenAPI 3.1 JSON spec
+  - `/docs` — Interactive Scalar UI
+  - Request schemas auto-discovered from `validator()` calls; response schemas via `resolver()` in `describeRoute()`.
+- **Endpoint file structure**: Each endpoint folder has `schemas.ts` (Zod request + response schemas) and `handler.ts` (describeRoute + validators + handler). See backend-architecture.md § HTTP handler.
+
+## Listing and Pagination
+
+Paginated GET endpoints use a **reusable listing system** (`shared/domain/kernel/listing.ts` + `shared/adapters/kernel/listing.zod.ts` + `listing.prisma.ts`).
+
+**Design:**
+- **Flat filters** (AND logic, no nesting): `filter[field]=value`, `filter[field][op]=value`. Operators: `eq`, `gt`, `gte`, `lt`, `lte`, `in`.
+- **Dynamic multi-field sorting** with per-field direction: `sort=-amount_cents,created_at` (prefix `-` = desc).
+- **Keyset cursor pagination** (not offset-based): cursor is an opaque base64url token encoding the keyset values + sort signature. Changing sort with an old cursor returns 400 `CURSOR_SORT_MISMATCH`.
+- **Whitelist per endpoint**: Each endpoint declares a `ListingConfig` with allowed filterable fields, sortable fields, default sort, and limits. No arbitrary field access.
+- **`createListingQuerySchema(config)`** generates a Zod schema with explicit keys for every `filter[field][op]` combination — compatible with hono-openapi for auto-documentation.
+- **`buildPrismaListing()`** converts the domain `ListingQuery` into Prisma `where`/`orderBy`/`take` with WHERE-based keyset pagination (not Prisma's native cursor, which only works with `@id`).
+- **Composite indexes** added for common filter+sort patterns to ensure query performance.
 
 ## Database
 
