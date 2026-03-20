@@ -1,4 +1,4 @@
-import type { Hono } from "hono";
+import { Hono } from "hono";
 import type { HonoVariables } from "../../shared/adapters/kernel/hono.context.js";
 import { PrismaHoldRepo } from "../../wallet/adapters/persistence/prisma/hold.repo.js";
 import { PrismaLedgerEntryRepo } from "../../wallet/adapters/persistence/prisma/ledgerEntry.repo.js";
@@ -9,14 +9,15 @@ import { PrismaWalletRepo } from "../../wallet/adapters/persistence/prisma/walle
 import { CaptureHoldHandler } from "../../wallet/application/command/captureHold/handler.js";
 import { PlaceHoldHandler } from "../../wallet/application/command/placeHold/handler.js";
 import { VoidHoldHandler } from "../../wallet/application/command/voidHold/handler.js";
-import { captureHoldHandler } from "../../wallet/ports/http/captureHold/handler.js";
-import { placeHoldHandler } from "../../wallet/ports/http/placeHold/handler.js";
-import { voidHoldHandler } from "../../wallet/ports/http/voidHold/handler.js";
+import { captureHoldRoute } from "../../wallet/ports/http/captureHold/handler.js";
+import { placeHoldRoute } from "../../wallet/ports/http/placeHold/handler.js";
+import { voidHoldRoute } from "../../wallet/ports/http/voidHold/handler.js";
 import type { Dependencies } from "../../wiring.js";
 import { apiKeyAuth } from "../middleware/apiKeyAuth.js";
 import { idempotency } from "../middleware/idempotency.js";
 
-export function setupHoldRoutes(app: Hono<{ Variables: HonoVariables }>, deps: Dependencies) {
+export function holdRoutes(deps: Dependencies) {
+  const router = new Hono<{ Variables: HonoVariables }>();
   const { prisma, idGen, logger } = deps;
 
   const txManager = new PrismaTransactionManager(prisma, logger);
@@ -42,7 +43,9 @@ export function setupHoldRoutes(app: Hono<{ Variables: HonoVariables }>, deps: D
   const auth = apiKeyAuth(deps.validateApiKey);
   const idemp = idempotency(deps.idempotencyStore);
 
-  app.post("/v1/holds", auth, idemp, placeHoldHandler(placeHold, logger));
-  app.post("/v1/holds/:holdId/capture", auth, idemp, captureHoldHandler(captureHold, logger));
-  app.post("/v1/holds/:holdId/void", auth, voidHoldHandler(voidHold, logger));
+  router.post("/", auth, idemp, ...placeHoldRoute(placeHold));
+  router.post("/:holdId/capture", auth, idemp, ...captureHoldRoute(captureHold));
+  router.post("/:holdId/void", auth, ...voidHoldRoute(voidHold));
+
+  return router;
 }
