@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from "hono";
 import type { HonoVariables } from "../../shared/adapters/kernel/hono.context.js";
-import { errorResponse } from "../respond/error.js";
+import { errorResponse } from "../../shared/adapters/kernel/hono.error.js";
 
 const API_KEY_HEADER = "x-api-key";
 

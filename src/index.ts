@@ -2,16 +2,19 @@ import { serve } from "@hono/node-server";
 import type { PrismaClient } from "@prisma/client";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { setupHoldRoutes } from "./api/holds/setup.js";
+import { secureHeaders } from "hono/secure-headers";
+import { holdRoutes } from "./api/holds/setup.js";
 import { requestResponseLog } from "./api/middleware/requestResponseLog.js";
 import { trackingCanonical } from "./api/middleware/trackingCanonical.js";
-import { setupTransferRoutes } from "./api/transfers/setup.js";
-import { setupWalletRoutes } from "./api/wallets/setup.js";
+import { errorResponse, httpStatus } from "./shared/adapters/kernel/hono.error.js";
+import { transferRoutes } from "./api/transfers/setup.js";
+import { walletRoutes } from "./api/wallets/setup.js";
 import { loadConfig } from "./config.js";
 import { startCleanupIdempotencyJob } from "./jobs/cleanupIdempotencyRecords.js";
 import { startExpireHoldsJob } from "./jobs/expireHolds.js";
 import type { HonoVariables } from "./shared/adapters/kernel/hono.context.js";
 import { buildAppContext } from "./shared/adapters/kernel/hono.context.js";
+import { AppError } from "./shared/domain/appError.js";
 import { wire } from "./wiring.js";
 
 /**
@@ -59,26 +62,44 @@ async function main() {
 
   const app = new Hono<{ Variables: HonoVariables }>();
 
-  // Global error handler — catches unhandled exceptions and returns
-  // a generic 500 response without leaking internal details.
+  // Global error handler — maps AppError to HTTP status, catches unhandled exceptions.
   app.onError((err, c) => {
     const ctx = buildAppContext(c);
-    deps.logger.error(ctx, "Unhandled exception", { error: err.message });
-    return c.json({ error: "INTERNAL_ERROR", message: "an unexpected error occurred" }, 500);
+
+    if (AppError.is(err)) {
+      const status = httpStatus(err.kind);
+      if (status >= 500) {
+        deps.logger.error(ctx, err.code, { error: err.message });
+      } else {
+        deps.logger.info(ctx, err.code);
+      }
+      return errorResponse(c, err.code, err.msg, status);
+    }
+
+    const message = err instanceof Error ? err.message : "unknown error";
+    deps.logger.error(ctx, "Unhandled exception", { error: message });
+    return errorResponse(c, "INTERNAL_ERROR", "an unexpected error occurred", 500);
   });
 
-  // Global middleware chain (order matters: tracking → logging → handler)
-  app.use("*", cors());
+  // Structured 404 for undefined routes
+  app.notFound((c) => {
+    return errorResponse(c, "NOT_FOUND", `${c.req.method} ${c.req.path} not found`, 404);
+  });
+
+  // Global middleware chain (order matters: tracking → security → logging → handler)
   app.use("*", trackingCanonical(deps.idGen, deps.logger));
+  app.use("*", cors());
+  app.use("*", secureHeaders());
   app.use("*", requestResponseLog(deps.logger));
 
   // Health check
   app.get("/health", (c) => c.json({ status: "ok" }));
 
   // Route groups
-  setupWalletRoutes(app, deps);
-  setupTransferRoutes(app, deps);
-  setupHoldRoutes(app, deps);
+  const v1 = app.basePath("/v1");
+  v1.route("/wallets", walletRoutes(deps));
+  v1.route("/transfers", transferRoutes(deps));
+  v1.route("/holds", holdRoutes(deps));
 
   // Background cron jobs
   startExpireHoldsJob(deps.prisma, deps.logger, deps.idGen);

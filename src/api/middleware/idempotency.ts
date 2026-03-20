@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { MiddlewareHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { HonoVariables } from "../../shared/adapters/kernel/hono.context.js";
-import { errorResponse } from "../respond/error.js";
+import { errorResponse } from "../../shared/adapters/kernel/hono.error.js";
 
 const IDEMPOTENCY_HEADER = "idempotency-key";
 
