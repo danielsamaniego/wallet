@@ -8,10 +8,34 @@ import { SafeLogger } from "./shared/adapters/observability/safe.logger.js";
 import { SensitiveKeysFilter } from "./shared/adapters/observability/sensitive.filter.js";
 import type { IIDGenerator } from "./shared/domain/kernel/id.generator.js";
 import type { ILogger } from "./shared/domain/observability/logger.port.js";
+import { PrismaHoldRepo } from "./wallet/adapters/persistence/prisma/hold.repo.js";
 import { PrismaIdempotencyStore } from "./wallet/adapters/persistence/prisma/idempotency.store.js";
+import { PrismaLedgerEntryReadStore } from "./wallet/adapters/persistence/prisma/ledgerEntry.readstore.js";
+import { PrismaLedgerEntryRepo } from "./wallet/adapters/persistence/prisma/ledgerEntry.repo.js";
+import { PrismaMovementRepo } from "./wallet/adapters/persistence/prisma/movement.repo.js";
+import { PrismaTransactionManager } from "./wallet/adapters/persistence/prisma/transaction.manager.js";
+import { PrismaTransactionReadStore } from "./wallet/adapters/persistence/prisma/transaction.readstore.js";
+import { PrismaTransactionRepo } from "./wallet/adapters/persistence/prisma/transaction.repo.js";
+import { PrismaWalletReadStore } from "./wallet/adapters/persistence/prisma/wallet.readstore.js";
+import { PrismaWalletRepo } from "./wallet/adapters/persistence/prisma/wallet.repo.js";
+import { CaptureHoldHandler } from "./wallet/application/command/captureHold/handler.js";
+import { CloseWalletHandler } from "./wallet/application/command/closeWallet/handler.js";
+import { CreateWalletHandler } from "./wallet/application/command/createWallet/handler.js";
+import { DepositHandler } from "./wallet/application/command/deposit/handler.js";
+import { FreezeWalletHandler } from "./wallet/application/command/freezeWallet/handler.js";
+import { PlaceHoldHandler } from "./wallet/application/command/placeHold/handler.js";
+import { TransferHandler } from "./wallet/application/command/transfer/handler.js";
+import { UnfreezeWalletHandler } from "./wallet/application/command/unfreezeWallet/handler.js";
+import { VoidHoldHandler } from "./wallet/application/command/voidHold/handler.js";
+import { WithdrawHandler } from "./wallet/application/command/withdraw/handler.js";
+import { GetLedgerEntriesHandler } from "./wallet/application/query/getLedgerEntries/handler.js";
+import { GetTransactionsHandler } from "./wallet/application/query/getTransactions/handler.js";
+import { GetWalletHandler } from "./wallet/application/query/getWallet/handler.js";
 
 /**
  * Dependencies holds all injected dependencies for the API.
+ * Infrastructure, repos, and app handlers are wired once here
+ * and shared across all route groups.
  */
 export interface Dependencies {
   config: Config;
@@ -20,6 +44,21 @@ export interface Dependencies {
   logger: ILogger;
   validateApiKey: (apiKey: string) => Promise<{ platformId: string } | null>;
   idempotencyStore: IIdempotencyStore;
+
+  // App handlers (pre-wired with repos)
+  createWallet: CreateWalletHandler;
+  deposit: DepositHandler;
+  withdraw: WithdrawHandler;
+  freezeWallet: FreezeWalletHandler;
+  unfreezeWallet: UnfreezeWalletHandler;
+  closeWallet: CloseWalletHandler;
+  getWallet: GetWalletHandler;
+  getTransactions: GetTransactionsHandler;
+  getLedgerEntries: GetLedgerEntriesHandler;
+  transfer: TransferHandler;
+  placeHold: PlaceHoldHandler;
+  captureHold: CaptureHoldHandler;
+  voidHold: VoidHoldHandler;
 }
 
 const sensitiveKeys = [
@@ -75,5 +114,86 @@ export function wire(config: Config): Dependencies {
     return { platformId: platform.id };
   };
 
-  return { config, prisma, idGen, logger, validateApiKey, idempotencyStore };
+  // Repos (instantiated once, shared across all route groups)
+  const txManager = new PrismaTransactionManager(prisma, logger);
+  const walletRepo = new PrismaWalletRepo(prisma, logger);
+  const holdRepo = new PrismaHoldRepo(prisma, logger);
+  const transactionRepo = new PrismaTransactionRepo(prisma, logger);
+  const ledgerEntryRepo = new PrismaLedgerEntryRepo(prisma, logger);
+  const movementRepo = new PrismaMovementRepo(prisma, logger);
+  const walletReadStore = new PrismaWalletReadStore(prisma, logger);
+  const transactionReadStore = new PrismaTransactionReadStore(prisma, logger);
+  const ledgerEntryReadStore = new PrismaLedgerEntryReadStore(prisma, logger);
+
+  // App handlers (pre-wired with repos)
+  const createWallet = new CreateWalletHandler(txManager, walletRepo, idGen, logger);
+  const deposit = new DepositHandler(
+    txManager,
+    walletRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    movementRepo,
+    idGen,
+    logger,
+  );
+  const withdraw = new WithdrawHandler(
+    txManager,
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    movementRepo,
+    idGen,
+    logger,
+  );
+  const freezeWallet = new FreezeWalletHandler(txManager, walletRepo, logger);
+  const unfreezeWallet = new UnfreezeWalletHandler(txManager, walletRepo, logger);
+  const closeWallet = new CloseWalletHandler(txManager, walletRepo, holdRepo, logger);
+  const getWallet = new GetWalletHandler(walletReadStore, logger);
+  const getTransactions = new GetTransactionsHandler(transactionReadStore, logger);
+  const getLedgerEntries = new GetLedgerEntriesHandler(ledgerEntryReadStore, logger);
+  const transfer = new TransferHandler(
+    txManager,
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    movementRepo,
+    idGen,
+    logger,
+  );
+  const placeHold = new PlaceHoldHandler(txManager, walletRepo, holdRepo, idGen, logger);
+  const captureHold = new CaptureHoldHandler(
+    txManager,
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    movementRepo,
+    idGen,
+    logger,
+  );
+  const voidHold = new VoidHoldHandler(txManager, walletRepo, holdRepo, logger);
+
+  return {
+    config,
+    prisma,
+    idGen,
+    logger,
+    validateApiKey,
+    idempotencyStore,
+    createWallet,
+    deposit,
+    withdraw,
+    freezeWallet,
+    unfreezeWallet,
+    closeWallet,
+    getWallet,
+    getTransactions,
+    getLedgerEntries,
+    transfer,
+    placeHold,
+    captureHold,
+    voidHold,
+  };
 }
