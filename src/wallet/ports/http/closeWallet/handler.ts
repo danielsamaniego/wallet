@@ -1,13 +1,13 @@
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { validationHook } from "../../../../api/validation.js";
-import { buildAppContext, factory } from "../../../../shared/adapters/kernel/hono.context.js";
+import { buildAppContext, handlerFactory } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { CloseWalletHandler } from "../../../application/command/closeWallet/handler.js";
 
 const ParamSchema = z.object({ walletId: z.string().min(1).max(255) });
 
 export function closeWalletRoute(handler: CloseWalletHandler) {
-  return factory.createHandlers(
+  return handlerFactory.createHandlers(
     zValidator("param", ParamSchema, validationHook),
     async (c) => {
       const { walletId } = c.req.valid("param");

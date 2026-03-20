@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import { createFactory } from "hono/factory";
 import type { AppContext } from "../../domain/kernel/context.js";
 import type { CanonicalAccumulator } from "../../domain/observability/canonical.js";
 
@@ -12,6 +13,8 @@ export type HonoVariables = {
   startTs: number;
   canonical: CanonicalAccumulator;
 };
+
+export const handlerFactory = createFactory<{ Variables: HonoVariables }>();
 
 /**
  * Builds an AppContext from Hono's context variables.

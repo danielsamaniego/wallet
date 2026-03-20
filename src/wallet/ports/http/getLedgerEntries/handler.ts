@@ -1,7 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { validationHook } from "../../../../api/validation.js";
-import { buildAppContext, factory } from "../../../../shared/adapters/kernel/hono.context.js";
+import { buildAppContext, handlerFactory } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { GetLedgerEntriesHandler } from "../../../application/query/getLedgerEntries/handler.js";
 
 const ParamSchema = z.object({ walletId: z.string().min(1).max(255) });
@@ -12,7 +12,7 @@ const QuerySchema = z.object({
 });
 
 export function getLedgerEntriesRoute(handler: GetLedgerEntriesHandler) {
-  return factory.createHandlers(
+  return handlerFactory.createHandlers(
     zValidator("param", ParamSchema, validationHook),
     zValidator("query", QuerySchema, validationHook),
     async (c) => {

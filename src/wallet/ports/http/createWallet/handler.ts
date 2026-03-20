@@ -1,7 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { validationHook } from "../../../../api/validation.js";
-import { buildAppContext, factory } from "../../../../shared/adapters/kernel/hono.context.js";
+import { buildAppContext, handlerFactory } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { CreateWalletHandler } from "../../../application/command/createWallet/handler.js";
 
 const BodySchema = z.object({
@@ -10,7 +10,7 @@ const BodySchema = z.object({
 });
 
 export function createWalletRoute(handler: CreateWalletHandler) {
-  return factory.createHandlers(
+  return handlerFactory.createHandlers(
     zValidator("json", BodySchema, validationHook),
     async (c) => {
       const data = c.req.valid("json");
