@@ -10,6 +10,7 @@
 | Database | PostgreSQL 16 |
 | ORM | Prisma 7 |
 | Validation | Zod |
+| API docs | hono-openapi + @scalar/hono-api-reference (auto-generated OpenAPI 3.1) |
 | Logging | Pino (structured JSON) |
 | ID generation | uuidv7 (UUID v7, RFC 9562) |
 | Testing | Vitest |

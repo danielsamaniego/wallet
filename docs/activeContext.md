@@ -19,6 +19,13 @@ Wallet bounded context fully implemented and audited. All critical concurrency b
 - Docker Compose (PostgreSQL 16 for local dev), Dockerfile
 - pnpm scripts for all workflows: `start:local`, `reset:local`, `db:update`, `dev`
 - Full documentation set + concurrency audit
+- Auto-generated OpenAPI 3.1 spec (hono-openapi) + interactive Scalar UI at `/docs`
+- All 13 endpoints documented with `describeRoute()` (tags, summary, response schemas)
+- Endpoint `schemas.ts` pattern: request + response Zod schemas per endpoint
+- Shared `ErrorResponseSchema` in `hono.error.ts`
+- Reusable listing system: Stripe-style flat filters (`filter[field][op]=value`), dynamic multi-field sorting (`sort=-field`), keyset cursor pagination with sort signature validation
+- Listing modules: `listing.ts` (domain types + cursor), `listing.zod.ts` (Zod schema factory), `listing.prisma.ts` (Prisma query builder)
+- Composite indexes for filter+sort patterns on Transaction and LedgerEntry
 
 ## Next Steps
 

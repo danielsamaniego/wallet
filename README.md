@@ -17,6 +17,7 @@ Standalone backend service providing digital wallet functionality as a platform 
 | Database | PostgreSQL 16 |
 | ORM | Prisma 7 |
 | Validation | Zod |
+| API docs | hono-openapi + @scalar/hono-api-reference |
 | Logging | Pino (structured JSON) |
 | IDs | UUID v7 (RFC 9562) |
 | Testing | Vitest |
@@ -29,6 +30,9 @@ Standalone backend service providing digital wallet functionality as a platform 
 - **Integer cents** — all amounts stored as BIGINT (smallest currency unit, like Stripe)
 - **Immutable ledger** — `ledger_entries` is append-only (PostgreSQL trigger prevents UPDATE/DELETE)
 - **Concurrency safety** — optimistic locking, idempotency keys, DB constraints
+
+- **Auto-generated API docs** — OpenAPI 3.1 spec at `/openapi`, interactive Scalar UI at `/docs`
+- **Stripe-style listing** — flat filters, dynamic multi-field sorting, keyset cursor pagination
 
 See `docs/architecture/` for full details.
 
@@ -167,14 +171,20 @@ src/
 │   ├── domain/       # Aggregates, value objects, errors, ports
 │   ├── application/  # Command and query handlers (use cases)
 │   ├── adapters/     # Prisma repositories
-│   └── ports/http/   # HTTP handlers (createHandlers with validators + handler)
+│   └── ports/http/   # HTTP handlers (schemas.ts + handler.ts per endpoint)
 ├── shared/
-│   ├── domain/       # AppError, kernel (IDGenerator, context), observability (Logger port)
-│   └── adapters/     # kernel (Hono context, handlerFactory, error response), observability (Pino)
+│   ├── domain/       # AppError, kernel (IDGenerator, context, listing types), observability (Logger port)
+│   └── adapters/     # kernel (Hono context, handlerFactory, error response, listing adapters), observability (Pino)
 ├── index.ts          # App bootstrap, global middleware, onError, route mounting
 ├── wiring.ts         # DI: repos, app handlers, infrastructure — instantiated once
 └── config.ts         # Environment variables
 ```
+
+## API Documentation
+
+Start the server and visit **http://localhost:3000/docs** for the interactive Scalar API reference. The OpenAPI 3.1 JSON spec is available at **/openapi**.
+
+Documentation is auto-generated from Zod schemas and `describeRoute()` metadata in each handler — no manual API docs to maintain.
 
 ## Documentation
 

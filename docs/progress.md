@@ -25,8 +25,16 @@
 - [x] Hono app with health endpoint, secureHeaders, notFound, basePath("/v1"), route() sub-apps
 - [x] Config from env vars
 - [x] Centralized DI wiring (repos + app handlers instantiated once in wiring.ts)
-- [x] HTTP handlers using handlerFactory.createHandlers() with zValidator (type-safe, no try/catch)
+- [x] HTTP handlers using handlerFactory.createHandlers() with hono-openapi validator (type-safe, no try/catch)
 - [x] Tracking middleware supports external X-Tracking-Id header (ext- prefix)
+- [x] Auto-generated OpenAPI 3.1 spec via hono-openapi (`/openapi` endpoint)
+- [x] Interactive Scalar API reference UI (`/docs` endpoint)
+- [x] describeRoute() with tags, summary, and response schemas on all 13 endpoints
+- [x] Endpoint schemas.ts files: request schemas (Param, Body, QueryParams) + ResponseSchema per endpoint
+- [x] Shared ErrorResponseSchema in hono.error.ts
+- [x] Reusable listing system: flat Stripe-style filters, dynamic multi-field sorting, keyset cursor pagination
+- [x] Listing shared modules: listing.ts (domain types + cursor encode/decode), listing.zod.ts (schema factory), listing.prisma.ts (query builder)
+- [x] Composite indexes for common filter+sort patterns (Transaction, LedgerEntry)
 - [x] Full documentation set
 - [x] AGENTS.md
 - [x] .cursor/rules/wallet-context.mdc
@@ -48,7 +56,7 @@
 ## What's Left to Build
 
 - [ ] Platform bounded context: domain, app, adapters, ports/http
-- [ ] Platform API documentation (API.md)
+- [ ] Platform API (endpoints auto-documented via hono-openapi once implemented)
 - [ ] Rate limiting middleware
 - [ ] Hash chain tamper detection (ledger entries)
 - [ ] Reconciliation background job
@@ -56,7 +64,7 @@
 - [ ] Server-side retry for VERSION_CONFLICT (2-3 attempts)
 - [ ] Production deploy configuration (managed PostgreSQL + Node.js process)
 - [ ] Integration tests
-- [ ] API overview (src/api/API.md)
+- [x] API documentation (auto-generated OpenAPI + Scalar UI at /docs)
 
 ## Known Issues
 

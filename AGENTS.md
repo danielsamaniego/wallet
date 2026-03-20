@@ -58,12 +58,13 @@ Before implementing domain logic, business rules, or data structures:
 | **Naming: interfaces** | All interfaces start with `I` prefix: `IWalletRepository`, `ILogger`, `IIDGenerator`, `ITransactionManager`, `IWalletReadStore`, etc. Class implementations do NOT have the prefix: `PrismaWalletRepo`, `SafeLogger`, `UUIDV7Generator`. |
 | **Naming: files** | Dotted suffix convention: `wallet.aggregate.ts`, `hold.entity.ts`, `wallet.errors.ts`, `wallet.repository.ts` (port), `wallet.repo.ts` (adapter), `wallet.readstore.ts`, `transaction.manager.ts`, `idempotency.store.ts`, `logger.port.ts`, `sensitive.filter.ts`, `id.generator.ts`. Command/query types: `command.ts` / `query.ts`. Handler classes: `handler.ts`. |
 | **Struct ordering** | Constructor (static `create`/factory) goes immediately after the class definition, before methods. Order: class → constructor/factory → methods. |
-| **API endpoints** | **Never add endpoints without documenting them.** Each directory under `src/api/` must have an **API.md** with method, path, request/response structure, errors, and curl examples. |
+| **API documentation** | **Auto-generated via hono-openapi + Scalar.** `/openapi` serves the OpenAPI 3.1 JSON spec; `/docs` serves the interactive Scalar UI. Documentation is derived from Zod schemas and `describeRoute()` metadata — never write API docs manually. |
+| **API endpoint checklist** | When adding or modifying an endpoint: **(1)** Define request schemas (`ParamSchema`, `BodySchema`, `QueryParamsSchema`) and `ResponseSchema` in `schemas.ts`. **(2)** Add `describeRoute({ tags, summary, responses })` with `resolver(ResponseSchema)` and `resolver(ErrorResponseSchema)` in the handler. **(3)** Use `validator` from `hono-openapi` (aliased as `zValidator`), not `@hono/zod-validator`. **(4)** Register the route in the setup file. The OpenAPI spec updates automatically. |
 | **Concurrency** | All wallet mutations: optimistic locking (`version` field); mismatch → `409 VERSION_CONFLICT`, client retries. No `SELECT FOR UPDATE` in domain ports (infrastructure leak — see `systemPatterns.md`). All mutations: idempotency keys with atomic acquire pattern. Safety net: DB `CHECK` constraints. |
 | **Ledger** | Double-entry bookkeeping. Every financial op produces exactly 2 LedgerEntry records (debit + credit). `ledger_entries` is **immutable** (append-only): never UPDATE, never DELETE. Protected by PostgreSQL trigger. |
 | **BigInt serialization** | Prisma BigInt → use `shared/domain/kernel/bigint.ts` (`toSafeNumber`, `toNumber`, `bigIntReplacer`). Never expose raw `bigint` in API responses. |
 | **AppContext** | Use `buildAppContext(c)` from `shared/adapters/kernel/hono.context.ts` in HTTP handlers. For non-HTTP flows (jobs, scripts, tests), use `createAppContext(idGen)` from `shared/domain/kernel/context.ts`. Never build `AppContext` manually with `c.get()`. |
-| **HTTP handlers** | Use `handlerFactory.createHandlers()` from `shared/adapters/kernel/hono.context.ts`. Each handler file defines Zod schemas + validators + handler in one `createHandlers()` call. No try/catch — errors propagate to the global `onError`. Setup files receive pre-wired app handlers from `Dependencies` and only do routing. |
+| **HTTP handlers** | Use `handlerFactory.createHandlers()` from `shared/adapters/kernel/hono.context.ts`. Each endpoint folder has `schemas.ts` (Zod request + response schemas) and `handler.ts` (imports schemas, adds `describeRoute()` + validators + handler). No try/catch — errors propagate to the global `onError`. Setup files receive pre-wired app handlers from `Dependencies` and only do routing. |
 | **Outbound ports convention** | All outbound port methods (repositories, read stores, transaction manager) receive `ctx: AppContext` as their **first parameter**. Adapters receive `ILogger` in their constructor. This enables adapters to log with full traceability (`tracking_id`, `platform_id`) without leaking infrastructure into the domain. |
 | **Currency** | `currency_code` must be valid ISO 4217 uppercase. Cross-currency transfers not allowed. |
 | **System wallets** | One per (platform, currency), `owner_id = "SYSTEM"`, `is_system = true`. Auto-created on first wallet creation for that platform/currency. Cannot be frozen or closed. |
@@ -77,7 +78,8 @@ Before implementing domain logic, business rules, or data structures:
 - **Runtime:** Node.js 22+
 - **ORM:** Prisma 7 (PostgreSQL)
 - **Database:** PostgreSQL 16
-- **Validation:** Zod (request schemas)
+- **Validation:** Zod (request/response schemas) + hono-openapi (OpenAPI generation + validator)
+- **API docs:** hono-openapi + @scalar/hono-api-reference (auto-generated from Zod schemas)
 - **UUID:** uuidv7 (RFC 9562)
 - **Logging:** Pino (structured JSON)
 - **Testing:** Vitest
@@ -93,12 +95,12 @@ Before implementing domain logic, business rules, or data structures:
 | Path | Description |
 |------|-------------|
 | `src/` | Application source code |
-| `src/api/` | API composition (route groups as Hono sub-apps); **API.md** per group documenting endpoints |
+| `src/api/` | API composition (route groups as Hono sub-apps); endpoints auto-documented via hono-openapi |
 | `src/api/middleware/` | HTTP middlewares. **Global** (all routes): trackingCanonical, requestResponseLog. **Route-group** (authenticated/mutation routes): apiKeyAuth, idempotency. |
 | `src/wallet/` | Bounded context: Wallet (wallets, transactions, ledger, holds) |
 | `src/platform/` | Bounded context: Platform (API key management) |
 | `src/shared/domain/` | **Domain-safe shared code.** Domain and app layers may ONLY import from here. Contains: `appError.ts`, `kernel/` (AppContext, createAppContext, IIDGenerator, bigint utils), `observability/` (ILogger port, CanonicalAccumulator). Zero external dependencies. |
-| `src/shared/adapters/` | **Infrastructure shared code.** Only adapters, HTTP handlers, wiring, and middleware may import from here. Contains: `kernel/` (HonoVariables, buildAppContext, handlerFactory, UUIDV7Generator, httpStatus, errorResponse, validationHook), `observability/` (PinoAdapter, SafeLogger, SensitiveKeysFilter). |
+| `src/shared/adapters/` | **Infrastructure shared code.** Only adapters, HTTP handlers, wiring, and middleware may import from here. Contains: `kernel/` (HonoVariables, buildAppContext, handlerFactory, UUIDV7Generator, httpStatus, errorResponse, validationHook, ErrorResponseSchema, listing.zod.ts, listing.prisma.ts), `observability/` (PinoAdapter, SafeLogger, SensitiveKeysFilter). |
 | `prisma/` | Prisma schema and migrations |
 | `prisma/immutable_ledger.sql` | PostgreSQL trigger + constraints for append-only ledger |
 | `docs/` | Domain, data model, architecture documentation |
@@ -111,7 +113,7 @@ Before implementing domain logic, business rules, or data structures:
 2. **Progress**: Update `docs/activeContext.md` and `docs/progress.md` after significant work.
 3. **Architecture**: Follow `docs/architecture/backend-architecture.md` and `docs/architecture/systemPatterns.md`. Domain and app depend only on interfaces.
 4. **Migrations**: Use Prisma Migrate; see `docs/architecture/database-migrations.md`. Locally: `pnpm db:update`. Production: `prisma migrate deploy` then `psql $DATABASE_URL -f prisma/immutable_ledger.sql`.
-5. **New endpoint**: Create handler, register in setup.ts, document in API.md.
+5. **New endpoint**: Create `schemas.ts` (request + response schemas) → create `handler.ts` (with `describeRoute()` + validators) → register in setup.ts. The OpenAPI spec at `/openapi` and Scalar UI at `/docs` update automatically.
 
 ---
 
