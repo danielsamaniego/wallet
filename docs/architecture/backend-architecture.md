@@ -818,32 +818,24 @@ export class PrismaWalletRepo implements IWalletRepository {
     // Upsert with optimistic locking: version must match on update
     const result = await this.prisma.wallet.upsert({
       where: { id: wallet.id },
-      create: {
-        id: wallet.id,
-        ownerId: wallet.ownerId,
-        platformId: wallet.platformId,
-        currencyCode: wallet.currencyCode,
-        cachedBalanceCents: wallet.cachedBalanceCents,
-        status: wallet.status,
-        version: 0,
-        isSystem: wallet.isSystem,
-        createdAt: BigInt(wallet.createdAt),
-        updatedAt: BigInt(wallet.updatedAt),
-      },
-      update: {
-        cachedBalanceCents: wallet.cachedBalanceCents,
-        status: wallet.status,
-        version: { increment: 1 },
-        updatedAt: BigInt(wallet.updatedAt),
-      },
+      data: { /* create fields */ },
     });
-
-    // For strict optimistic locking, use raw SQL:
-    // UPDATE wallets SET ... WHERE id = $1 AND version = $2
-    // If rowCount === 0, throw ErrVersionConflict()
+    } else {
+      // Optimistic locking: WHERE id AND version must match
+      const result = await db.wallet.updateMany({
+        where: { id: wallet.id, version: wallet.version },
+        data: {
+          cachedBalanceCents: wallet.cachedBalanceCents,
+          status: wallet.status,
+          version: wallet.version + 1,
+          updatedAt: BigInt(wallet.updatedAt),
+        },
+      });
+      if (result.count === 0) throw ErrVersionConflict();
+    }
   }
 
-  async findById(walletId: string): Promise<Wallet | null> {
+  async findById(ctx: AppContext, walletId: string): Promise<Wallet | null> {
     const row = await this.prisma.wallet.findUnique({ where: { id: walletId } });
     if (!row) return null;
     return this.toDomain(row);
@@ -896,48 +888,57 @@ const mainLogTag = "DepositHandler";
 
 export class DepositHandler {
   constructor(
-    private readonly walletRepo: WalletRepository,
-    private readonly idGen: IDGenerator,
-    private readonly logger: Logger,
+    private readonly txManager: ITransactionManager,
+    private readonly walletRepo: IWalletRepository,
+    private readonly transactionRepo: ITransactionRepository,
+    private readonly ledgerEntryRepo: ILedgerEntryRepository,
+    private readonly movementRepo: IMovementRepository,
+    private readonly idGen: IIDGenerator,
+    private readonly logger: ILogger,
   ) {}
 
   async handle(ctx: AppContext, cmd: DepositCommand): Promise<DepositResult> {
     const methodLogTag = `${mainLogTag} | handle`;
+    this.logger.debug(ctx, `${methodLogTag} start`, { wallet_id: cmd.walletId });
 
-    // 1. Load aggregate
-    const wallet = await this.walletRepo.findById(cmd.walletId);
-    if (!wallet) {
-      this.logger.info(ctx, `${methodLogTag} wallet not found`, { wallet_id: cmd.walletId });
-      throw ErrWalletNotFound(cmd.walletId);
-    }
-
-    // 2. Load system wallet (counterparty for deposit)
-    const systemWallet = await this.walletRepo.findSystemWallet(
-      wallet.platformId, wallet.currencyCode,
-    );
-
-    // 3. Mutate aggregate (domain validates invariants)
-    const now = Date.now();
-    wallet.deposit(cmd.amountCents, now);
-    systemWallet!.withdraw(cmd.amountCents, 0n, now); // System wallet: no balance check
-
-    // 4. Create transaction + ledger entries (IDs generated here)
     const txId = this.idGen.newId();
-    // ... create Transaction, LedgerEntry records ...
+    const movementId = this.idGen.newId();
 
-    // 5. Save (version check happens in repo)
-    await this.walletRepo.save(wallet);
-    await this.walletRepo.save(systemWallet!);
-    // ... save transaction, ledger entries ...
+    // All writes inside a single DB transaction
+    await this.txManager.run(ctx, async (txCtx) => {
+      // 1. Load aggregate (ctx passed to all repo methods)
+      const wallet = await this.walletRepo.findById(txCtx, cmd.walletId);
+      if (!wallet) throw ErrWalletNotFound(cmd.walletId);
 
-    this.logger.info(ctx, `${methodLogTag} deposit success`, {
-      wallet_id: wallet.id,
-      transaction_id: txId,
-      amount_cents: Number(cmd.amountCents),
+      // 2. Load system wallet (counterparty)
+      const systemWallet = await this.walletRepo.findSystemWallet(
+        txCtx, wallet.platformId, wallet.currencyCode,
+      );
+      if (!systemWallet) throw ErrSystemWalletNotFound(...);
+
+      // 3. Mutate aggregate (domain validates invariants)
+      const now = Date.now();
+      wallet.deposit(cmd.amountCents, now);
+
+      // 4. Create movement + transaction + ledger entries
+      const movement = Movement.create({ id: movementId, type: "deposit", createdAt: now });
+      const tx = Transaction.create({ id: txId, walletId: wallet.id, ... });
+      const [userEntry, systemEntry] = LedgerEntry.createPair({ ... });
+
+      // 5. Save user wallet (optimistic locking), system wallet (atomic increment)
+      await this.walletRepo.save(txCtx, wallet);
+      await this.walletRepo.adjustSystemWalletBalance(txCtx, systemWallet.id, -cmd.amountCents, now);
+      await this.movementRepo.save(txCtx, movement);
+      await this.transactionRepo.save(txCtx, tx);
+      await this.ledgerEntryRepo.saveMany(txCtx, [userEntry, systemEntry]);
     });
 
-    // 6. Return minimal data (ID only — not the full wallet)
-    return { transactionId: txId };
+    this.logger.info(ctx, `${methodLogTag} deposit success`, {
+      wallet_id: cmd.walletId, transaction_id: txId,
+    });
+
+    // Return minimal data (ID only — not the full wallet)
+    return { transactionId: txId, movementId };
   }
 }
 ```

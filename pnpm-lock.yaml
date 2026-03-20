@@ -14,9 +14,6 @@ importers:
       '@hono/standard-validator':
         specifier: ^0.2.2
         version: 0.2.2(@standard-schema/spec@1.1.0)(hono@4.12.8)
-      '@hono/zod-validator':
-        specifier: ^0.7.6
-        version: 0.7.6(hono@4.12.8)(zod@4.3.6)
       '@prisma/adapter-pg':
         specifier: ^7.5.0
         version: 7.5.0
@@ -330,12 +327,6 @@ packages:
     peerDependencies:
       '@standard-schema/spec': ^1.0.0
       hono: '>=3.9.0'
-
-  '@hono/zod-validator@0.7.6':
-    resolution: {integrity: sha512-Io1B6d011Gj1KknV4rXYz4le5+5EubcWEU/speUjuw9XMMIaP3n78yXLhjd2A3PXaXaUwEAluOiAyLqhBEJgsw==}
-    peerDependencies:
-      hono: '>=3.9.0'
-      zod: ^3.25.0 || ^4.0.0
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
@@ -1517,11 +1508,6 @@ snapshots:
     dependencies:
       '@standard-schema/spec': 1.1.0
       hono: 4.12.8
-
-  '@hono/zod-validator@0.7.6(hono@4.12.8)(zod@4.3.6)':
-    dependencies:
-      hono: 4.12.8
-      zod: 4.3.6
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
