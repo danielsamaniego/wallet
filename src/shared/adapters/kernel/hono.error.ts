@@ -1,6 +1,16 @@
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { z } from "zod";
 import { ErrorKind } from "../../domain/appError.js";
+
+/**
+ * Zod schema for the standard error response shape.
+ * Reuse across all endpoint schemas for OpenAPI documentation.
+ */
+export const ErrorResponseSchema = z.object({
+  error: z.string(),
+  message: z.string(),
+});
 
 const kindStatus: Record<ErrorKind, ContentfulStatusCode> = {
   [ErrorKind.Validation]: 400,

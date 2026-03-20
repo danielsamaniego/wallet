@@ -60,3 +60,24 @@ const listingConfig: ListingConfig = {
 };
 
 export const QueryParamsSchema = createListingQuerySchema(listingConfig);
+
+// ── Response ────────────────────────────────────────────────────────────────
+
+const TransactionSchema = z.object({
+  id: z.string(),
+  wallet_id: z.string(),
+  counterpart_wallet_id: z.string().nullable(),
+  type: z.string(),
+  amount_cents: z.union([z.number(), z.string()]),
+  status: z.string(),
+  idempotency_key: z.string().nullable(),
+  reference: z.string().nullable(),
+  metadata: z.record(z.string(), z.unknown()).nullable(),
+  hold_id: z.string().nullable(),
+  created_at: z.number(),
+});
+
+export const ResponseSchema = z.object({
+  transactions: z.array(TransactionSchema),
+  next_cursor: z.string().nullable(),
+});

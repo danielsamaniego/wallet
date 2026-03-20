@@ -47,3 +47,20 @@ const listingConfig: ListingConfig = {
 };
 
 export const QueryParamsSchema = createListingQuerySchema(listingConfig);
+
+// ── Response ────────────────────────────────────────────────────────────────
+
+const LedgerEntrySchema = z.object({
+  id: z.string(),
+  transaction_id: z.string(),
+  wallet_id: z.string(),
+  entry_type: z.string(),
+  amount_cents: z.union([z.number(), z.string()]),
+  balance_after_cents: z.union([z.number(), z.string()]),
+  created_at: z.number(),
+});
+
+export const ResponseSchema = z.object({
+  ledger_entries: z.array(LedgerEntrySchema),
+  next_cursor: z.string().nullable(),
+});
