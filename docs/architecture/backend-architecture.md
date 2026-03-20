@@ -99,7 +99,6 @@ src/
 │   │   ├── requestResponseLog.ts
 │   │   ├── apiKeyAuth.ts
 │   │   └── idempotency.ts
-│   ├── respond/              # HTTP error response (withError)
 │   ├── wallets/              # /v1/wallets/* route group
 │   │   ├── setup.ts
 │   │   └── API.md
@@ -316,13 +315,7 @@ export const ErrInsufficientFunds = (walletId: string) =>
 const ErrWalletNotFound = AppError.notFound("WALLET_NOT_FOUND", "wallet does not exist");
 ```
 
-**HTTP handler** — uses `withError()` to translate any error to structured JSON:
-
-```typescript
-if (err) {
-  return withError(c, logger, ctx, methodLogTag, err);
-}
-```
+**HTTP handlers** throw errors naturally — the global `onError` in `index.ts` catches them and uses `errorResponse()` to produce structured JSON. No try/catch in individual handlers.
 
 ### API error response format
 
@@ -341,10 +334,10 @@ All error responses follow a consistent structure:
 ### Rules
 
 1. **Domain and app** import only from `shared/domain/` (no external deps). Never from `shared/adapters/`. No Hono, no HTTP concepts.
-2. **HTTP handlers** import `api/respond` for error translation. Never hardcode status-code mapping inline.
+2. **Error translation** is centralized: `errorResponse()` and `httpStatus()` in `shared/adapters/kernel/hono.error.ts`. Middleware calls `errorResponse()` directly; handlers let errors propagate to the global `onError`.
 3. **Use `AppError.is()`** for type checking. Never compare errors with `===`.
 4. Every new error must have a **unique, stable Code** (UPPER_SNAKE_CASE). Codes are part of the API contract.
-5. **Infrastructure errors** (Prisma, external APIs) not wrapped in `AppError` are caught by `withError()` and returned as 500 `INTERNAL_ERROR`.
+5. **Infrastructure errors** (Prisma, external APIs) not wrapped in `AppError` are caught by the global `onError` and returned as 500 `INTERNAL_ERROR`.
 
 ---
 
@@ -392,7 +385,7 @@ Always pass the `AppContext` (built via `buildAppContext(c)`) so these fields ar
 | **debug** | Entry/exit of every significant operation. Input parameters, computed intermediate values, adapter calls. In production, `debug` may be disabled — but the code must always emit them so they can be enabled on demand. | Handler start with command params, balance checks (cached, holds, available), adapter queries (findById, save), transaction begin/commit/rollback. |
 | **info** | Successful completion of a business operation, or noteworthy but non-error events that are always relevant in production. | Deposit success, wallet created, system wallet auto-created, hold expired on-access (not an error — expected domain behavior). |
 | **warn** | Something unexpected happened but the request can still continue, or a client error that may indicate a bug in the caller. | Validation failures (malformed JSON, Zod errors), optimistic locking version conflict (retry expected), hold expired when client tried to capture. |
-| **error** | An operation failed and the request cannot complete successfully. Server-side errors (5xx), infrastructure failures, unexpected exceptions. | Prisma connection failure, unhandled exception in handler (caught by `withError`), any `AppError` with Kind = Internal. |
+| **error** | An operation failed and the request cannot complete successfully. Server-side errors (5xx), infrastructure failures, unexpected exceptions. | Prisma connection failure, unhandled exception in handler (caught by global `onError`), any `AppError` with Kind = Internal. |
 | **fatal** | The process cannot continue and must shut down. | Failed to bind port, database connection pool exhausted on startup, corrupt configuration. |
 
 **Rules:**
@@ -922,106 +915,78 @@ HTTP handlers live in `ports/http/<endpoint>/`. They parse the request, validate
 ```typescript
 // wallet/ports/http/deposit/handler.ts
 
-import type { Context } from "hono";
+import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { withError } from "../../../../api/respond/error.js";
-import { buildAppContext } from "../../../../shared/kernel/context.js";
-import type { Logger } from "../../../../shared/observability/logger.js";
+import { validationHook } from "../../../../shared/adapters/kernel/hono.error.js";
+import { buildAppContext, handlerFactory } from "../../../../shared/adapters/kernel/hono.context.js";
 import type { DepositHandler } from "../../../application/command/deposit/handler.js";
 
-const mainLogTag = "DepositHTTPHandler";
-
-const RequestSchema = z.object({
+const ParamSchema = z.object({ walletId: z.string().min(1).max(255) });
+const BodySchema = z.object({
   amount_cents: z.number().int().positive(),
-  reference: z.string().optional(),
+  reference: z.string().max(500).optional(),
 });
 
-export function depositHandler(handler: DepositHandler, logger: Logger) {
-  return async (c: Context) => {
-    const methodLogTag = `${mainLogTag} | handle`;
-    const ctx = buildAppContext(c);
+export function depositRoute(handler: DepositHandler) {
+  return handlerFactory.createHandlers(
+    zValidator("param", ParamSchema, validationHook),
+    zValidator("json", BodySchema, validationHook),
+    async (c) => {
+      const { walletId } = c.req.valid("param");
+      const data = c.req.valid("json");
+      const ctx = buildAppContext(c);
 
-    // 1. Parse and validate request
-    const body = await c.req.json();
-    const parsed = RequestSchema.safeParse(body);
-    if (!parsed.success) {
-      return c.json({ error: "INVALID_REQUEST", message: parsed.error.message }, 400);
-    }
-
-    // 2. Build command
-    const walletId = c.req.param("walletId");
-
-    // 3. Call app layer
-    try {
       const result = await handler.handle(ctx, {
         walletId,
-        amountCents: BigInt(parsed.data.amount_cents),
-        reference: parsed.data.reference,
+        amountCents: BigInt(data.amount_cents),
+        reference: data.reference,
         idempotencyKey: c.req.header("idempotency-key")!,
+        platformId: ctx.platformId!,
       });
 
-      // 4. Return minimal response
-      logger.info(ctx, `${methodLogTag} deposit success`, { transaction_id: result.transactionId });
-      return c.json({ transaction_id: result.transactionId }, 201);
-    } catch (err) {
-      return withError(c, logger, ctx, methodLogTag, err);
-    }
-  };
+      return c.json(
+        { transaction_id: result.transactionId, movement_id: result.movementId },
+        201,
+      );
+    },
+  );
 }
 ```
 
 **Why Zod is OK here**: Zod lives in the HTTP adapter (driving adapter), not in domain or app. The HTTP handler validates request **format** (is it a number? is it positive?). Domain validates **business rules** (is the wallet active? sufficient funds?). Format validation and business validation are separate concerns — the adapter handles the former, the domain handles the latter.
 
-**Why `withError()`**: All errors (domain, app, infra) flow through a single function that maps `AppError.kind` → HTTP status and returns `{"error": "CODE", "message": "..."}`. Unknown errors return 500 with no internal details. Centralizing error translation prevents inconsistent error formats across endpoints.
+**Why `handlerFactory.createHandlers()`**: Hono's `createFactory` preserves type inference through the middleware chain — `c.req.valid("json")` and `c.req.valid("param")` are fully typed without casts. Validators and handler are composed in a single call. No try/catch needed — errors propagate to the global `onError` in `index.ts`, which maps `AppError.kind` → HTTP status via `errorResponse()`.
 
 ---
 
 ### Route registration (setup.ts)
 
-Each API group has a `setup.ts` that wires HTTP handlers to routes. Route-group middleware (apiKeyAuth, idempotency) is registered here, not globally.
+Each API group has a `setup.ts` that returns a Hono sub-app. Route-group middleware (apiKeyAuth, idempotency) is registered here, not globally. App handlers come pre-wired from `Dependencies` (wiring.ts).
 
 ```typescript
 // api/wallets/setup.ts
 
-import type { Hono } from "hono";
+import { Hono } from "hono";
+import type { HonoVariables } from "../../shared/adapters/kernel/hono.context.js";
+import { depositRoute } from "../../wallet/ports/http/deposit/handler.js";
+import { getWalletRoute } from "../../wallet/ports/http/getWallet/handler.js";
+import type { Dependencies } from "../../wiring.js";
 import { apiKeyAuth } from "../middleware/apiKeyAuth.js";
 import { idempotency } from "../middleware/idempotency.js";
-import type { Dependencies } from "../../wiring.js";
-import type { HonoVariables } from "../../shared/kernel/context.js";
 
-// Import handlers and app-layer use cases
-import { DepositHandler } from "../../wallet/application/command/deposit/handler.js";
-import { GetWalletHandler } from "../../wallet/application/query/getWallet/handler.js";
-import { depositHandler } from "../../wallet/ports/http/deposit/handler.js";
-import { getWalletHandler } from "../../wallet/ports/http/getWallet/handler.js";
-
-export function setupWalletRoutes(
-  app: Hono<{ Variables: HonoVariables }>,
-  deps: Dependencies,
-) {
-  const { prisma, idGen, logger } = deps;
-
-  // Create adapters (repositories, read stores)
-  const walletRepo = new PrismaWalletRepo(prisma);
-  const walletReadStore = new PrismaWalletReadStore(prisma);
-
-  // Create app-layer handlers
-  const deposit = new DepositHandler(walletRepo, idGen, logger);
-  const getWallet = new GetWalletHandler(walletReadStore, logger);
-
-  // Validate API key for all wallet routes
+export function walletRoutes(deps: Dependencies) {
+  const router = new Hono<{ Variables: HonoVariables }>();
   const auth = apiKeyAuth(deps.validateApiKey);
-
-  // Mutations require idempotency
   const idemp = idempotency(deps.idempotencyStore);
 
-  // Register routes
-  app.post("/v1/wallets/:walletId/deposit", auth, idemp, depositHandler(deposit, logger));
-  app.get("/v1/wallets/:walletId", auth, getWalletHandler(getWallet, logger));
+  router.post("/:walletId/deposit", auth, idemp, ...depositRoute(deps.deposit));
+  router.get("/:walletId", auth, ...getWalletRoute(deps.getWallet));
+
+  return router;
 }
 ```
 
-**Why wiring happens in setup.ts**: Each route group creates its own adapters and handlers. This keeps wiring localized — you can see all dependencies for `/v1/wallets/*` in one place without searching the entire codebase.
+**Why wiring happens in wiring.ts**: All repos and app handlers are instantiated once in `wiring.ts` and passed via `Dependencies`. Setup files only do routing — no imports of repos, no `new Handler(...)`. This eliminates duplicate repo instantiation across route groups.
 
 ---
 

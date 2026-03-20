@@ -18,12 +18,15 @@
 - [x] Middleware: requestResponseLog (request/response logging)
 - [x] Middleware: apiKeyAuth (API key validation)
 - [x] Middleware: idempotency (duplicate prevention)
-- [x] API: respond/error.ts (withError — maps AppError to HTTP response)
+- [x] Error handling: errorResponse + httpStatus + validationHook (shared/adapters/kernel/hono.error.ts)
+- [x] Global onError handler (maps AppError → HTTP status, catches unhandled exceptions)
 - [x] Prisma schema (all models)
 - [x] Immutable ledger SQL (trigger + constraints)
-- [x] Hono app with health endpoint and middleware chain
+- [x] Hono app with health endpoint, secureHeaders, notFound, basePath("/v1"), route() sub-apps
 - [x] Config from env vars
-- [x] Manual DI wiring
+- [x] Centralized DI wiring (repos + app handlers instantiated once in wiring.ts)
+- [x] HTTP handlers using handlerFactory.createHandlers() with zValidator (type-safe, no try/catch)
+- [x] Tracking middleware supports external X-Tracking-Id header (ext- prefix)
 - [x] Full documentation set
 - [x] AGENTS.md
 - [x] .cursor/rules/wallet-context.mdc

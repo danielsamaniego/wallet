@@ -158,20 +158,22 @@ pnpm start   # node dist/index.js
 
 ```
 src/
-├── api/              # API composition, middleware, respond helpers
+├── api/              # Route groups (Hono sub-apps) and middleware
 │   ├── middleware/    # trackingCanonical, requestResponseLog, apiKeyAuth, idempotency
-│   ├── respond/      # withError() — maps AppError to HTTP response
 │   ├── wallets/      # /v1/wallets route group
 │   ├── transfers/    # /v1/transfers route group
-│   ├── holds/        # /v1/holds route group
-│   └── platforms/    # /v1/platforms route group
+│   └── holds/        # /v1/holds route group
 ├── wallet/           # Bounded context: Wallet
 │   ├── domain/       # Aggregates, value objects, errors, ports
-│   ├── app/          # Command and query handlers (use cases)
+│   ├── application/  # Command and query handlers (use cases)
 │   ├── adapters/     # Prisma repositories
-│   └── ports/http/   # HTTP handlers
-├── platform/         # Bounded context: Platform
-└── shared/           # AppError, kernel (IDGenerator, context), observability (Logger)
+│   └── ports/http/   # HTTP handlers (createHandlers with validators + handler)
+├── shared/
+│   ├── domain/       # AppError, kernel (IDGenerator, context), observability (Logger port)
+│   └── adapters/     # kernel (Hono context, handlerFactory, error response), observability (Pino)
+├── index.ts          # App bootstrap, global middleware, onError, route mounting
+├── wiring.ts         # DI: repos, app handlers, infrastructure — instantiated once
+└── config.ts         # Environment variables
 ```
 
 ## Documentation

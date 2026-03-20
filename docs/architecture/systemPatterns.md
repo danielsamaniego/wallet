@@ -67,7 +67,10 @@ See **[backend-architecture.md](backend-architecture.md)** § Logging for full d
 
 - **AppError**: Kind (semantic category) + Code (stable UPPER_SNAKE_CASE) + Message (fallback). No external dependencies.
 - **Domain**: Defines error constructors returning `AppError`.
-- **HTTP translation**: `withError()` maps Kind → HTTP status, returns `{"error": "CODE", "message": "..."}`. Unknown errors → 500 `INTERNAL_ERROR`.
+- **HTTP translation**: Two paths, same output shape `{"error": "CODE", "message": "..."}`:
+  - **Handlers**: throw `AppError` — caught by global `onError` in `index.ts` which maps Kind → HTTP status via `httpStatus()` and responds with `errorResponse()`.
+  - **Middleware** (apiKeyAuth, idempotency, validationHook): call `errorResponse()` directly with the appropriate status code.
+  - Both use `errorResponse()` from `shared/adapters/kernel/hono.error.ts` — single source of truth for the error shape.
 - Use `AppError.is()` or error checks; never compare with `===` on opaque errors.
 
 ## API
