@@ -6,10 +6,16 @@ import { CanonicalAccumulator } from "../../shared/domain/observability/canonica
 import type { ILogger } from "../../shared/domain/observability/logger.port.js";
 
 const canonicalDispatchMsg = "Canonical log | request completed";
+const TRACKING_HEADER = "x-tracking-id";
 
 /**
- * Hono middleware that injects tracking_id (UUID v7), canonical accumulator,
+ * Hono middleware that injects tracking_id, canonical accumulator,
  * and request start time into context, and dispatches the canonical log on exit.
+ *
+ * If the request includes an X-Tracking-Id header, that value is used with
+ * an "ext-" prefix to indicate it originated externally. Otherwise a new
+ * UUID v7 is generated.
+ *
  * Runs first in the middleware chain so all subsequent handlers have tracking context.
  */
 export function trackingCanonical(
@@ -17,7 +23,8 @@ export function trackingCanonical(
   logger: ILogger,
 ): MiddlewareHandler<{ Variables: HonoVariables }> {
   return async (c, next) => {
-    const trackingId = idGen.newId();
+    const externalId = c.req.header(TRACKING_HEADER);
+    const trackingId = externalId ? `ext-${externalId}` : idGen.newId();
     const startTs = Date.now();
     const canonical = new CanonicalAccumulator();
 
