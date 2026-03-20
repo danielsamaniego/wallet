@@ -1,8 +1,10 @@
 import { serve } from "@hono/node-server";
 import type { PrismaClient } from "@prisma/client";
+import { Scalar } from "@scalar/hono-api-reference";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
+import { openAPIRouteHandler } from "hono-openapi";
 import { holdRoutes } from "./api/holds/setup.js";
 import { requestResponseLog } from "./api/middleware/requestResponseLog.js";
 import { trackingCanonical } from "./api/middleware/trackingCanonical.js";
@@ -100,6 +102,22 @@ async function main() {
   v1.route("/wallets", walletRoutes(deps));
   v1.route("/transfers", transferRoutes(deps));
   v1.route("/holds", holdRoutes(deps));
+
+  // OpenAPI spec + interactive docs
+  app.get(
+    "/openapi",
+    openAPIRouteHandler(app, {
+      documentation: {
+        info: {
+          title: "Wallet API",
+          version: "1.0.0",
+          description: "Digital wallet microservice — deposits, withdrawals, transfers, holds, and ledger.",
+        },
+        servers: [{ url: `http://localhost:${config.httpPort}`, description: "Local" }],
+      },
+    }),
+  );
+  app.get("/docs", Scalar({ url: "/openapi" }));
 
   // Background cron jobs
   startExpireHoldsJob(deps.prisma, deps.logger, deps.idGen);
