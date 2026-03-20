@@ -41,6 +41,9 @@ export class TransferHandler {
     });
 
     if (cmd.sourceWalletId === cmd.targetWalletId) {
+      this.logger.warn(ctx, `${methodLogTag} same wallet transfer rejected`, {
+        wallet_id: cmd.sourceWalletId,
+      });
       throw ErrSameWallet();
     }
 
@@ -50,14 +53,44 @@ export class TransferHandler {
 
     await this.txManager.run(ctx, async (txCtx) => {
       const source = await this.walletRepo.findById(txCtx, cmd.sourceWalletId);
-      if (!source) throw ErrWalletNotFound(cmd.sourceWalletId);
-      if (source.platformId !== cmd.platformId) throw ErrWalletNotFound(cmd.sourceWalletId);
+      if (!source) {
+        this.logger.warn(txCtx, `${methodLogTag} source wallet not found`, {
+          source_wallet_id: cmd.sourceWalletId,
+        });
+        throw ErrWalletNotFound(cmd.sourceWalletId);
+      }
+      if (source.platformId !== cmd.platformId) {
+        this.logger.warn(txCtx, `${methodLogTag} source platform mismatch`, {
+          source_wallet_id: cmd.sourceWalletId,
+          expected_platform_id: cmd.platformId,
+          actual_platform_id: source.platformId,
+        });
+        throw ErrWalletNotFound(cmd.sourceWalletId);
+      }
 
       const target = await this.walletRepo.findById(txCtx, cmd.targetWalletId);
-      if (!target) throw ErrWalletNotFound(cmd.targetWalletId);
-      if (target.platformId !== cmd.platformId) throw ErrWalletNotFound(cmd.targetWalletId);
+      if (!target) {
+        this.logger.warn(txCtx, `${methodLogTag} target wallet not found`, {
+          target_wallet_id: cmd.targetWalletId,
+        });
+        throw ErrWalletNotFound(cmd.targetWalletId);
+      }
+      if (target.platformId !== cmd.platformId) {
+        this.logger.warn(txCtx, `${methodLogTag} target platform mismatch`, {
+          target_wallet_id: cmd.targetWalletId,
+          expected_platform_id: cmd.platformId,
+          actual_platform_id: target.platformId,
+        });
+        throw ErrWalletNotFound(cmd.targetWalletId);
+      }
 
       if (source.currencyCode !== target.currencyCode) {
+        this.logger.warn(txCtx, `${methodLogTag} currency mismatch`, {
+          source_wallet_id: source.id,
+          source_currency: source.currencyCode,
+          target_wallet_id: target.id,
+          target_currency: target.currencyCode,
+        });
         throw ErrCurrencyMismatch();
       }
 

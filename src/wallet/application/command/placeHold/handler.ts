@@ -33,13 +33,23 @@ export class PlaceHoldHandler {
     await this.txManager.run(ctx, async (txCtx) => {
       const wallet = await this.walletRepo.findById(txCtx, cmd.walletId);
       if (!wallet) {
+        this.logger.warn(txCtx, `${methodLogTag} wallet not found`, { wallet_id: cmd.walletId });
         throw ErrWalletNotFound(cmd.walletId);
       }
       if (wallet.platformId !== cmd.platformId) {
+        this.logger.warn(txCtx, `${methodLogTag} platform mismatch`, {
+          wallet_id: cmd.walletId,
+          expected_platform_id: cmd.platformId,
+          actual_platform_id: wallet.platformId,
+        });
         throw ErrWalletNotFound(cmd.walletId);
       }
 
       if (wallet.status !== "active") {
+        this.logger.warn(txCtx, `${methodLogTag} wallet not active`, {
+          wallet_id: wallet.id,
+          status: wallet.status,
+        });
         throw AppError.domainRule("WALLET_NOT_ACTIVE", `wallet ${wallet.id} is not active`);
       }
 
@@ -57,6 +67,11 @@ export class PlaceHoldHandler {
       });
 
       if (cmd.amountCents > availableBalance) {
+        this.logger.warn(txCtx, `${methodLogTag} insufficient funds`, {
+          wallet_id: wallet.id,
+          requested_cents: Number(cmd.amountCents),
+          available_balance_cents: Number(availableBalance),
+        });
         throw AppError.domainRule(
           "INSUFFICIENT_FUNDS",
           `wallet ${wallet.id} has insufficient available funds for hold`,

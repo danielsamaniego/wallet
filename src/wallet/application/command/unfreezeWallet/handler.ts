@@ -22,9 +22,15 @@ export class UnfreezeWalletHandler {
     await this.txManager.run(ctx, async (txCtx) => {
       const wallet = await this.walletRepo.findById(txCtx, cmd.walletId);
       if (!wallet) {
+        this.logger.warn(txCtx, `${methodLogTag} wallet not found`, { wallet_id: cmd.walletId });
         throw ErrWalletNotFound(cmd.walletId);
       }
       if (wallet.platformId !== cmd.platformId) {
+        this.logger.warn(txCtx, `${methodLogTag} platform mismatch`, {
+          wallet_id: cmd.walletId,
+          expected_platform_id: cmd.platformId,
+          actual_platform_id: wallet.platformId,
+        });
         throw ErrWalletNotFound(cmd.walletId);
       }
 

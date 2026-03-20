@@ -18,9 +18,15 @@ export class GetWalletHandler {
 
     const dto = await this.readStore.getById(ctx, query.walletId, query.platformId);
     if (!dto) {
-      this.logger.info(ctx, `${methodLogTag} wallet not found`, { wallet_id: query.walletId });
+      this.logger.warn(ctx, `${methodLogTag} wallet not found`, { wallet_id: query.walletId });
       throw AppError.notFound("WALLET_NOT_FOUND", `wallet ${query.walletId} not found`);
     }
+
+    this.logger.info(ctx, `${methodLogTag} success`, {
+      wallet_id: query.walletId,
+      status: dto.status,
+    });
+
     return dto;
   }
 }

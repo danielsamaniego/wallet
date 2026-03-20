@@ -24,11 +24,17 @@ export class VoidHoldHandler {
     await this.txManager.run(ctx, async (txCtx) => {
       const hold = await this.holdRepo.findById(txCtx, cmd.holdId);
       if (!hold) {
+        this.logger.warn(txCtx, `${methodLogTag} hold not found`, { hold_id: cmd.holdId });
         throw ErrHoldNotFound(cmd.holdId);
       }
 
       const wallet = await this.walletRepo.findById(txCtx, hold.walletId);
       if (!wallet || wallet.platformId !== cmd.platformId) {
+        this.logger.warn(txCtx, `${methodLogTag} wallet not found or platform mismatch`, {
+          hold_id: cmd.holdId,
+          wallet_id: hold.walletId,
+          platform_id: cmd.platformId,
+        });
         throw ErrHoldNotFound(cmd.holdId);
       }
 

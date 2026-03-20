@@ -42,19 +42,36 @@ export class CaptureHoldHandler {
     await this.txManager.run(ctx, async (txCtx) => {
       const hold = await this.holdRepo.findById(txCtx, cmd.holdId);
       if (!hold) {
+        this.logger.warn(txCtx, `${methodLogTag} hold not found`, { hold_id: cmd.holdId });
         throw ErrHoldNotFound(cmd.holdId);
       }
 
       const wallet = await this.walletRepo.findById(txCtx, hold.walletId);
-      if (!wallet) throw ErrWalletNotFound(hold.walletId);
-      if (wallet.platformId !== cmd.platformId) throw ErrWalletNotFound(hold.walletId);
+      if (!wallet) {
+        this.logger.warn(txCtx, `${methodLogTag} wallet not found`, { wallet_id: hold.walletId });
+        throw ErrWalletNotFound(hold.walletId);
+      }
+      if (wallet.platformId !== cmd.platformId) {
+        this.logger.warn(txCtx, `${methodLogTag} platform mismatch`, {
+          wallet_id: hold.walletId,
+          expected_platform_id: cmd.platformId,
+          actual_platform_id: wallet.platformId,
+        });
+        throw ErrWalletNotFound(hold.walletId);
+      }
 
       const systemWallet = await this.walletRepo.findSystemWallet(
         txCtx,
         wallet.platformId,
         wallet.currencyCode,
       );
-      if (!systemWallet) throw ErrSystemWalletNotFound(wallet.platformId, wallet.currencyCode);
+      if (!systemWallet) {
+        this.logger.warn(txCtx, `${methodLogTag} system wallet not found`, {
+          platform_id: wallet.platformId,
+          currency_code: wallet.currencyCode,
+        });
+        throw ErrSystemWalletNotFound(wallet.platformId, wallet.currencyCode);
+      }
 
       const now = Date.now();
 

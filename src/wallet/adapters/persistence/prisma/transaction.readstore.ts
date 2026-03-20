@@ -27,7 +27,13 @@ export class PrismaTransactionReadStore implements ITransactionReadStore {
       where: { id: walletId, platformId },
       select: { id: true },
     });
-    if (!wallet) return null;
+    if (!wallet) {
+      this.logger.info(ctx, "TransactionReadStore | getByWallet wallet not found", {
+        wallet_id: walletId,
+        platform_id: platformId,
+      });
+      return null;
+    }
 
     const rows = await this.prisma.transaction.findMany({
       where: { walletId },
@@ -38,6 +44,12 @@ export class PrismaTransactionReadStore implements ITransactionReadStore {
 
     const hasMore = rows.length > limit;
     const items = hasMore ? rows.slice(0, limit) : rows;
+
+    this.logger.debug(ctx, "TransactionReadStore | getByWallet result", {
+      wallet_id: walletId,
+      count: items.length,
+      has_more: hasMore,
+    });
 
     return {
       transactions: items.map((r) => this.toDTO(r)),

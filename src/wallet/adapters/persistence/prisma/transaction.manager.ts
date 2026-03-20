@@ -83,6 +83,10 @@ export class PrismaTransactionManager implements ITransactionManager {
         // a VERSION_CONFLICT so the HTTP layer returns 409 (retryable by
         // client) instead of 500.
         if (isRetryable(err) && !AppError.is(err)) {
+          this.logger.warn(ctx, `${methodLogTag} retries exhausted, escalating as VERSION_CONFLICT`, {
+            attempt,
+            max_retries: MAX_RETRIES,
+          });
           throw AppError.conflict(
             "VERSION_CONFLICT",
             "transaction could not be serialized after multiple retries; retry with same idempotency key",

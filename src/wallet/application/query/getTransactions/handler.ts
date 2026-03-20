@@ -33,9 +33,15 @@ export class GetTransactionsHandler {
     );
 
     if (!result) {
-      this.logger.info(ctx, `${methodLogTag} wallet not found`, { wallet_id: query.walletId });
+      this.logger.warn(ctx, `${methodLogTag} wallet not found`, { wallet_id: query.walletId });
       throw AppError.notFound("WALLET_NOT_FOUND", `wallet ${query.walletId} not found`);
     }
+
+    this.logger.info(ctx, `${methodLogTag} success`, {
+      wallet_id: query.walletId,
+      transactions_count: result.transactions.length,
+      has_more: result.next_cursor !== null,
+    });
 
     return result;
   }

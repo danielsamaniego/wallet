@@ -16,7 +16,13 @@ export class PrismaWalletReadStore implements IWalletReadStore {
       where: { id: walletId, platformId },
     });
 
-    if (!row) return null;
+    if (!row) {
+      this.logger.info(ctx, "WalletReadStore | getById wallet not found", {
+        wallet_id: walletId,
+        platform_id: platformId,
+      });
+      return null;
+    }
 
     // Calculate available balance: cached - active holds (excluding expired by time)
     const now = BigInt(Date.now());

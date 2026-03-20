@@ -24,6 +24,7 @@ export class PrismaWalletRepo implements IWalletRepository {
     this.logger.debug(ctx, "WalletRepo | save", { wallet_id: wallet.id, version: wallet.version });
     const db = this.client(ctx);
     if (wallet.version === 0) {
+      this.logger.debug(ctx, "WalletRepo | save creating new wallet", { wallet_id: wallet.id });
       await db.wallet.create({
         data: {
           id: wallet.id,
@@ -81,7 +82,10 @@ export class PrismaWalletRepo implements IWalletRepository {
   async findById(ctx: AppContext, walletId: string): Promise<Wallet | null> {
     this.logger.debug(ctx, "WalletRepo | findById", { wallet_id: walletId });
     const row = await this.client(ctx).wallet.findUnique({ where: { id: walletId } });
-    if (!row) return null;
+    if (!row) {
+      this.logger.debug(ctx, "WalletRepo | findById not found", { wallet_id: walletId });
+      return null;
+    }
     return this.toDomain(row);
   }
 
@@ -105,7 +109,14 @@ export class PrismaWalletRepo implements IWalletRepository {
         },
       },
     });
-    if (!row) return null;
+    if (!row) {
+      this.logger.debug(ctx, "WalletRepo | findByOwner not found", {
+        owner_id: ownerId,
+        platform_id: platformId,
+        currency_code: currencyCode,
+      });
+      return null;
+    }
     return this.toDomain(row);
   }
 
@@ -127,7 +138,13 @@ export class PrismaWalletRepo implements IWalletRepository {
         },
       },
     });
-    if (!row) return null;
+    if (!row) {
+      this.logger.debug(ctx, "WalletRepo | findSystemWallet not found", {
+        platform_id: platformId,
+        currency_code: currencyCode,
+      });
+      return null;
+    }
     return this.toDomain(row);
   }
 

@@ -41,7 +41,10 @@ export class PrismaHoldRepo implements IHoldRepository {
   async findById(ctx: AppContext, holdId: string): Promise<Hold | null> {
     this.logger.debug(ctx, "HoldRepo | findById", { hold_id: holdId });
     const row = await this.client(ctx).hold.findUnique({ where: { id: holdId } });
-    if (!row) return null;
+    if (!row) {
+      this.logger.debug(ctx, "HoldRepo | findById not found", { hold_id: holdId });
+      return null;
+    }
     return this.toDomain(row);
   }
 

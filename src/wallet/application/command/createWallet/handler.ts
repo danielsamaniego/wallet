@@ -36,6 +36,11 @@ export class CreateWalletHandler {
         cmd.currencyCode,
       );
       if (exists) {
+        this.logger.warn(txCtx, `${methodLogTag} wallet already exists for owner`, {
+          owner_id: cmd.ownerId,
+          platform_id: cmd.platformId,
+          currency_code: cmd.currencyCode,
+        });
         throw ErrWalletAlreadyExists();
       }
 
