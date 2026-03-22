@@ -1,6 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import type { IIdempotencyStore } from "./api/middleware/idempotency.js";
+import type { IIdempotencyStore } from "./shared/infrastructure/http/middleware/idempotency.js";
 import type { Config } from "./config.js";
 import { UUIDV7Generator } from "./shared/infrastructure/kernel/uuidV7.js";
 import { PinoAdapter } from "./shared/infrastructure/observability/pino.adapter.js";
@@ -11,7 +11,7 @@ import type { ILogger } from "./shared/kernel/observability/logger.port.js";
 import type { ICommandBus, IQueryBus } from "./shared/application/cqrs.js";
 import { CommandBus, QueryBus } from "./shared/infrastructure/kernel/bus.js";
 import { PrismaHoldRepo } from "./wallet/infrastructure/adapters/outbound/prisma/hold.repo.js";
-import { PrismaIdempotencyStore } from "./wallet/infrastructure/adapters/outbound/prisma/idempotency.store.js";
+import { PrismaIdempotencyStore } from "./shared/infrastructure/persistence/prisma.idempotency.store.js";
 import { PrismaLedgerEntryReadStore } from "./wallet/infrastructure/adapters/outbound/prisma/ledgerEntry.readstore.js";
 import { PrismaLedgerEntryRepo } from "./wallet/infrastructure/adapters/outbound/prisma/ledgerEntry.repo.js";
 import { PrismaMovementRepo } from "./wallet/infrastructure/adapters/outbound/prisma/movement.repo.js";

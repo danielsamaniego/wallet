@@ -2,7 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import type {
   IdempotencyRecord,
   IIdempotencyStore,
-} from "../../../../../api/middleware/idempotency.js";
+} from "../http/middleware/idempotency.js";
 
 export class PrismaIdempotencyStore implements IIdempotencyStore {
   constructor(
