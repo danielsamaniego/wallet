@@ -18,12 +18,13 @@ export interface PaginatedLedgerEntries {
 }
 
 export class GetLedgerEntriesQuery extends IQuery<PaginatedLedgerEntries> {
+  static readonly TYPE = "GetLedgerEntries";
   constructor(
     public readonly walletId: string,
     public readonly platformId: string,
     public readonly listing: ListingQuery,
   ) {
-    super();
+    super(GetLedgerEntriesQuery.TYPE);
   }
 }
 

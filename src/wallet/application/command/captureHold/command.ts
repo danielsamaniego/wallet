@@ -6,9 +6,10 @@ export interface CaptureHoldResult {
 }
 
 export class CaptureHoldCommand extends ICommand<CaptureHoldResult> {
+  static readonly TYPE = "CaptureHold";
   constructor(
     public readonly holdId: string,
     public readonly platformId: string,
     public readonly idempotencyKey: string,
-  ) { super(); }
+  ) { super(CaptureHoldCommand.TYPE); }
 }

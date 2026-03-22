@@ -7,6 +7,7 @@ export interface TransferResult {
 }
 
 export class TransferCommand extends ICommand<TransferResult> {
+  static readonly TYPE = "Transfer";
   constructor(
     public readonly sourceWalletId: string,
     public readonly targetWalletId: string,
@@ -14,5 +15,5 @@ export class TransferCommand extends ICommand<TransferResult> {
     public readonly amountCents: bigint,
     public readonly idempotencyKey: string,
     public readonly reference?: string,
-  ) { super(); }
+  ) { super(TransferCommand.TYPE); }
 }

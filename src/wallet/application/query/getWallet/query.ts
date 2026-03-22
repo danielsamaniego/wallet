@@ -21,11 +21,12 @@ export interface WalletDTO {
 }
 
 export class GetWalletQuery extends IQuery<WalletDTO> {
+  static readonly TYPE = "GetWallet";
   constructor(
     public readonly walletId: string,
     public readonly platformId: string,
   ) {
-    super();
+    super(GetWalletQuery.TYPE);
   }
 }
 

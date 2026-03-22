@@ -8,10 +8,12 @@ import type { AppContext } from "../kernel/context.js";
 
 export abstract class ICommand<TResult = void> {
   declare readonly _resultType: TResult;
+  constructor(readonly type: string) {}
 }
 
 export abstract class IQuery<TResult = void> {
   declare readonly _resultType: TResult;
+  constructor(readonly type: string) {}
 }
 
 // ────────────────────────────────────────────

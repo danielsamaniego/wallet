@@ -183,22 +183,22 @@ export function wire(config: Config): Dependencies {
 
   // ── Command Bus ────────────────────────────
   const commandBus = new CommandBus();
-  commandBus.register(CreateWalletCommand, createWallet);
-  commandBus.register(DepositCommand, deposit);
-  commandBus.register(WithdrawCommand, withdraw);
-  commandBus.register(TransferCommand, transfer);
-  commandBus.register(FreezeWalletCommand, freezeWallet);
-  commandBus.register(UnfreezeWalletCommand, unfreezeWallet);
-  commandBus.register(CloseWalletCommand, closeWallet);
-  commandBus.register(PlaceHoldCommand, placeHold);
-  commandBus.register(CaptureHoldCommand, captureHold);
-  commandBus.register(VoidHoldCommand, voidHold);
+  commandBus.register(CreateWalletCommand.TYPE, createWallet);
+  commandBus.register(DepositCommand.TYPE, deposit);
+  commandBus.register(WithdrawCommand.TYPE, withdraw);
+  commandBus.register(TransferCommand.TYPE, transfer);
+  commandBus.register(FreezeWalletCommand.TYPE, freezeWallet);
+  commandBus.register(UnfreezeWalletCommand.TYPE, unfreezeWallet);
+  commandBus.register(CloseWalletCommand.TYPE, closeWallet);
+  commandBus.register(PlaceHoldCommand.TYPE, placeHold);
+  commandBus.register(CaptureHoldCommand.TYPE, captureHold);
+  commandBus.register(VoidHoldCommand.TYPE, voidHold);
 
   // ── Query Bus ──────────────────────────────
   const queryBus = new QueryBus();
-  queryBus.register(GetWalletQuery, getWallet);
-  queryBus.register(GetTransactionsQuery, getTransactions);
-  queryBus.register(GetLedgerEntriesQuery, getLedgerEntries);
+  queryBus.register(GetWalletQuery.TYPE, getWallet);
+  queryBus.register(GetTransactionsQuery.TYPE, getTransactions);
+  queryBus.register(GetLedgerEntriesQuery.TYPE, getLedgerEntries);
 
   return {
     config,

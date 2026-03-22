@@ -19,10 +19,10 @@ export class CommandBus implements ICommandBus {
   private readonly middlewares: BusMiddleware[] = [];
 
   register<T>(
-    cmdClass: abstract new (...args: any[]) => ICommand<T>,
+    type: string,
     handler: ICommandHandler<ICommand<T>, T>,
   ): void {
-    this.handlers.set(cmdClass.name, handler);
+    this.handlers.set(type, handler);
   }
 
   use(mw: BusMiddleware): void {
@@ -30,9 +30,9 @@ export class CommandBus implements ICommandBus {
   }
 
   async dispatch<T>(ctx: AppContext, cmd: ICommand<T>): Promise<T> {
-    const handler = this.handlers.get(cmd.constructor.name);
+    const handler = this.handlers.get(cmd.type);
     if (!handler) {
-      throw new Error(`CommandBus: no handler registered for ${cmd.constructor.name}`);
+      throw new Error(`CommandBus: no handler registered for ${cmd.type}`);
     }
 
     const execute = () => handler.handle(ctx, cmd) as Promise<T>;
@@ -57,10 +57,10 @@ export class QueryBus implements IQueryBus {
   private readonly middlewares: BusMiddleware[] = [];
 
   register<T>(
-    queryClass: abstract new (...args: any[]) => IQuery<T>,
+    type: string,
     handler: IQueryHandler<IQuery<T>, T>,
   ): void {
-    this.handlers.set(queryClass.name, handler);
+    this.handlers.set(type, handler);
   }
 
   use(mw: BusMiddleware): void {
@@ -68,9 +68,9 @@ export class QueryBus implements IQueryBus {
   }
 
   async dispatch<T>(ctx: AppContext, query: IQuery<T>): Promise<T> {
-    const handler = this.handlers.get(query.constructor.name);
+    const handler = this.handlers.get(query.type);
     if (!handler) {
-      throw new Error(`QueryBus: no handler registered for ${query.constructor.name}`);
+      throw new Error(`QueryBus: no handler registered for ${query.type}`);
     }
 
     const execute = () => handler.handle(ctx, query) as Promise<T>;

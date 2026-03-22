@@ -22,12 +22,13 @@ export interface PaginatedTransactions {
 }
 
 export class GetTransactionsQuery extends IQuery<PaginatedTransactions> {
+  static readonly TYPE = "GetTransactions";
   constructor(
     public readonly walletId: string,
     public readonly platformId: string,
     public readonly listing: ListingQuery,
   ) {
-    super();
+    super(GetTransactionsQuery.TYPE);
   }
 }
 

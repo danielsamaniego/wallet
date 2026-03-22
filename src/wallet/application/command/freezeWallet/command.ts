@@ -1,8 +1,9 @@
 import { ICommand } from "../../../../shared/application/cqrs.js";
 
 export class FreezeWalletCommand extends ICommand<void> {
+  static readonly TYPE = "FreezeWallet";
   constructor(
     public readonly walletId: string,
     public readonly platformId: string,
-  ) { super(); }
+  ) { super(FreezeWalletCommand.TYPE); }
 }
