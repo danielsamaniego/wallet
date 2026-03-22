@@ -48,7 +48,7 @@ export class Wallet {
       _currencyCode: upper,
       _cachedBalanceCents: 0n,
       _status: "active",
-      _version: 0,
+      _version: 1,
       _isSystem: isSystem,
       _createdAt: now,
       _updatedAt: now,
@@ -194,6 +194,7 @@ export class Wallet {
   }
 
   private touch(now: number): void {
+    this._version += 1;
     this._updatedAt = now;
   }
 }

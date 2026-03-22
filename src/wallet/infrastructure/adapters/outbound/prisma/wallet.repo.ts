@@ -23,7 +23,7 @@ export class PrismaWalletRepo implements IWalletRepository {
   async save(ctx: AppContext, wallet: Wallet): Promise<void> {
     this.logger.debug(ctx, "WalletRepo | save", { wallet_id: wallet.id, version: wallet.version });
     const db = this.client(ctx);
-    if (wallet.version === 0) {
+    if (wallet.version === 1) {
       this.logger.debug(ctx, "WalletRepo | save creating new wallet", { wallet_id: wallet.id });
       await db.wallet.create({
         data: {
@@ -33,26 +33,27 @@ export class PrismaWalletRepo implements IWalletRepository {
           currencyCode: wallet.currencyCode,
           cachedBalanceCents: wallet.cachedBalanceCents,
           status: wallet.status,
-          version: 1,
+          version: wallet.version,
           isSystem: wallet.isSystem,
           createdAt: BigInt(wallet.createdAt),
           updatedAt: BigInt(wallet.updatedAt),
         },
       });
     } else {
+      const previousVersion = wallet.version - 1;
       const result = await db.wallet.updateMany({
-        where: { id: wallet.id, version: wallet.version },
+        where: { id: wallet.id, version: previousVersion },
         data: {
           cachedBalanceCents: wallet.cachedBalanceCents,
           status: wallet.status,
-          version: wallet.version + 1,
+          version: wallet.version,
           updatedAt: BigInt(wallet.updatedAt),
         },
       });
       if (result.count === 0) {
         this.logger.warn(ctx, "WalletRepo | save version conflict", {
           wallet_id: wallet.id,
-          expected_version: wallet.version,
+          expected_version: previousVersion,
         });
         throw ErrVersionConflict();
       }
