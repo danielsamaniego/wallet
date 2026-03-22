@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { IQueryHandler } from "../../../../../../shared/application/cqrs.js";
-import { GetTransactionsQuery, type PaginatedTransactions } from "../../../../../application/query/getTransactions/query.js";
+import type { IQueryBus } from "../../../../../../shared/application/cqrs.js";
+import { GetTransactionsQuery } from "../../../../../application/query/getTransactions/query.js";
 import { ParamSchema, QueryParamsSchema, ResponseSchema } from "./schemas.js";
 
-export function getTransactionsRoute(handler: IQueryHandler<GetTransactionsQuery, PaginatedTransactions>) {
+export function getTransactionsRoute(queryBus: IQueryBus) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],
@@ -24,7 +24,7 @@ export function getTransactionsRoute(handler: IQueryHandler<GetTransactionsQuery
       const listing = c.req.valid("query");
       const ctx = buildAppContext(c);
 
-      const result = await handler.handle(ctx, new GetTransactionsQuery(
+      const result = await queryBus.dispatch(ctx, new GetTransactionsQuery(
         walletId,
         ctx.platformId!,
         listing,

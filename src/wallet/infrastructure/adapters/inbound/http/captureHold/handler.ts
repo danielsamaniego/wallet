@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { ICommandHandler } from "../../../../../../shared/application/cqrs.js";
-import { CaptureHoldCommand, type CaptureHoldResult } from "../../../../../application/command/captureHold/command.js";
+import type { ICommandBus } from "../../../../../../shared/application/cqrs.js";
+import { CaptureHoldCommand } from "../../../../../application/command/captureHold/command.js";
 import { ParamSchema, ResponseSchema } from "./schemas.js";
 
-export function captureHoldRoute(handler: ICommandHandler<CaptureHoldCommand, CaptureHoldResult>) {
+export function captureHoldRoute(commandBus: ICommandBus) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Holds"],
@@ -21,7 +21,7 @@ export function captureHoldRoute(handler: ICommandHandler<CaptureHoldCommand, Ca
       const { holdId } = c.req.valid("param");
       const ctx = buildAppContext(c);
 
-      const result = await handler.handle(ctx, new CaptureHoldCommand(
+      const result = await commandBus.dispatch(ctx, new CaptureHoldCommand(
         holdId,
         ctx.platformId!,
         c.req.header("idempotency-key")!,

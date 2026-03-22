@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { ICommandHandler } from "../../../../../../shared/application/cqrs.js";
-import { DepositCommand, type DepositResult } from "../../../../../application/command/deposit/command.js";
+import type { ICommandBus } from "../../../../../../shared/application/cqrs.js";
+import { DepositCommand } from "../../../../../application/command/deposit/command.js";
 import { BodySchema, ParamSchema, ResponseSchema } from "./schemas.js";
 
-export function depositRoute(handler: ICommandHandler<DepositCommand, DepositResult>) {
+export function depositRoute(commandBus: ICommandBus) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],
@@ -23,7 +23,7 @@ export function depositRoute(handler: ICommandHandler<DepositCommand, DepositRes
       const data = c.req.valid("json");
       const ctx = buildAppContext(c);
 
-      const result = await handler.handle(ctx, new DepositCommand(
+      const result = await commandBus.dispatch(ctx, new DepositCommand(
         walletId,
         ctx.platformId!,
         BigInt(data.amount_cents),

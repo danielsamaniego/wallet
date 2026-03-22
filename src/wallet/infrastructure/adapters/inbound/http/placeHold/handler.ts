@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { ICommandHandler } from "../../../../../../shared/application/cqrs.js";
-import { PlaceHoldCommand, type PlaceHoldResult } from "../../../../../application/command/placeHold/command.js";
+import type { ICommandBus } from "../../../../../../shared/application/cqrs.js";
+import { PlaceHoldCommand } from "../../../../../application/command/placeHold/command.js";
 import { BodySchema, ResponseSchema } from "./schemas.js";
 
-export function placeHoldRoute(handler: ICommandHandler<PlaceHoldCommand, PlaceHoldResult>) {
+export function placeHoldRoute(commandBus: ICommandBus) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Holds"],
@@ -22,7 +22,7 @@ export function placeHoldRoute(handler: ICommandHandler<PlaceHoldCommand, PlaceH
       const data = c.req.valid("json");
       const ctx = buildAppContext(c);
 
-      const result = await handler.handle(ctx, new PlaceHoldCommand(
+      const result = await commandBus.dispatch(ctx, new PlaceHoldCommand(
         data.wallet_id,
         ctx.platformId!,
         BigInt(data.amount_cents),

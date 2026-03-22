@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { ICommandHandler } from "../../../../../../shared/application/cqrs.js";
-import { CreateWalletCommand, type CreateWalletResult } from "../../../../../application/command/createWallet/command.js";
+import type { ICommandBus } from "../../../../../../shared/application/cqrs.js";
+import { CreateWalletCommand } from "../../../../../application/command/createWallet/command.js";
 import { BodySchema, ResponseSchema } from "./schemas.js";
 
-export function createWalletRoute(handler: ICommandHandler<CreateWalletCommand, CreateWalletResult>) {
+export function createWalletRoute(commandBus: ICommandBus) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],
@@ -20,7 +20,7 @@ export function createWalletRoute(handler: ICommandHandler<CreateWalletCommand, 
       const data = c.req.valid("json");
       const ctx = buildAppContext(c);
 
-      const result = await handler.handle(ctx, new CreateWalletCommand(
+      const result = await commandBus.dispatch(ctx, new CreateWalletCommand(
         data.owner_id,
         ctx.platformId!,
         data.currency_code,

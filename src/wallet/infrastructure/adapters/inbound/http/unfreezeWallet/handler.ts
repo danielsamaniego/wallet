@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { ICommandHandler } from "../../../../../../shared/application/cqrs.js";
+import type { ICommandBus } from "../../../../../../shared/application/cqrs.js";
 import { UnfreezeWalletCommand } from "../../../../../application/command/unfreezeWallet/command.js";
 import { ParamSchema, ResponseSchema } from "./schemas.js";
 
-export function unfreezeWalletRoute(handler: ICommandHandler<UnfreezeWalletCommand, void>) {
+export function unfreezeWalletRoute(commandBus: ICommandBus) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],
@@ -21,7 +21,7 @@ export function unfreezeWalletRoute(handler: ICommandHandler<UnfreezeWalletComma
       const { walletId } = c.req.valid("param");
       const ctx = buildAppContext(c);
 
-      await handler.handle(ctx, new UnfreezeWalletCommand(walletId, ctx.platformId!));
+      await commandBus.dispatch(ctx, new UnfreezeWalletCommand(walletId, ctx.platformId!));
       return c.json({ status: "active" }, 200);
     },
   );

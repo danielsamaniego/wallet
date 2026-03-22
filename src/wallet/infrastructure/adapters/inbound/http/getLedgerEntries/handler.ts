@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { IQueryHandler } from "../../../../../../shared/application/cqrs.js";
-import { GetLedgerEntriesQuery, type PaginatedLedgerEntries } from "../../../../../application/query/getLedgerEntries/query.js";
+import type { IQueryBus } from "../../../../../../shared/application/cqrs.js";
+import { GetLedgerEntriesQuery } from "../../../../../application/query/getLedgerEntries/query.js";
 import { ParamSchema, QueryParamsSchema, ResponseSchema } from "./schemas.js";
 
-export function getLedgerEntriesRoute(handler: IQueryHandler<GetLedgerEntriesQuery, PaginatedLedgerEntries>) {
+export function getLedgerEntriesRoute(queryBus: IQueryBus) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],
@@ -24,7 +24,7 @@ export function getLedgerEntriesRoute(handler: IQueryHandler<GetLedgerEntriesQue
       const listing = c.req.valid("query");
       const ctx = buildAppContext(c);
 
-      const result = await handler.handle(ctx, new GetLedgerEntriesQuery(
+      const result = await queryBus.dispatch(ctx, new GetLedgerEntriesQuery(
         walletId,
         ctx.platformId!,
         listing,

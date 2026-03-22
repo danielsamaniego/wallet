@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { ICommandHandler } from "../../../../../../shared/application/cqrs.js";
+import type { ICommandBus } from "../../../../../../shared/application/cqrs.js";
 import { CloseWalletCommand } from "../../../../../application/command/closeWallet/command.js";
 import { ParamSchema, ResponseSchema } from "./schemas.js";
 
-export function closeWalletRoute(handler: ICommandHandler<CloseWalletCommand, void>) {
+export function closeWalletRoute(commandBus: ICommandBus) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],
@@ -21,7 +21,7 @@ export function closeWalletRoute(handler: ICommandHandler<CloseWalletCommand, vo
       const { walletId } = c.req.valid("param");
       const ctx = buildAppContext(c);
 
-      await handler.handle(ctx, new CloseWalletCommand(walletId, ctx.platformId!));
+      await commandBus.dispatch(ctx, new CloseWalletCommand(walletId, ctx.platformId!));
       return c.json({ status: "closed" }, 200);
     },
   );

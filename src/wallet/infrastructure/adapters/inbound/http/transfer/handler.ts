@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { ICommandHandler } from "../../../../../../shared/application/cqrs.js";
-import { TransferCommand, type TransferResult } from "../../../../../application/command/transfer/command.js";
+import type { ICommandBus } from "../../../../../../shared/application/cqrs.js";
+import { TransferCommand } from "../../../../../application/command/transfer/command.js";
 import { BodySchema, ResponseSchema } from "./schemas.js";
 
-export function transferRoute(handler: ICommandHandler<TransferCommand, TransferResult>) {
+export function transferRoute(commandBus: ICommandBus) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Transfers"],
@@ -22,7 +22,7 @@ export function transferRoute(handler: ICommandHandler<TransferCommand, Transfer
       const data = c.req.valid("json");
       const ctx = buildAppContext(c);
 
-      const result = await handler.handle(ctx, new TransferCommand(
+      const result = await commandBus.dispatch(ctx, new TransferCommand(
         data.source_wallet_id,
         data.target_wallet_id,
         ctx.platformId!,

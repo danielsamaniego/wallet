@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { ICommandHandler } from "../../../../../../shared/application/cqrs.js";
-import { WithdrawCommand, type WithdrawResult } from "../../../../../application/command/withdraw/command.js";
+import type { ICommandBus } from "../../../../../../shared/application/cqrs.js";
+import { WithdrawCommand } from "../../../../../application/command/withdraw/command.js";
 import { BodySchema, ParamSchema, ResponseSchema } from "./schemas.js";
 
-export function withdrawRoute(handler: ICommandHandler<WithdrawCommand, WithdrawResult>) {
+export function withdrawRoute(commandBus: ICommandBus) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],
@@ -24,7 +24,7 @@ export function withdrawRoute(handler: ICommandHandler<WithdrawCommand, Withdraw
       const data = c.req.valid("json");
       const ctx = buildAppContext(c);
 
-      const result = await handler.handle(ctx, new WithdrawCommand(
+      const result = await commandBus.dispatch(ctx, new WithdrawCommand(
         walletId,
         ctx.platformId!,
         BigInt(data.amount_cents),
