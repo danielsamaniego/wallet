@@ -1,7 +1,7 @@
 import pino from "pino";
 
-import type { AppContext } from "../../domain/kernel/context.js";
-import type { ILogger } from "../../domain/observability/logger.port.js";
+import type { AppContext } from "../../kernel/context.js";
+import type { ILogger } from "../../kernel/observability/logger.port.js";
 
 /**
  * PinoAdapter implements ILogger using pino (structured JSON logging).

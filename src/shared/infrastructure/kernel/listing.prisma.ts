@@ -1,5 +1,5 @@
-import type { FilterCondition, FilterOperator, SortField } from "../../domain/kernel/listing.js";
-import { decodeCursor, ensureTiebreaker } from "../../domain/kernel/listing.js";
+import type { FilterCondition, FilterOperator, SortField } from "../../kernel/listing.js";
+import { decodeCursor, ensureTiebreaker } from "../../kernel/listing.js";
 
 export interface PrismaListingClause {
   where: Record<string, unknown>;

@@ -1,9 +1,9 @@
 import type { MiddlewareHandler } from "hono";
 import type { HonoVariables } from "../../shared/infrastructure/kernel/hono.context.js";
-import type { AppContext } from "../../shared/domain/kernel/context.js";
-import type { IIDGenerator } from "../../shared/domain/kernel/id.generator.js";
-import { CanonicalAccumulator } from "../../shared/domain/observability/canonical.js";
-import type { ILogger } from "../../shared/domain/observability/logger.port.js";
+import type { AppContext } from "../../shared/kernel/context.js";
+import type { IIDGenerator } from "../../shared/application/id.generator.js";
+import { CanonicalAccumulator } from "../../shared/kernel/observability/canonical.js";
+import type { ILogger } from "../../shared/kernel/observability/logger.port.js";
 
 const canonicalDispatchMsg = "Canonical log | request completed";
 const TRACKING_HEADER = "x-tracking-id";

@@ -1,9 +1,9 @@
-import type { AppContext } from "../../../../shared/domain/kernel/context.js";
+import type { AppContext } from "../../../../shared/kernel/context.js";
 import type { ICommandHandler } from "../../../../shared/application/cqrs.js";
-import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import type { ILogger } from "../../../../shared/kernel/observability/logger.port.js";
 import { ErrHoldExpired, ErrHoldNotFound } from "../../../domain/hold/hold.errors.js";
 import type { IHoldRepository } from "../../../domain/ports/hold.repository.js";
-import type { ITransactionManager } from "../../../../shared/domain/kernel/transaction.manager.js";
+import type { ITransactionManager } from "../../../../shared/application/transaction.manager.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import type { VoidHoldCommand } from "./command.js";
 

@@ -1,4 +1,4 @@
-import { AppError } from "../../../shared/domain/appError.js";
+import { AppError } from "../../../shared/kernel/appError.js";
 
 export class Wallet {
   private readonly _id: string;

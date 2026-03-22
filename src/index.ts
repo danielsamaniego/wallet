@@ -16,7 +16,7 @@ import { startCleanupIdempotencyJob } from "./jobs/cleanupIdempotencyRecords.js"
 import { startExpireHoldsJob } from "./jobs/expireHolds.js";
 import type { HonoVariables } from "./shared/infrastructure/kernel/hono.context.js";
 import { buildAppContext } from "./shared/infrastructure/kernel/hono.context.js";
-import { AppError } from "./shared/domain/appError.js";
+import { AppError } from "./shared/kernel/appError.js";
 import { wire } from "./wiring.js";
 
 /**

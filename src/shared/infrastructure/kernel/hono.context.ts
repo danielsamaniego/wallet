@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { createFactory } from "hono/factory";
-import type { AppContext } from "../../domain/kernel/context.js";
-import type { CanonicalAccumulator } from "../../domain/observability/canonical.js";
+import type { AppContext } from "../../kernel/context.js";
+import type { CanonicalAccumulator } from "../../kernel/observability/canonical.js";
 
 /**
  * Hono context variable types. Used with Hono<{ Variables: HonoVariables }>.

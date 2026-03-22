@@ -1,4 +1,4 @@
-import type { AppContext } from "./context.js";
+import type { AppContext } from "../kernel/context.js";
 
 /**
  * TransactionManager opens a transactional scope and passes an enriched

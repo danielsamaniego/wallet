@@ -1,11 +1,11 @@
-import { AppError } from "../../../../shared/domain/appError.js";
+import { AppError } from "../../../../shared/kernel/appError.js";
 import type { ICommandHandler } from "../../../../shared/application/cqrs.js";
-import type { AppContext } from "../../../../shared/domain/kernel/context.js";
-import type { IIDGenerator } from "../../../../shared/domain/kernel/id.generator.js";
-import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import type { AppContext } from "../../../../shared/kernel/context.js";
+import type { IIDGenerator } from "../../../../shared/application/id.generator.js";
+import type { ILogger } from "../../../../shared/kernel/observability/logger.port.js";
 import { Hold } from "../../../domain/hold/hold.entity.js";
 import type { IHoldRepository } from "../../../domain/ports/hold.repository.js";
-import type { ITransactionManager } from "../../../../shared/domain/kernel/transaction.manager.js";
+import type { ITransactionManager } from "../../../../shared/application/transaction.manager.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { ErrWalletNotFound } from "../../../domain/wallet/wallet.errors.js";
 import type { PlaceHoldCommand, PlaceHoldResult } from "./command.js";

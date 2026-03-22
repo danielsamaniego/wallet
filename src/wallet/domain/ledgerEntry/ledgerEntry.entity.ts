@@ -1,4 +1,4 @@
-import { AppError } from "../../../shared/domain/appError.js";
+import { AppError } from "../../../shared/kernel/appError.js";
 
 export type EntryType = "CREDIT" | "DEBIT";
 

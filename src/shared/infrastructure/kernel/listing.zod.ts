@@ -7,8 +7,8 @@ import type {
   ListingQuery,
   SortDirection,
   SortField,
-} from "../../domain/kernel/listing.js";
-import { decodeCursor } from "../../domain/kernel/listing.js";
+} from "../../kernel/listing.js";
+import { decodeCursor } from "../../kernel/listing.js";
 
 // ── Schema Factory ──────────────────────────────────────────────────────────
 

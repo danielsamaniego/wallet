@@ -1,4 +1,4 @@
-import type { AppContext } from "../domain/kernel/context.js";
+import type { AppContext } from "../kernel/context.js";
 
 // ────────────────────────────────────────────
 // Marker interfaces — the phantom `_resultType`

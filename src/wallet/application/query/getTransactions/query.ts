@@ -1,6 +1,6 @@
 import { IQuery } from "../../../../shared/application/cqrs.js";
-import type { AppContext } from "../../../../shared/domain/kernel/context.js";
-import type { ListingQuery } from "../../../../shared/domain/kernel/listing.js";
+import type { AppContext } from "../../../../shared/kernel/context.js";
+import type { ListingQuery } from "../../../../shared/kernel/listing.js";
 
 export interface TransactionDTO {
   id: string;

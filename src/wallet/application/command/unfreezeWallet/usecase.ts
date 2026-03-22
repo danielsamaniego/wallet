@@ -1,7 +1,7 @@
-import type { AppContext } from "../../../../shared/domain/kernel/context.js";
+import type { AppContext } from "../../../../shared/kernel/context.js";
 import type { ICommandHandler } from "../../../../shared/application/cqrs.js";
-import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
-import type { ITransactionManager } from "../../../../shared/domain/kernel/transaction.manager.js";
+import type { ILogger } from "../../../../shared/kernel/observability/logger.port.js";
+import type { ITransactionManager } from "../../../../shared/application/transaction.manager.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { ErrWalletNotFound } from "../../../domain/wallet/wallet.errors.js";
 import type { UnfreezeWalletCommand } from "./command.js";

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ListingConfig } from "../../../../../../shared/domain/kernel/listing.js";
+import type { ListingConfig } from "../../../../../../shared/kernel/listing.js";
 import { createListingQuerySchema } from "../../../../../../shared/infrastructure/kernel/listing.zod.js";
 
 // ── Path Params ─────────────────────────────────────────────────────────────

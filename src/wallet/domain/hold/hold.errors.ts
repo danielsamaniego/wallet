@@ -1,4 +1,4 @@
-import { AppError } from "../../../shared/domain/appError.js";
+import { AppError } from "../../../shared/kernel/appError.js";
 
 export const ErrHoldNotFound = (holdId: string) =>
   AppError.notFound("HOLD_NOT_FOUND", `hold ${holdId} not found`);

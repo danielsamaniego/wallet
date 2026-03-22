@@ -1,5 +1,5 @@
 import { IQuery } from "../../../../shared/application/cqrs.js";
-import type { AppContext } from "../../../../shared/domain/kernel/context.js";
+import type { AppContext } from "../../../../shared/kernel/context.js";
 
 /**
  * Wallet read DTO exposed to API consumers.

@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
-import type { AppContext } from "../../../../../shared/domain/kernel/context.js";
-import type { ILogger } from "../../../../../shared/domain/observability/logger.port.js";
+import type { AppContext } from "../../../../../shared/kernel/context.js";
+import type { ILogger } from "../../../../../shared/kernel/observability/logger.port.js";
 import type { Movement } from "../../../../domain/movement/movement.entity.js";
 import type { IMovementRepository } from "../../../../domain/ports/movement.repository.js";
 

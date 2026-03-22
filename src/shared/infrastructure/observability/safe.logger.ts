@@ -1,5 +1,5 @@
-import type { AppContext } from "../../domain/kernel/context.js";
-import type { ILogger } from "../../domain/observability/logger.port.js";
+import type { AppContext } from "../../kernel/context.js";
+import type { ILogger } from "../../kernel/observability/logger.port.js";
 
 /**
  * SafeLogger wraps a ILogger and recovers from any exception in logging.

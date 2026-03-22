@@ -1,12 +1,12 @@
-import type { AppContext } from "../../../../shared/domain/kernel/context.js";
+import type { AppContext } from "../../../../shared/kernel/context.js";
 import type { ICommandHandler } from "../../../../shared/application/cqrs.js";
-import type { IIDGenerator } from "../../../../shared/domain/kernel/id.generator.js";
-import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import type { IIDGenerator } from "../../../../shared/application/id.generator.js";
+import type { ILogger } from "../../../../shared/kernel/observability/logger.port.js";
 import { LedgerEntry } from "../../../domain/ledgerEntry/ledgerEntry.entity.js";
 import { Movement } from "../../../domain/movement/movement.entity.js";
 import type { ILedgerEntryRepository } from "../../../domain/ports/ledgerEntry.repository.js";
 import type { IMovementRepository } from "../../../domain/ports/movement.repository.js";
-import type { ITransactionManager } from "../../../../shared/domain/kernel/transaction.manager.js";
+import type { ITransactionManager } from "../../../../shared/application/transaction.manager.js";
 import type { ITransactionRepository } from "../../../domain/ports/transaction.repository.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { Transaction } from "../../../domain/transaction/transaction.entity.js";

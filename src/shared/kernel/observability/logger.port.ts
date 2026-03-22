@@ -1,4 +1,4 @@
-import type { AppContext } from "../kernel/context.js";
+import type { AppContext } from "../context.js";
 
 /**
  * Logger is the port for structured logging. Implementations (e.g. Pino adapter)

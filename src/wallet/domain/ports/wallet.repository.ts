@@ -1,4 +1,4 @@
-import type { AppContext } from "../../../shared/domain/kernel/context.js";
+import type { AppContext } from "../../../shared/kernel/context.js";
 import type { Wallet } from "../wallet/wallet.aggregate.js";
 
 export interface IWalletRepository {
