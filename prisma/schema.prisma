@@ -31,7 +31,7 @@ model Wallet {
   currencyCode       String        @map("currency_code") /// ISO 4217 (USD, EUR, etc.)
   cachedBalanceCents BigInt        @default(0) @map("cached_balance_cents") /// Integer cents
   status             String        @default("active") /// active | frozen | closed
-  version            Int           @default(0) /// Optimistic locking
+  version            Int           @default(1) /// Optimistic locking
   isSystem           Boolean       @default(false) @map("is_system") /// True for system/omnibus wallets
   createdAt          BigInt        @map("created_at") /// Unix ms
   updatedAt          BigInt        @map("updated_at") /// Unix ms
