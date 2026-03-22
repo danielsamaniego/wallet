@@ -74,7 +74,7 @@ async function main() {
       if (status >= 500) {
         deps.logger.error(ctx, err.code, { error: err.message });
       } else {
-        deps.logger.info(ctx, err.code);
+        deps.logger.warn(ctx, err.code);
       }
       return errorResponse(c, err.code, err.msg, status);
     }

@@ -18,7 +18,7 @@ Approach for managing PostgreSQL schema and migrations in the Wallet Service usi
 - **Prisma Migrate** (v7.x): `prisma migrate dev`, `prisma db push`, `prisma generate`
 - **Schema**: `prisma/schema.prisma` — single source of truth for models
 - **Config**: `prisma/prisma.config.ts` — connection URL for migrations (Prisma 7.x requirement)
-- **Runtime**: `PrismaClient` receives `datasourceUrl` via constructor in `src/wiring.ts`
+- **Runtime**: `PrismaClient` uses the **Prisma Postgres adapter** (`@prisma/adapter-pg`) in `src/wiring.ts`. The adapter receives the connection string from config and is passed to `new PrismaClient({ adapter })`
 - **Migrations**: Generated SQL in `prisma/migrations/` per migration
 
 ---

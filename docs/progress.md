@@ -15,6 +15,7 @@
 - [x] Utils: CanonicalAccumulator (request-scoped meta + counters) in `utils/kernel/observability/canonical.ts`
 - [x] Utils: PinoAdapter (structured JSON logging with context fields) in `utils/infrastructure/observability/pino.adapter.ts`
 - [x] CQRS bus: ICommandBus/IQueryBus interfaces (`utils/application/cqrs.ts`) and implementations (`utils/infrastructure/cqrs.ts`) with middleware pipeline
+- [x] TransactionManager: Serializable isolation + internal retry (3 attempts, exponential backoff) in `utils/infrastructure/prisma.transaction.manager.ts`
 - [x] Middleware: trackingCanonical (tracking_id UUID v7 + canonical dispatch) in `utils/middleware/trackingCanonical.ts`
 - [x] Middleware: requestResponseLog (request/response logging) in `utils/middleware/requestResponseLog.ts`
 - [x] Middleware: apiKeyAuth (API key validation) in `utils/middleware/apiKeyAuth.ts`
@@ -66,7 +67,7 @@
 - [ ] Rate limiting middleware
 - [ ] Hash chain tamper detection (ledger entries)
 - [ ] Reconciliation background job
-- [ ] Server-side retry for VERSION_CONFLICT (2-3 attempts)
+- [x] Server-side retry for VERSION_CONFLICT (3 attempts + exponential backoff in PrismaTransactionManager)
 - [ ] Production deploy configuration (managed PostgreSQL + Node.js process)
 - [ ] Integration tests
 - [x] Idempotency record TTL cleanup job (60s interval) — implemented as command dispatched via bus

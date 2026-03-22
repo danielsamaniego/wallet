@@ -8,7 +8,7 @@
 | Framework | Hono |
 | Language | TypeScript 5+ (strict) |
 | Database | PostgreSQL 16 |
-| ORM | Prisma 7 |
+| ORM | Prisma 7 (via `@prisma/adapter-pg` + `pg` driver) |
 | Validation | Zod |
 | API docs | hono-openapi + @scalar/hono-api-reference (auto-generated OpenAPI 3.1) |
 | Logging | Pino (structured JSON) |
@@ -30,6 +30,17 @@ pnpm dev              # Dev server with hot reload
 ```
 
 See `README.md` for full script reference.
+
+## Database Connection
+
+Prisma connects via the **Prisma Postgres adapter** (`@prisma/adapter-pg` + `pg` driver). In `wiring.ts`:
+
+```typescript
+const adapter = new PrismaPg({ connectionString: config.databaseUrl });
+const prisma = new PrismaClient({ adapter });
+```
+
+This uses the native `pg` driver instead of Prisma's built-in connection, enabling more control over the connection pool and compatibility with managed PostgreSQL providers.
 
 ## Production
 

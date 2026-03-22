@@ -16,9 +16,9 @@ Before implementing any change, **read the relevant docs** from `docs/`:
 
 Project rules and conventions are in `AGENTS.md`. Do not assume; load the files and apply what they specify.
 
-**Dependency rule**: Domain and app must not use any external third-party library. No Prisma, Pino, uuidv7, Zod in domain or app. Allowed: TypeScript stdlib, interfaces (ports), and project-internal shared packages (`shared/appError`, `shared/kernel`, `shared/observability`). Third-party libs live only in adapters.
+**Dependency rule**: Domain and app must not use any external third-party library. No Prisma, Pino, uuidv7, Zod in domain or app. Allowed: TypeScript stdlib, interfaces (ports), and `utils/kernel/` only. Never import from `utils/infrastructure/` or `utils/middleware/` in domain or app — that's an architecture violation. Third-party libs live only in adapters.
 
-**Entity IDs — UUID v7 only, in application**: App generates IDs via `IDGenerator`; DB never generates them. Never UUID v4.
+**Entity IDs — UUID v7 only, in application**: App generates IDs via `IIDGenerator`; DB never generates them. Never UUID v4.
 
 **Amounts — Integer cents (BigInt)**: All financial amounts are the smallest currency unit. `$1.99` = `199`. Never float, never decimal. API sends/receives `amount_cents: number`.
 
@@ -26,14 +26,14 @@ Project rules and conventions are in `AGENTS.md`. Do not assume; load the files 
 
 **Queries**: Use ReadStore ports (return DTOs). Do not load aggregates for reads.
 
-**Logging**: Use `Logger` (port); wired as PinoAdapter → SensitiveKeysFilter → SafeLogger. mainLogTag per file, methodLogTag per method; every message starts with methodLogTag.
+**Logging**: Use `ILogger` (port); wired as PinoAdapter → SensitiveKeysFilter → SafeLogger. mainLogTag per file, methodLogTag per method; every message starts with methodLogTag.
 
-**Error handling**: Use `AppError` (Kind + Code + Message). Domain: factory functions returning `AppError`. HTTP handlers: `withError(c, logger, ctx, tag, err)` — maps Kind → HTTP status, returns `{"error": "CODE", "message": "..."}`. Every error needs a unique UPPER_SNAKE_CASE Code.
+**Error handling**: Use `AppError` (Kind + Code + Message). Domain: factory functions returning `AppError`. HTTP handlers throw — global `onError` in `index.ts` catches `AppError`, maps Kind → HTTP status via `httpStatus()`, returns `errorResponse()` → `{"error": "CODE", "message": "..."}`. Middleware uses `errorResponse()` directly. Every error needs a unique UPPER_SNAKE_CASE Code.
 
-**Concurrency**: Single-wallet ops: optimistic locking (version field). Multi-wallet ops: SELECT FOR UPDATE with ORDER BY id. All mutations: idempotency keys required.
+**Concurrency**: Optimistic locking (`version` field) for ALL wallet mutations including PlaceHold/VoidHold. System wallets use atomic increment (no version check). No `SELECT FOR UPDATE` in domain ports (infrastructure leak). All mutations: idempotency keys required. TransactionManager: Serializable isolation + internal retry (3 attempts, exponential backoff) before escalating `VERSION_CONFLICT` to client.
 
 **Ledger**: Double-entry bookkeeping. Every financial op = 2 LedgerEntry records (debit + credit). `ledger_entries` is immutable (append-only): never UPDATE, never DELETE.
 
-**API endpoints**: Never add or change endpoints without documenting them. Each directory under `src/api/` must have an **API.md**.
+**API endpoints**: Auto-generated via hono-openapi + Scalar. Each endpoint folder has `schemas.ts` (Zod request + response) and `handler.ts` (describeRoute + validators + handler). Register routes in BC route files (e.g., `wallets.routes.ts`).
 
 **Responses to user**: Always in Spanish. Code and documentation in English.

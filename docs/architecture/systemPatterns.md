@@ -35,7 +35,18 @@ Command handlers use a `TransactionManager` port to execute multiple repository 
 
 **Port**: `ITransactionManager` interface in `utils/application/transaction.manager.ts`. Its `run()` method receives the current `AppContext` and passes an enriched copy (with `opCtx` populated) to the callback.
 **Repositories**: Each repository method receives a single `ctx: AppContext`. The Prisma adapter inspects `ctx.opCtx` internally — when present it uses the transaction client, otherwise the default client. This keeps the `TransactionManager` decoupled from repositories — it only opens/closes the transaction scope.
-**Adapter**: `PrismaTransactionManager` (`utils/infrastructure/prisma.transaction.manager.ts`) wraps `prisma.$transaction()` and spreads the original `AppContext` with `opCtx: tx` to produce the enriched context.
+**Adapter**: `PrismaTransactionManager` (`utils/infrastructure/prisma.transaction.manager.ts`) wraps `prisma.$transaction()` with **Serializable isolation level** and spreads the original `AppContext` with `opCtx: tx` to produce the enriched context.
+
+### Server-side retry (internal to TransactionManager)
+
+The `PrismaTransactionManager` includes an **internal retry loop** (up to 3 attempts with exponential backoff: 30ms, 60ms, 120ms) for retryable errors:
+
+- **VERSION_CONFLICT**: Our domain-level optimistic locking error.
+- **PostgreSQL serialization failure** (SQLSTATE 40001 / Prisma P2034): Thrown under Serializable isolation when PostgreSQL detects a read/write dependency conflict.
+
+If all retries are exhausted, serialization failures are escalated as `VERSION_CONFLICT` (409) so the client can retry with the same idempotency key. Non-retryable errors propagate immediately without retry.
+
+This means the client sees retries only when the server's internal attempts are insufficient — for most low-contention workloads, conflicts resolve within the 3 internal attempts without the client ever knowing.
 
 ## Logging
 
@@ -109,7 +120,7 @@ Paginated GET endpoints use a **reusable listing system** (`utils/kernel/listing
 
 | Control | Use |
 |---------|-----|
-| Optimistic locking | User wallet mutations (single and multi-wallet), **including PlaceHold and VoidHold** which call `wallet.touchForHoldChange()` + `walletRepo.save()` to participate in version contention. `version` field checked on save; mismatch → `409 VERSION_CONFLICT`; client retries with same idempotency key. **System wallets** use `adjustSystemWalletBalance()` with atomic increment instead — no version check needed, eliminates hot-row contention. |
+| Optimistic locking | User wallet mutations (single and multi-wallet), **including PlaceHold and VoidHold** which call `wallet.touchForHoldChange()` + `walletRepo.save()` to participate in version contention. `version` field checked on save; mismatch → VERSION_CONFLICT. TransactionManager retries internally (3 attempts, exponential backoff); if exhausted, escalates `409 VERSION_CONFLICT` to client, who retries with same idempotency key. **System wallets** use `adjustSystemWalletBalance()` with atomic increment instead — no version check needed, eliminates hot-row contention. |
 | Idempotency keys | All mutations. Atomic acquire pattern: INSERT pending record before execution; concurrent duplicates get `409 IDEMPOTENCY_KEY_IN_PROGRESS` or cached response. Transient errors (5xx, 409) are released, not cached. Request hash includes `method:path:body` so the same key on a different endpoint is rejected. Payload mismatch → `422 IDEMPOTENCY_PAYLOAD_MISMATCH`. |
 | DB constraints | Uniqueness, referential integrity, positive amounts, balance rules as safety net. |
 

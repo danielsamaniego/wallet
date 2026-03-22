@@ -560,7 +560,7 @@ The scheduler infrastructure lives in `utils/infrastructure/scheduler.ts` (`star
 
 ## Concurrency
 
-- **Optimistic locking**: All wallet mutations (single and multi-wallet). On version mismatch → `409 VERSION_CONFLICT`; client retries with same idempotency key. No server-side retry.
+- **Optimistic locking**: All wallet mutations (single and multi-wallet). On version mismatch, the `TransactionManager` retries internally (3 attempts, exponential backoff 30/60/120ms) before escalating `409 VERSION_CONFLICT` to the client. Transactions run under **Serializable isolation**; PostgreSQL serialization failures (40001/P2034) are also retried internally and, if exhausted, mapped to `VERSION_CONFLICT`.
 - **Idempotency keys**: All mutations. Atomic acquire pattern (INSERT pending → execute → complete). See `systemPatterns.md`.
 - **DB constraints**: Uniqueness, referential integrity, positive amounts as safety net.
 
