@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { HonoVariables } from "../../../../../shared/infrastructure/kernel/hono.context.js";
+import type { HonoVariables } from "../../../../../utils/infrastructure/kernel/hono.context.js";
 import { closeWalletRoute } from "./closeWallet/handler.js";
 import { createWalletRoute } from "./createWallet/handler.js";
 import { depositRoute } from "./deposit/handler.js";
@@ -10,8 +10,8 @@ import { getWalletRoute } from "./getWallet/handler.js";
 import { unfreezeWalletRoute } from "./unfreezeWallet/handler.js";
 import { withdrawRoute } from "./withdraw/handler.js";
 import type { Dependencies } from "../../../../../wiring.js";
-import { apiKeyAuth } from "../../../../../shared/infrastructure/http/middleware/apiKeyAuth.js";
-import { idempotency } from "../../../../../shared/infrastructure/http/middleware/idempotency.js";
+import { apiKeyAuth } from "../../../../../utils/middleware/apiKeyAuth.js";
+import { idempotency } from "../../../../../utils/middleware/idempotency.js";
 
 export function walletRoutes(deps: Dependencies) {
   const router = new Hono<{ Variables: HonoVariables }>();

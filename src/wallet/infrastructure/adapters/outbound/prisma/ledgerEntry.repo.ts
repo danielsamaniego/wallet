@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
-import type { AppContext } from "../../../../../shared/kernel/context.js";
-import type { ILogger } from "../../../../../shared/kernel/observability/logger.port.js";
+import type { AppContext } from "../../../../../utils/kernel/context.js";
+import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
 import type { LedgerEntry } from "../../../../domain/ledgerEntry/ledgerEntry.entity.js";
 import type { ILedgerEntryRepository } from "../../../../domain/ports/ledgerEntry.repository.js";
 

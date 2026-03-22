@@ -1,4 +1,4 @@
-import { AppError } from "../../../shared/kernel/appError.js";
+import { AppError } from "../../../utils/kernel/appError.js";
 
 export type HoldStatus = "active" | "captured" | "voided" | "expired";
 

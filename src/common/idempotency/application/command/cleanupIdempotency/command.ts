@@ -1,4 +1,4 @@
-import { ICommand } from "../../cqrs.js";
+import { ICommand } from "../../../../../utils/application/cqrs.js";
 
 export interface CleanupIdempotencyResult {
   deletedCount: number;

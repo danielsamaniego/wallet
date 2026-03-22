@@ -1,8 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
-import { toNumber, toSafeNumber } from "../../../../../shared/kernel/bigint.js";
-import type { AppContext } from "../../../../../shared/kernel/context.js";
-import type { ILogger } from "../../../../../shared/kernel/observability/logger.port.js";
-import type { IWalletReadStore, WalletDTO } from "../../../../application/query/getWallet/query.js";
+import { toNumber, toSafeNumber } from "../../../../../utils/kernel/bigint.js";
+import type { AppContext } from "../../../../../utils/kernel/context.js";
+import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
+import type { WalletDTO } from "../../../../application/query/getWallet/query.js";
+import type { IWalletReadStore } from "../../../../application/ports/wallet.readstore.js";
 
 export class PrismaWalletReadStore implements IWalletReadStore {
   constructor(

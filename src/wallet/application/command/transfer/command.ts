@@ -1,4 +1,4 @@
-import { ICommand } from "../../../../shared/application/cqrs.js";
+import { ICommand } from "../../../../utils/application/cqrs.js";
 
 export interface TransferResult {
   sourceTransactionId: string;

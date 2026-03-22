@@ -6,18 +6,18 @@ import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { openAPIRouteHandler } from "hono-openapi";
 import { holdRoutes } from "./wallet/infrastructure/adapters/inbound/http/holds.routes.js";
-import { requestResponseLog } from "./shared/infrastructure/http/middleware/requestResponseLog.js";
-import { trackingCanonical } from "./shared/infrastructure/http/middleware/trackingCanonical.js";
-import { errorResponse, httpStatus } from "./shared/infrastructure/kernel/hono.error.js";
+import { requestResponseLog } from "./utils/middleware/requestResponseLog.js";
+import { trackingCanonical } from "./utils/middleware/trackingCanonical.js";
+import { errorResponse, httpStatus } from "./utils/infrastructure/kernel/hono.error.js";
 import { transferRoutes } from "./wallet/infrastructure/adapters/inbound/http/transfers.routes.js";
 import { walletRoutes } from "./wallet/infrastructure/adapters/inbound/http/wallets.routes.js";
 import { loadConfig } from "./config.js";
-import { startScheduledJobs } from "./shared/infrastructure/adapters/inbound/scheduler/scheduler.js";
-import { sharedJobs } from "./shared/infrastructure/adapters/inbound/scheduler/jobs.js";
+import { startScheduledJobs } from "./utils/infrastructure/adapters/inbound/scheduler/scheduler.js";
+import { idempotencyJobs } from "./common/idempotency/infrastructure/adapters/inbound/scheduler/jobs.js";
 import { walletJobs } from "./wallet/infrastructure/adapters/inbound/scheduler/jobs.js";
-import type { HonoVariables } from "./shared/infrastructure/kernel/hono.context.js";
-import { buildAppContext } from "./shared/infrastructure/kernel/hono.context.js";
-import { AppError } from "./shared/kernel/appError.js";
+import type { HonoVariables } from "./utils/infrastructure/kernel/hono.context.js";
+import { buildAppContext } from "./utils/infrastructure/kernel/hono.context.js";
+import { AppError } from "./utils/kernel/appError.js";
 import { wire } from "./wiring.js";
 
 /**
@@ -121,7 +121,7 @@ async function main() {
   app.get("/docs", Scalar({ url: "/openapi" }));
 
   // Background scheduled jobs
-  startScheduledJobs([...sharedJobs, ...walletJobs], deps.commandBus, deps.idGen, deps.logger);
+  startScheduledJobs([...idempotencyJobs, ...walletJobs], deps.commandBus, deps.idGen, deps.logger);
 
   serve({ fetch: app.fetch, port: config.httpPort }, (info) => {
     console.log(`Wallet service running on http://localhost:${info.port}`);

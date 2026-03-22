@@ -1,7 +1,7 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
-import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
-import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { ICommandBus } from "../../../../../../shared/application/cqrs.js";
+import { ErrorResponseSchema, validationHook } from "../../../../../../utils/infrastructure/kernel/hono.error.js";
+import { buildAppContext, handlerFactory } from "../../../../../../utils/infrastructure/kernel/hono.context.js";
+import type { ICommandBus } from "../../../../../../utils/application/cqrs.js";
 import { DepositCommand } from "../../../../../application/command/deposit/command.js";
 import { BodySchema, ParamSchema, ResponseSchema } from "./schemas.js";
 

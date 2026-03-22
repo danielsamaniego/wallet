@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
-import type { AppContext } from "../../../../../shared/kernel/context.js";
-import type { ILogger } from "../../../../../shared/kernel/observability/logger.port.js";
+import type { AppContext } from "../../../../../utils/kernel/context.js";
+import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
 import type { HoldStatus } from "../../../../domain/hold/hold.entity.js";
 import { Hold } from "../../../../domain/hold/hold.entity.js";
 import type { IHoldRepository } from "../../../../domain/ports/hold.repository.js";

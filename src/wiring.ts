@@ -1,21 +1,21 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import type { IIdempotencyStore } from "./shared/infrastructure/http/middleware/idempotency.js";
+import type { IIdempotencyStore } from "./common/idempotency/application/ports/idempotency.store.js";
 import type { Config } from "./config.js";
-import { UUIDV7Generator } from "./shared/infrastructure/kernel/uuidV7.js";
-import { PinoAdapter } from "./shared/infrastructure/observability/pino.adapter.js";
-import { SafeLogger } from "./shared/infrastructure/observability/safe.logger.js";
-import { SensitiveKeysFilter } from "./shared/infrastructure/observability/sensitive.filter.js";
-import type { IIDGenerator } from "./shared/application/id.generator.js";
-import type { ILogger } from "./shared/kernel/observability/logger.port.js";
-import type { ICommandBus, IQueryBus } from "./shared/application/cqrs.js";
-import { CommandBus, QueryBus } from "./shared/infrastructure/kernel/bus.js";
+import { UUIDV7Generator } from "./utils/infrastructure/kernel/uuidV7.js";
+import { PinoAdapter } from "./utils/infrastructure/observability/pino.adapter.js";
+import { SafeLogger } from "./utils/infrastructure/observability/safe.logger.js";
+import { SensitiveKeysFilter } from "./utils/infrastructure/observability/sensitive.filter.js";
+import type { IIDGenerator } from "./utils/application/id.generator.js";
+import type { ILogger } from "./utils/kernel/observability/logger.port.js";
+import type { ICommandBus, IQueryBus } from "./utils/application/cqrs.js";
+import { CommandBus, QueryBus } from "./utils/infrastructure/kernel/bus.js";
 import { PrismaHoldRepo } from "./wallet/infrastructure/adapters/outbound/prisma/hold.repo.js";
-import { PrismaIdempotencyStore } from "./shared/infrastructure/persistence/prisma.idempotency.store.js";
+import { PrismaIdempotencyStore } from "./common/idempotency/infrastructure/adapters/outbound/prisma/idempotency.store.js";
 import { PrismaLedgerEntryReadStore } from "./wallet/infrastructure/adapters/outbound/prisma/ledgerEntry.readstore.js";
 import { PrismaLedgerEntryRepo } from "./wallet/infrastructure/adapters/outbound/prisma/ledgerEntry.repo.js";
 import { PrismaMovementRepo } from "./wallet/infrastructure/adapters/outbound/prisma/movement.repo.js";
-import { PrismaTransactionManager } from "./shared/infrastructure/kernel/prisma.transaction.manager.js";
+import { PrismaTransactionManager } from "./utils/infrastructure/kernel/prisma.transaction.manager.js";
 import { PrismaTransactionReadStore } from "./wallet/infrastructure/adapters/outbound/prisma/transaction.readstore.js";
 import { PrismaTransactionRepo } from "./wallet/infrastructure/adapters/outbound/prisma/transaction.repo.js";
 import { PrismaWalletReadStore } from "./wallet/infrastructure/adapters/outbound/prisma/wallet.readstore.js";
@@ -34,7 +34,7 @@ import { GetLedgerEntriesUseCase } from "./wallet/application/query/getLedgerEnt
 import { GetTransactionsUseCase } from "./wallet/application/query/getTransactions/usecase.js";
 import { GetWalletUseCase } from "./wallet/application/query/getWallet/usecase.js";
 import { ExpireHoldsUseCase } from "./wallet/application/command/expireHolds/usecase.js";
-import { CleanupIdempotencyUseCase } from "./shared/application/command/cleanupIdempotency/usecase.js";
+import { CleanupIdempotencyUseCase } from "./common/idempotency/application/command/cleanupIdempotency/usecase.js";
 
 // Command classes (needed for bus registration)
 import { CreateWalletCommand } from "./wallet/application/command/createWallet/command.js";
@@ -48,7 +48,7 @@ import { PlaceHoldCommand } from "./wallet/application/command/placeHold/command
 import { CaptureHoldCommand } from "./wallet/application/command/captureHold/command.js";
 import { VoidHoldCommand } from "./wallet/application/command/voidHold/command.js";
 import { ExpireHoldsCommand } from "./wallet/application/command/expireHolds/command.js";
-import { CleanupIdempotencyCommand } from "./shared/application/command/cleanupIdempotency/command.js";
+import { CleanupIdempotencyCommand } from "./common/idempotency/application/command/cleanupIdempotency/command.js";
 
 // Query classes (needed for bus registration)
 import { GetWalletQuery } from "./wallet/application/query/getWallet/query.js";

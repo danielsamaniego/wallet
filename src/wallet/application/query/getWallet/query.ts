@@ -1,6 +1,4 @@
-import { IQuery } from "../../../../shared/application/cqrs.js";
-import type { AppContext } from "../../../../shared/kernel/context.js";
-
+import { IQuery } from "../../../../utils/application/cqrs.js";
 /**
  * Wallet read DTO exposed to API consumers.
  * `version` is intentionally omitted — it is an internal optimistic locking
@@ -28,8 +26,4 @@ export class GetWalletQuery extends IQuery<WalletDTO> {
   ) {
     super(GetWalletQuery.TYPE);
   }
-}
-
-export interface IWalletReadStore {
-  getById(ctx: AppContext, walletId: string, platformId: string): Promise<WalletDTO | null>;
 }

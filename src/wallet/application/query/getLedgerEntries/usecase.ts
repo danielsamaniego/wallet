@@ -1,12 +1,9 @@
-import { AppError } from "../../../../shared/kernel/appError.js";
-import type { IQueryHandler } from "../../../../shared/application/cqrs.js";
-import type { AppContext } from "../../../../shared/kernel/context.js";
-import type { ILogger } from "../../../../shared/kernel/observability/logger.port.js";
-import type {
-  GetLedgerEntriesQuery,
-  ILedgerEntryReadStore,
-  PaginatedLedgerEntries,
-} from "./query.js";
+import { AppError } from "../../../../utils/kernel/appError.js";
+import type { IQueryHandler } from "../../../../utils/application/cqrs.js";
+import type { AppContext } from "../../../../utils/kernel/context.js";
+import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
+import type { GetLedgerEntriesQuery, PaginatedLedgerEntries } from "./query.js";
+import type { ILedgerEntryReadStore } from "../../ports/ledgerEntry.readstore.js";
 
 const mainLogTag = "GetLedgerEntriesUseCase";
 

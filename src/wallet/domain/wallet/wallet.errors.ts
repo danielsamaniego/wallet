@@ -1,4 +1,4 @@
-import { AppError } from "../../../shared/kernel/appError.js";
+import { AppError } from "../../../utils/kernel/appError.js";
 
 export const ErrWalletNotFound = (walletId: string) =>
   AppError.notFound("WALLET_NOT_FOUND", `wallet ${walletId} not found`);

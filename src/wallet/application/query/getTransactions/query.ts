@@ -1,6 +1,5 @@
-import { IQuery } from "../../../../shared/application/cqrs.js";
-import type { AppContext } from "../../../../shared/kernel/context.js";
-import type { ListingQuery } from "../../../../shared/kernel/listing.js";
+import { IQuery } from "../../../../utils/application/cqrs.js";
+import type { ListingQuery } from "../../../../utils/kernel/listing.js";
 
 export interface TransactionDTO {
   id: string;
@@ -30,13 +29,4 @@ export class GetTransactionsQuery extends IQuery<PaginatedTransactions> {
   ) {
     super(GetTransactionsQuery.TYPE);
   }
-}
-
-export interface ITransactionReadStore {
-  getByWallet(
-    ctx: AppContext,
-    walletId: string,
-    platformId: string,
-    listing: ListingQuery,
-  ): Promise<PaginatedTransactions | null>;
 }

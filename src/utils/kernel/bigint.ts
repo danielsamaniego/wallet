@@ -13,7 +13,7 @@
  *   or always `string` for maximum safety.
  *
  * Usage in adapters (read stores / HTTP handlers):
- *   import { toSafeNumber, bigIntReplacer } from "../shared/kernel/bigint.js";
+ *   import { toSafeNumber, bigIntReplacer } from "../utils/kernel/bigint.js";
  *   const dto = { balance_cents: toSafeNumber(wallet.cachedBalanceCents) };
  */
 

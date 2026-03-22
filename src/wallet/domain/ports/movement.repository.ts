@@ -1,4 +1,4 @@
-import type { AppContext } from "../../../shared/kernel/context.js";
+import type { AppContext } from "../../../utils/kernel/context.js";
 import type { Movement } from "../movement/movement.entity.js";
 
 export interface IMovementRepository {

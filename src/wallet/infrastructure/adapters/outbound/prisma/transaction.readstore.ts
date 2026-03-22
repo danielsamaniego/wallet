@@ -1,15 +1,12 @@
 import type { PrismaClient } from "@prisma/client";
-import { buildPrismaListing } from "../../../../../shared/infrastructure/kernel/listing.prisma.js";
-import { toNumber, toSafeNumber } from "../../../../../shared/kernel/bigint.js";
-import type { AppContext } from "../../../../../shared/kernel/context.js";
-import { encodeCursor } from "../../../../../shared/kernel/listing.js";
-import type { ListingQuery } from "../../../../../shared/kernel/listing.js";
-import type { ILogger } from "../../../../../shared/kernel/observability/logger.port.js";
-import type {
-  ITransactionReadStore,
-  PaginatedTransactions,
-  TransactionDTO,
-} from "../../../../application/query/getTransactions/query.js";
+import { buildPrismaListing } from "../../../../../utils/infrastructure/kernel/listing.prisma.js";
+import { toNumber, toSafeNumber } from "../../../../../utils/kernel/bigint.js";
+import type { AppContext } from "../../../../../utils/kernel/context.js";
+import { encodeCursor } from "../../../../../utils/kernel/listing.js";
+import type { ListingQuery } from "../../../../../utils/kernel/listing.js";
+import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
+import type { PaginatedTransactions, TransactionDTO } from "../../../../application/query/getTransactions/query.js";
+import type { ITransactionReadStore } from "../../../../application/ports/transaction.readstore.js";
 
 export class PrismaTransactionReadStore implements ITransactionReadStore {
   constructor(
