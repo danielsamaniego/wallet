@@ -30,7 +30,7 @@ Project rules and conventions are in `AGENTS.md`. Do not assume; load the files 
 
 **Error handling**: Use `AppError` (Kind + Code + Message). Domain: factory functions returning `AppError`. HTTP handlers throw — global `onError` in `index.ts` catches `AppError`, maps Kind → HTTP status via `httpStatus()`, returns `errorResponse()` → `{"error": "CODE", "message": "..."}`. Middleware uses `errorResponse()` directly. Every error needs a unique UPPER_SNAKE_CASE Code.
 
-**Concurrency**: Optimistic locking (`version` field) for ALL wallet mutations including PlaceHold/VoidHold. System wallets use atomic increment (no version check). No `SELECT FOR UPDATE` in domain ports (infrastructure leak). All mutations: idempotency keys required. TransactionManager: Serializable isolation + internal retry (3 attempts, exponential backoff) before escalating `VERSION_CONFLICT` to client.
+**Concurrency**: Optimistic locking (`version` field) for ALL wallet mutations including PlaceHold/VoidHold. System wallets use atomic increment (no version check). No `SELECT FOR UPDATE` in domain ports (infrastructure leak). All mutations: idempotency keys required. TransactionManager: Serializable isolation + internal retry (3 attempts, exponential backoff) before escalating `VERSION_CONFLICT` to client. Use `txManager.run()` only when multi-write atomicity is needed; single idempotent writes and read-only queries skip it.
 
 **Ledger**: Double-entry bookkeeping. Every financial op = 2 LedgerEntry records (debit + credit). `ledger_entries` is immutable (append-only): never UPDATE, never DELETE.
 

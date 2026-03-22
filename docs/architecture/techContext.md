@@ -29,7 +29,7 @@ pnpm db:update        # Schema/constraint changes only (preserves data)
 pnpm dev              # Dev server with hot reload
 ```
 
-See `README.md` for full script reference.
+See the root `README.md` for full script reference.
 
 ## Database Connection
 

@@ -24,7 +24,7 @@
 - [x] Global onError handler (maps AppError → HTTP status, catches unhandled exceptions)
 - [x] Prisma schema (all models)
 - [x] Immutable ledger SQL (trigger + constraints)
-- [x] Hono app with health endpoint, secureHeaders, notFound, basePath("/v1"), route() sub-apps
+- [x] Hono app with health endpoint, cors (hono/cors), secureHeaders (hono/secure-headers), notFound, basePath("/v1"), route() sub-apps
 - [x] Config from env vars
 - [x] Centralized DI wiring (repos + use cases + bus registration in wiring.ts)
 - [x] HTTP handlers using handlerFactory.createHandlers() with hono-openapi validator (type-safe, no try/catch)

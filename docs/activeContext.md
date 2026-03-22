@@ -5,7 +5,7 @@
 Wallet bounded context fully implemented and audited. Major architectural refactoring completed: `shared/` replaced by `utils/` + `common/`, `src/api/` eliminated (routes colocated with BC), `src/jobs/` replaced by scheduled jobs as inbound adapters dispatching commands via bus. CQRS bus (CommandBus/QueryBus) with middleware pipeline fully operational.
 
 **Completed:**
-- Hono app with middleware chain (tracking, logging, CORS, apiKeyAuth, idempotency)
+- Hono app with middleware chain (trackingCanonical → cors → secureHeaders → requestResponseLog global; apiKeyAuth → idempotency per route group)
 - Utils infrastructure: AppError, IIDGenerator (UUID v7), Logger chain (Pino -> SensitiveKeysFilter -> SafeLogger)
 - CQRS bus: ICommandBus/IQueryBus interfaces (`utils/application/cqrs.ts`) and implementations (`utils/infrastructure/cqrs.ts`) with middleware pipeline
 - Prisma schema with all models (Platform, Wallet, Transaction, LedgerEntry, Hold, Movement, IdempotencyRecord)

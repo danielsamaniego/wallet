@@ -47,11 +47,13 @@ Strict CQRS says commands should return nothing — the client issues the comman
 **Our rule**: commands may return **simple, minimal data** (e.g. the created ID, a success flag) so the client can fetch full details with a follow-up GET. Commands must **never** return full aggregates or rich DTOs — that is the query side's job.
 
 Examples of acceptable command returns:
+
 - `createWallet` → `{ walletId: string }`
 - `deposit` → `{ transactionId: string }`
 - `transfer` → `{ sourceTransactionId: string, targetTransactionId: string }`
 
 Examples of what commands must **not** return:
+
 - Full wallet object with balance, status, transactions
 - Paginated transaction list
 - Anything that requires JOINs or complex queries
@@ -70,6 +72,7 @@ This architecture uses **CQRS without Event Sourcing** and **without Event-Drive
 4. **No need for temporal queries.** We don't need "what was the balance at 3pm yesterday?" — the ledger entries with `balance_after_cents` snapshots already answer that question.
 
 **What we use instead**:
+
 - **Direct state persistence**: Aggregates are loaded, mutated, and saved. The DB holds current state.
 - **Immutable ledger**: `ledger_entries` gives us the audit trail that Event Sourcing would provide.
 - **CQRS separation**: Write side (commands + repositories) and read side (queries + read stores) are separate interfaces, even though they share the same database.
@@ -160,29 +163,35 @@ src/
 
 ## Bounded Contexts
 
-| BC | Responsibility |
-|----|----------------|
-| **Wallet** | Wallets, transactions, ledger entries, holds. Deposits, withdrawals, transfers, hold lifecycle. Double-entry bookkeeping. |
-| **Platform** | API key management, platform registration. Authentication of API consumers. *(Not yet implemented — planned.)* |
+
+| BC           | Responsibility                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| **Wallet**   | Wallets, transactions, ledger entries, holds. Deposits, withdrawals, transfers, hold lifecycle. Double-entry bookkeeping. |
+| **Platform** | API key management, platform registration. Authentication of API consumers. *(Not yet implemented — planned.)*            |
+
 
 ---
 
 ## Cross-Cutting Modules
 
-| Module | Location | Role |
-|--------|----------|------|
-| **common/** | `src/common/` | Global features with complete architecture (ports, adapters, use cases) that don't belong to specific BCs. Currently contains idempotency feature (cleanup job, store port, Prisma adapter). NOT a bounded context. |
-| **utils/** | `src/utils/` | Pure toolkit — reusable utilities that are NOT features. Contains kernel (domain-safe abstractions), application interfaces (CQRS, IIDGenerator, ITransactionManager), infrastructure implementations, and HTTP middlewares. |
-| **utils/kernel/** | `src/utils/kernel/` | Domain-safe abstractions. Equivalent to domain+application pragmatically. Kernel must NOT depend on infrastructure or external libraries. Contains AppError, AppContext, BigInt utils, listing types, ILogger port. |
+
+| Module            | Location            | Role                                                                                                                                                                                                                         |
+| ----------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **common/**       | `src/common/`       | Global features with complete architecture (ports, adapters, use cases) that don't belong to specific BCs. Currently contains idempotency feature (cleanup job, store port, Prisma adapter). NOT a bounded context.          |
+| **utils/**        | `src/utils/`        | Pure toolkit — reusable utilities that are NOT features. Contains kernel (domain-safe abstractions), application interfaces (CQRS, IIDGenerator, ITransactionManager), infrastructure implementations, and HTTP middlewares. |
+| **utils/kernel/** | `src/utils/kernel/` | Domain-safe abstractions. Equivalent to domain+application pragmatically. Kernel must NOT depend on infrastructure or external libraries. Contains AppError, AppContext, BigInt utils, listing types, ILogger port.          |
+
 
 ---
 
 ## HTTP and Application Layers
 
-| Layer | Location | Role |
-|-------|----------|------|
-| **HTTP / Inbound** | `wallet/infrastructure/adapters/inbound/http/` | Parse request, validate format, dispatch Command/Query via bus, return response. |
-| **Application** | `wallet/application/command/`, `wallet/application/query/` | Orchestrate domain and ports; use case logic. |
+
+| Layer              | Location                                                   | Role                                                                             |
+| ------------------ | ---------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| **HTTP / Inbound** | `wallet/infrastructure/adapters/inbound/http/`             | Parse request, validate format, dispatch Command/Query via bus, return response. |
+| **Application**    | `wallet/application/command/`, `wallet/application/query/` | Orchestrate domain and ports; use case logic.                                    |
+
 
 ---
 
@@ -190,13 +199,19 @@ src/
 
 Each route group has its own routes file colocated with the bounded context:
 
-| Module | Base path | Responsibilities |
-|--------|-----------|-------------------|
-| `wallet/infrastructure/adapters/inbound/http/wallets.routes.ts` | `/v1/wallets` | Create wallet, deposit, withdraw, freeze, unfreeze, close, get balance |
-| `wallet/infrastructure/adapters/inbound/http/transfers.routes.ts` | `/v1/transfers` | P2P transfers between wallets |
-| `wallet/infrastructure/adapters/inbound/http/holds.routes.ts` | `/v1/holds` | Place, capture, void holds |
 
-`index.ts` creates the app, registers middleware, and mounts each route group. Route files receive `commandBus` / `queryBus` (not individual handler instances).
+| Module                                                            | Base path       | Responsibilities                                                       |
+| ----------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------- |
+| `wallet/infrastructure/adapters/inbound/http/wallets.routes.ts`   | `/v1/wallets`   | Create wallet, deposit, withdraw, freeze, unfreeze, close, get balance |
+| `wallet/infrastructure/adapters/inbound/http/transfers.routes.ts` | `/v1/transfers` | P2P transfers between wallets                                          |
+| `wallet/infrastructure/adapters/inbound/http/holds.routes.ts`     | `/v1/holds`     | Place, capture, void holds                                             |
+
+
+`index.ts` creates the app, registers global middleware, and mounts each route group under `app.basePath("/v1")`. The `/v1` prefix is set once; route files must **not** repeat it. Health check (`/health`) and docs (`/openapi`, `/docs`) live outside `/v1`.
+
+**Global middleware chain** (order matters): `trackingCanonical` → `cors` (hono/cors) → `secureHeaders` (hono/secure-headers) → `requestResponseLog`. Then per route group: `apiKeyAuth` → `idempotency` (mutations only).
+
+Route files receive `commandBus` / `queryBus` (not individual handler instances).
 
 ### API documentation (auto-generated)
 
@@ -215,18 +230,19 @@ Request schemas (`ParamSchema`, `BodySchema`, `QueryParamsSchema`) are autodisco
 
 Each command use case lives in its own directory with **two files**:
 
-- **`command.ts`** — Pure type definitions: the command interface (input) and optional result interface (output). No dependencies, no logic. This keeps the contract readable and importable without pulling in handler dependencies.
-- **`usecase.ts`** — The use case class (handler). Imports the command/result types from `./command.js`. Depends only on interfaces (repos, services, ports); no external libraries.
+- `**command.ts`** — Pure type definitions: the command interface (input) and optional result interface (output). No dependencies, no logic. This keeps the contract readable and importable without pulling in handler dependencies.
+- `**usecase.ts**` — The use case class (handler). Imports the command/result types from `./command.js`. Depends only on interfaces (repos, services, ports); no external libraries.
 
 ```
 application/command/deposit/
 ├── command.ts    ← DepositCommand, DepositResult (types only)
-└── usecase.ts    ← DepositHandler (imports from command.ts)
+└── usecase.ts    ← DepositUseCase (imports from command.ts)
 ```
 
 Rules:
+
 - Validation at use-case level.
-- Transactional boundary (Prisma transaction via TransactionManager).
+- Use `txManager.run()` only when the use case performs **multiple writes that must be atomic** — partial failure would create data inconsistency (e.g., deposit writes wallet + transaction + ledger entries). Use cases with a **single idempotent write** (e.g., `ExpireHoldsUseCase` calling `holdRepo.expireOverdue()`) or read-only queries do not need a transaction wrapper.
 - Load aggregates → call aggregate methods → Save.
 - **May return**: IDs or minimal data for follow-up GET.
 - **Must not**: return full aggregates or rich DTOs.
@@ -235,18 +251,19 @@ Rules:
 
 Each query use case lives in its own directory with **two files**:
 
-- **`query.ts`** — Pure type definitions: the query interface (input), DTO interfaces (output), and pagination types. No dependencies.
-- **`usecase.ts`** — The use case class (handler). Imports types from `./query.js`.
+- `**query.ts`** — Pure type definitions: the query interface (input), DTO interfaces (output), and pagination types. No dependencies.
+- `**usecase.ts**` — The use case class (handler). Imports types from `./query.js`.
 
 ```
 application/query/getWallet/
 ├── query.ts      ← GetWalletQuery, WalletDTO (types only)
-└── usecase.ts    ← GetWalletHandler (imports from query.ts)
+└── usecase.ts    ← GetWalletUseCase (imports from query.ts)
 ```
 
 ReadStore interfaces are extracted into `wallet/application/ports/` (e.g., `wallet.readstore.ts`, `transaction.readstore.ts`, `ledgerEntry.readstore.ts`).
 
 Rules:
+
 - Depends only on **interfaces** (ReadStore, etc.); no external libraries.
 - Validate params → call ReadStore → return DTO.
 - **Must not**: load aggregates to build response.
@@ -255,8 +272,8 @@ Rules:
 
 Each endpoint folder has **two files**:
 
-- **`schemas.ts`** — Zod request schemas (`ParamSchema`, `BodySchema`, `QueryParamsSchema`) and `ResponseSchema`. Single source of truth for validation and OpenAPI documentation.
-- **`handler.ts`** — Imports from `schemas.ts`. Uses `describeRoute()` (tags, summary, responses with `resolver()`) + `validator()` from `hono-openapi` + the async handler function, all inside `handlerFactory.createHandlers()`.
+- `**schemas.ts`** — Zod request schemas (`ParamSchema`, `BodySchema`, `QueryParamsSchema`) and `ResponseSchema`. Single source of truth for validation and OpenAPI documentation.
+- `**handler.ts**` — Imports from `schemas.ts`. Uses `describeRoute()` (tags, summary, responses with `resolver()`) + `validator()` from `hono-openapi` + the async handler function, all inside `handlerFactory.createHandlers()`.
 
 ```
 wallet/infrastructure/adapters/inbound/http/deposit/
@@ -296,6 +313,7 @@ export function depositRoute(commandBus: ICommandBus) {
 ```
 
 Rules:
+
 - **All mutations require Idempotency-Key header.**
 - No try/catch — errors propagate to the global `onError`.
 - Use `validator` from `hono-openapi` (aliased as `zValidator`), **not** `@hono/zod-validator`.
@@ -356,6 +374,7 @@ export const QueryParamsSchema = createListingQuerySchema(listingConfig);
 Each BC owns its composite read models (pagination, joins, aggregations). No dedicated `views/` BC.
 
 **Rules:**
+
 - Queries return DTOs; adapter runs Prisma queries (includes, selects, complex filters).
 - Do **not** put these in aggregate repositories.
 - Same DB: Prisma includes/relations across models are fine in read store only.
@@ -391,15 +410,17 @@ class AppError extends Error {
 
 **ErrorKind** classifies the error by business semantics, not by HTTP status:
 
-| Kind | Meaning | HTTP mapping |
-|------|---------|-------------|
-| `Validation` | Invalid input | 400 |
-| `Unauthorized` | Authentication failed | 401 |
-| `Forbidden` | Not allowed | 403 |
-| `NotFound` | Resource not found | 404 |
-| `Conflict` | State conflict (duplicate, version mismatch) | 409 |
-| `DomainRule` | Business rule violation | 422 |
-| `Internal` | Unexpected internal error | 500 |
+
+| Kind           | Meaning                                      | HTTP mapping |
+| -------------- | -------------------------------------------- | ------------ |
+| `Validation`   | Invalid input                                | 400          |
+| `Unauthorized` | Authentication failed                        | 401          |
+| `Forbidden`    | Not allowed                                  | 403          |
+| `NotFound`     | Resource not found                           | 404          |
+| `Conflict`     | State conflict (duplicate, version mismatch) | 409          |
+| `DomainRule`   | Business rule violation                      | 422          |
+| `Internal`     | Unexpected internal error                    | 500          |
+
 
 ### How each layer uses errors
 
@@ -483,13 +504,15 @@ Always pass the `AppContext` (built via `buildAppContext(c)`) so these fields ar
 
 **Production goal: full traceability.** Every request must be reconstructable from logs alone. When something fails at 3 AM, the on-call engineer should be able to follow the `tracking_id` through every layer (HTTP → app handler → adapter → DB) and understand exactly what happened without attaching a debugger.
 
-| Level | When to use | Examples |
-|-------|-------------|----------|
+
+| Level     | When to use                                                                                                                                                                                                             | Examples                                                                                                                                           |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **debug** | Entry/exit of every significant operation. Input parameters, computed intermediate values, adapter calls. In production, `debug` may be disabled — but the code must always emit them so they can be enabled on demand. | Handler start with command params, balance checks (cached, holds, available), adapter queries (findById, save), transaction begin/commit/rollback. |
-| **info** | Successful completion of a business operation, or noteworthy but non-error events that are always relevant in production. | Deposit success, wallet created, system wallet auto-created, hold expired on-access (not an error — expected domain behavior). |
-| **warn** | Something unexpected happened but the request can still continue, or a client error that may indicate a bug in the caller. | Validation failures (malformed JSON, Zod errors), optimistic locking version conflict (retry expected), hold expired when client tried to capture. |
-| **error** | An operation failed and the request cannot complete successfully. Server-side errors (5xx), infrastructure failures, unexpected exceptions. | Prisma connection failure, unhandled exception in handler (caught by global `onError`), any `AppError` with Kind = Internal. |
-| **fatal** | The process cannot continue and must shut down. | Failed to bind port, database connection pool exhausted on startup, corrupt configuration. |
+| **info**  | Successful completion of a business operation, or noteworthy but non-error events that are always relevant in production.                                                                                               | Deposit success, wallet created, system wallet auto-created, hold expired on-access (not an error — expected domain behavior).                     |
+| **warn**  | Something unexpected happened but the request can still continue, or a client error that may indicate a bug in the caller.                                                                                              | Validation failures (malformed JSON, Zod errors), optimistic locking version conflict (retry expected), hold expired when client tried to capture. |
+| **error** | An operation failed and the request cannot complete successfully. Server-side errors (5xx), infrastructure failures, unexpected exceptions.                                                                             | Prisma connection failure, unhandled exception in handler (caught by global `onError`), any `AppError` with Kind = Internal.                       |
+| **fatal** | The process cannot continue and must shut down.                                                                                                                                                                         | Failed to bind port, database connection pool exhausted on startup, corrupt configuration.                                                         |
+
 
 **Rules:**
 
@@ -506,15 +529,12 @@ Always pass the `AppContext` (built via `buildAppContext(c)`) so these fields ar
 **This must be applied across the entire backend. Every file that logs must define mainLogTag and methodLogTag.**
 
 1. **Per file**: Define a const for the component (the main log tag):
-   - `const mainLogTag = "DepositHandler";`
-   - `const mainLogTag = "WalletRepo";`
-
+  - `const mainLogTag = "DepositHandler";`
+  - `const mainLogTag = "WalletRepo";`
 2. **Per method**: Define `methodLogTag` concatenating main tag + method name:
-   - `` const methodLogTag = `${mainLogTag} | handle`; `` → `"DepositHandler | handle"`
-
+  - `const methodLogTag = `${mainLogTag} | handle`;` → `"DepositHandler | handle"`
 3. **Messages**: Every log message must **start with** `methodLogTag`:
-   - `` logger.info(ctx, `${methodLogTag} deposit success`); ``
-
+  - `logger.info(ctx, `${methodLogTag} deposit success`);`
 4. **Never pass the log tag as a parameter** to other functions. It is always a local const.
 
 ### Canonical logs
@@ -529,17 +549,21 @@ Always pass the `AppContext` (built via `buildAppContext(c)`) so these fields ar
 
 ### Global middleware (registered on all routes in `index.ts`)
 
-| Middleware | Responsibility |
-|------------|----------------|
-| **trackingCanonical** | Generate tracking_id (UUID v7), inject request start, canonical accumulator; dispatch canonical on exit. |
+
+| Middleware             | Responsibility                                                                                                                                                    |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **trackingCanonical**  | Generate tracking_id (UUID v7), inject request start, canonical accumulator; dispatch canonical on exit.                                                          |
 | **requestResponseLog** | Log every request (method, path, body) and response (status, duration). Reads body via `c.req.raw.clone()` to avoid consuming the stream for downstream handlers. |
+
 
 ### Route-group middleware (registered per route group in route files)
 
-| Middleware | Responsibility |
-|------------|----------------|
-| **apiKeyAuth** | Validate API key, inject platform_id into context. Applied to all non-health routes. |
+
+| Middleware      | Responsibility                                                                                                                                                                                  |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **apiKeyAuth**  | Validate API key, inject platform_id into context. Applied to all non-health routes.                                                                                                            |
 | **idempotency** | Atomic acquire-then-complete pattern for `Idempotency-Key` header. Applied to mutation endpoints only. Returns `409 IDEMPOTENCY_KEY_IN_PROGRESS` if another request is processing the same key. |
+
 
 **Why the split?** `trackingCanonical` and `requestResponseLog` apply to everything including `/health`. `apiKeyAuth` and `idempotency` only apply to authenticated, mutation-capable routes — registering them globally would break health checks and GET endpoints.
 
@@ -549,10 +573,12 @@ Always pass the `AppContext` (built via `buildAppContext(c)`) so these fields ar
 
 Scheduled jobs (cron) are **inbound adapters**, the same category as HTTP routes. The scheduler dispatches commands via the `CommandBus`, following the same pattern as HTTP routes dispatching commands.
 
-| Job | Location | Interval | Description |
-|-----|----------|----------|-------------|
-| **expireHolds** | `wallet/infrastructure/adapters/inbound/scheduler/expireHolds.job.ts` | 30s | Marks zombie holds (status='active', expires_at < now) as 'expired' via CommandBus |
-| **cleanupIdempotency** | `common/idempotency/infrastructure/adapters/inbound/scheduler/cleanupIdempotency.job.ts` | 60s | Deletes expired idempotency records via CommandBus |
+
+| Job                    | Location                                                                                 | Interval | Description                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------- |
+| **expireHolds**        | `wallet/infrastructure/adapters/inbound/scheduler/expireHolds.job.ts`                    | 30s      | Marks zombie holds (status='active', expires_at < now) as 'expired' via CommandBus |
+| **cleanupIdempotency** | `common/idempotency/infrastructure/adapters/inbound/scheduler/cleanupIdempotency.job.ts` | 60s      | Deletes expired idempotency records via CommandBus                                 |
+
 
 The scheduler infrastructure lives in `utils/infrastructure/scheduler.ts` (`startScheduledJobs`). Each BC or common feature registers its own jobs.
 
@@ -616,8 +642,9 @@ Concrete TypeScript patterns for implementing domain, app, and adapter layers. T
 Aggregates encapsulate state and enforce invariants. Fields are **private** (`#` or `private`); external access through **getters only**. No setters — mutations happen through domain methods that validate rules.
 
 Two construction paths:
-- **`create()`** — for new aggregates. Validates input, sets defaults.
-- **`reconstruct()`** — for loading from DB. No validation (data already valid). Raw field assignment.
+
+- `**create()`** — for new aggregates. Validates input, sets defaults.
+- `**reconstruct()**` — for loading from DB. No validation (data already valid). Raw field assignment.
 
 ```typescript
 // wallet/domain/wallet/aggregate.ts
@@ -1091,6 +1118,7 @@ await prisma.$transaction(async (tx) => {
 ```
 
 **When to use transactions:**
+
 - **Always** for deposit, withdraw, transfer, hold capture (multiple table writes)
 - **Not needed** for single reads (queries)
 - **Not needed** for wallet creation (single insert, idempotent via unique constraint)
@@ -1103,3 +1131,4 @@ await prisma.$transaction(async (tx) => {
 
 - [domain.md](../domain.md) — Business rules and flows
 - [datamodel.md](../datamodel.md) — Entities and relationships
+

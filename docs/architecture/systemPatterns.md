@@ -16,7 +16,7 @@ Architecture patterns and technical decisions for the Wallet Service.
 - **No Event-Driven**: BCs communicate synchronously within the same process. No message bus, no eventual consistency.
 - **Driving/inbound adapters**: HTTP (Hono route files in `wallet/infrastructure/adapters/inbound/http/`) and scheduled jobs (in `wallet/infrastructure/adapters/inbound/scheduler/` and `common/idempotency/infrastructure/adapters/inbound/scheduler/`).
 - **Outgoing/outbound adapters**: PostgreSQL (Prisma) in `wallet/infrastructure/adapters/outbound/prisma/`.
-- **Outbound port convention**: All outbound port methods (repositories, read stores, transaction manager) receive `ctx: AppContext` as their first parameter. Adapters receive `ILogger` in their constructor. This enables adapters to log with full traceability (`tracking_id`, `platform_id`) without leaking infrastructure into the domain.
+- **Outbound port convention**: All outbound port methods (repositories, read stores, transaction manager) receive `ctx: AppContext` as their first parameter. Adapters typically receive `ILogger` in their constructor for traceability. Exception: adapters like `PrismaIdempotencyStore` may receive `IIDGenerator` instead when their responsibility is record creation rather than domain persistence — the adapter's constructor signature depends on its needs, not a rigid rule.
 
 See **[backend-architecture.md](backend-architecture.md)** for full directory layout, bounded contexts, and handler rules.
 
@@ -36,6 +36,8 @@ Command handlers use a `TransactionManager` port to execute multiple repository 
 **Port**: `ITransactionManager` interface in `utils/application/transaction.manager.ts`. Its `run()` method receives the current `AppContext` and passes an enriched copy (with `opCtx` populated) to the callback.
 **Repositories**: Each repository method receives a single `ctx: AppContext`. The Prisma adapter inspects `ctx.opCtx` internally — when present it uses the transaction client, otherwise the default client. This keeps the `TransactionManager` decoupled from repositories — it only opens/closes the transaction scope.
 **Adapter**: `PrismaTransactionManager` (`utils/infrastructure/prisma.transaction.manager.ts`) wraps `prisma.$transaction()` with **Serializable isolation level** and spreads the original `AppContext` with `opCtx: tx` to produce the enriched context.
+
+**When to use TransactionManager**: Use `txManager.run()` only when the use case performs **multiple writes that must be atomic** — if the operation fails mid-way, partial writes would create data inconsistency (e.g., deposit: wallet balance + transaction + ledger entries must all succeed or all fail). Use cases that perform a **single idempotent write** (e.g., `ExpireHoldsUseCase` calling `holdRepo.expireOverdue()`) or **read-only queries** do not need a transaction wrapper.
 
 ### Server-side retry (internal to TransactionManager)
 
@@ -57,7 +59,7 @@ Structured logging via port `ILogger` (`utils/kernel/observability/logger.port.t
 - **Applied across the entire backend**: every handler, adapter, and service must follow the log tag convention (**mainLogTag** per file, **methodLogTag** per method; every message starts with methodLogTag; never pass logTag as parameter).
 - **Context fields** on every log event: `tracking_id` (UUID v7), `platform_id` (when authenticated), `start_ts` (request start Unix ms).
 - **Canonical log** dispatched at end of each request with `end_ts`, `duration_ms`, accumulated `canonical_meta` and `canonical_counters`.
-- **HTTP middleware**: `trackingCanonical` (global) injects tracking context and dispatches canonical; `requestResponseLog` (global) logs request/response (reads body via clone to preserve stream). Both in `utils/middleware/`.
+- **HTTP middleware**: Global chain (order matters): `trackingCanonical` → `cors` → `secureHeaders` → `requestResponseLog`. Then per route group: `apiKeyAuth` → `idempotency` (mutations only). `trackingCanonical` injects tracking context and dispatches canonical; `requestResponseLog` logs request/response (reads body via clone). `cors` and `secureHeaders` are Hono built-ins (`hono/cors`, `hono/secure-headers`). Custom middlewares in `utils/middleware/`.
 - **Sensitive keys**: `password`, `api_key`, `api_key_hash`, `secret`, `token`, `authorization`, `cookie`, `access_token`, `refresh_token`.
 
 ### Log level summary

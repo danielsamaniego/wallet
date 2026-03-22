@@ -75,7 +75,7 @@ Internal components and workflows.
 
 1. Platform provides `owner_id`, `platform_id`, `currency_code`.
 2. Service validates uniqueness: one wallet per (owner_id, platform_id, currency_code).
-3. Wallet created with `status=active`, `cached_balance_cents=0`, `version=0`.
+3. Wallet created with `status=active`, `cached_balance_cents=0`, `version=1`.
 
 ### Flow 2: Deposit
 
