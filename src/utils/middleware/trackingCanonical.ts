@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import type { HonoVariables } from "../infrastructure/kernel/hono.context.js";
+import type { HonoVariables } from "../infrastructure/hono.context.js";
 import type { AppContext } from "../kernel/context.js";
 import type { IIDGenerator } from "../application/id.generator.js";
 import { CanonicalAccumulator } from "../kernel/observability/canonical.js";

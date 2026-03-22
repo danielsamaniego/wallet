@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { HonoVariables } from "../../../../../utils/infrastructure/kernel/hono.context.js";
+import type { HonoVariables } from "../../../../../utils/infrastructure/hono.context.js";
 import { captureHoldRoute } from "./captureHold/handler.js";
 import { placeHoldRoute } from "./placeHold/handler.js";
 import { voidHoldRoute } from "./voidHold/handler.js";

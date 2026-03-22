@@ -1,7 +1,7 @@
-import type { ICommandBus, ICommand } from "../../../../application/cqrs.js";
-import type { IIDGenerator } from "../../../../application/id.generator.js";
-import type { ILogger } from "../../../../kernel/observability/logger.port.js";
-import { createAppContext } from "../../../../kernel/context.js";
+import type { ICommandBus, ICommand } from "../application/cqrs.js";
+import type { IIDGenerator } from "../application/id.generator.js";
+import type { ILogger } from "../kernel/observability/logger.port.js";
+import { createAppContext } from "../kernel/context.js";
 
 export interface ScheduledJob {
   name: string;

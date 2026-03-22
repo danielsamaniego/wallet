@@ -1,6 +1,6 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
-import { ErrorResponseSchema, validationHook } from "../../../../../../utils/infrastructure/kernel/hono.error.js";
-import { buildAppContext, handlerFactory } from "../../../../../../utils/infrastructure/kernel/hono.context.js";
+import { ErrorResponseSchema, validationHook } from "../../../../../../utils/infrastructure/hono.error.js";
+import { buildAppContext, handlerFactory } from "../../../../../../utils/infrastructure/hono.context.js";
 import type { IQueryBus } from "../../../../../../utils/application/cqrs.js";
 import { GetLedgerEntriesQuery } from "../../../../../application/query/getLedgerEntries/query.js";
 import { ParamSchema, QueryParamsSchema, ResponseSchema } from "./schemas.js";

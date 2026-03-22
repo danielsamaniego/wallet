@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
-import { buildPrismaListing } from "../../../../../utils/infrastructure/kernel/listing.prisma.js";
+import { buildPrismaListing } from "../../../../../utils/infrastructure/listing.prisma.js";
 import { toNumber, toSafeNumber } from "../../../../../utils/kernel/bigint.js";
 import type { AppContext } from "../../../../../utils/kernel/context.js";
 import { encodeCursor } from "../../../../../utils/kernel/listing.js";

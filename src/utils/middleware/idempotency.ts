@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import type { MiddlewareHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import type { HonoVariables } from "../infrastructure/kernel/hono.context.js";
-import { errorResponse } from "../infrastructure/kernel/hono.error.js";
+import type { HonoVariables } from "../infrastructure/hono.context.js";
+import { errorResponse } from "../infrastructure/hono.error.js";
 import type { IIdempotencyStore } from "../../common/idempotency/application/ports/idempotency.store.js";
 
 const IDEMPOTENCY_HEADER = "idempotency-key";

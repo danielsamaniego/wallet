@@ -1,4 +1,4 @@
-import type { AppContext } from "../../kernel/context.js";
+import type { AppContext } from "../kernel/context.js";
 import type {
   ICommand,
   ICommandHandler,
@@ -7,7 +7,7 @@ import type {
   ICommandBus,
   IQueryBus,
   BusMiddleware,
-} from "../../application/cqrs.js";
+} from "../application/cqrs.js";
 
 // ────────────────────────────────────────────
 // CommandBus — dispatches commands to their

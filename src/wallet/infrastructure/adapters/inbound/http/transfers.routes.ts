@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { HonoVariables } from "../../../../../utils/infrastructure/kernel/hono.context.js";
+import type { HonoVariables } from "../../../../../utils/infrastructure/hono.context.js";
 import { transferRoute } from "./transfer/handler.js";
 import type { Dependencies } from "../../../../../wiring.js";
 import { apiKeyAuth } from "../../../../../utils/middleware/apiKeyAuth.js";

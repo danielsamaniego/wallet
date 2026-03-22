@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { HonoVariables } from "../../../../../utils/infrastructure/kernel/hono.context.js";
+import type { HonoVariables } from "../../../../../utils/infrastructure/hono.context.js";
 import { closeWalletRoute } from "./closeWallet/handler.js";
 import { createWalletRoute } from "./createWallet/handler.js";
 import { depositRoute } from "./deposit/handler.js";

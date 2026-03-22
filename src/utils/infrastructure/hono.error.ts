@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
-import { ErrorKind } from "../../kernel/appError.js";
+import { ErrorKind } from "../kernel/appError.js";
 
 /**
  * Zod schema for the standard error response shape.
