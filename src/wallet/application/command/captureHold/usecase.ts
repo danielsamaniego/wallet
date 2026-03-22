@@ -1,4 +1,5 @@
 import type { AppContext } from "../../../../shared/domain/kernel/context.js";
+import type { ICommandHandler } from "../../../../shared/application/cqrs.js";
 import type { IIDGenerator } from "../../../../shared/domain/kernel/id.generator.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import { ErrHoldExpired, ErrHoldNotFound } from "../../../domain/hold/hold.errors.js";
@@ -8,7 +9,6 @@ import type { IHoldRepository } from "../../../domain/ports/hold.repository.js";
 import type { ILedgerEntryRepository } from "../../../domain/ports/ledgerEntry.repository.js";
 import type { IMovementRepository } from "../../../domain/ports/movement.repository.js";
 import type { ITransactionManager } from "../../../../shared/domain/kernel/transaction.manager.js";
-import type { ICaptureHoldUseCase } from "../../ports/inbound/capture-hold.usecase.js";
 import type { ITransactionRepository } from "../../../domain/ports/transaction.repository.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { Transaction } from "../../../domain/transaction/transaction.entity.js";
@@ -20,7 +20,7 @@ import type { CaptureHoldCommand, CaptureHoldResult } from "./command.js";
 
 const mainLogTag = "CaptureHoldUseCase";
 
-export class CaptureHoldUseCase implements ICaptureHoldUseCase {
+export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, CaptureHoldResult> {
   constructor(
     private readonly txManager: ITransactionManager,
     private readonly walletRepo: IWalletRepository,

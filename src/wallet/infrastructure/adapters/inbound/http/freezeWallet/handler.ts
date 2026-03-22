@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { IFreezeWalletUseCase } from "../../../../../application/ports/inbound/freeze-wallet.usecase.js";
+import type { ICommandHandler } from "../../../../../../shared/application/cqrs.js";
 import { FreezeWalletCommand } from "../../../../../application/command/freezeWallet/command.js";
 import { ParamSchema, ResponseSchema } from "./schemas.js";
 
-export function freezeWalletRoute(handler: IFreezeWalletUseCase) {
+export function freezeWalletRoute(handler: ICommandHandler<FreezeWalletCommand, void>) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],

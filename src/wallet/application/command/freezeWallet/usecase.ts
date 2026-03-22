@@ -1,14 +1,14 @@
 import type { AppContext } from "../../../../shared/domain/kernel/context.js";
+import type { ICommandHandler } from "../../../../shared/application/cqrs.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import type { ITransactionManager } from "../../../../shared/domain/kernel/transaction.manager.js";
-import type { IFreezeWalletUseCase } from "../../ports/inbound/freeze-wallet.usecase.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { ErrWalletNotFound } from "../../../domain/wallet/wallet.errors.js";
 import type { FreezeWalletCommand } from "./command.js";
 
 const mainLogTag = "FreezeWalletUseCase";
 
-export class FreezeWalletUseCase implements IFreezeWalletUseCase {
+export class FreezeWalletUseCase implements ICommandHandler<FreezeWalletCommand, void> {
   constructor(
     private readonly txManager: ITransactionManager,
     private readonly walletRepo: IWalletRepository,

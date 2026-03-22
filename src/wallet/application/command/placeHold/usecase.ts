@@ -1,18 +1,18 @@
 import { AppError } from "../../../../shared/domain/appError.js";
+import type { ICommandHandler } from "../../../../shared/application/cqrs.js";
 import type { AppContext } from "../../../../shared/domain/kernel/context.js";
 import type { IIDGenerator } from "../../../../shared/domain/kernel/id.generator.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import { Hold } from "../../../domain/hold/hold.entity.js";
 import type { IHoldRepository } from "../../../domain/ports/hold.repository.js";
 import type { ITransactionManager } from "../../../../shared/domain/kernel/transaction.manager.js";
-import type { IPlaceHoldUseCase } from "../../ports/inbound/place-hold.usecase.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { ErrWalletNotFound } from "../../../domain/wallet/wallet.errors.js";
 import type { PlaceHoldCommand, PlaceHoldResult } from "./command.js";
 
 const mainLogTag = "PlaceHoldUseCase";
 
-export class PlaceHoldUseCase implements IPlaceHoldUseCase {
+export class PlaceHoldUseCase implements ICommandHandler<PlaceHoldCommand, PlaceHoldResult> {
   constructor(
     private readonly txManager: ITransactionManager,
     private readonly walletRepo: IWalletRepository,

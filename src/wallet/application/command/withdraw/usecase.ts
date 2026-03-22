@@ -1,4 +1,5 @@
 import type { AppContext } from "../../../../shared/domain/kernel/context.js";
+import type { ICommandHandler } from "../../../../shared/application/cqrs.js";
 import type { IIDGenerator } from "../../../../shared/domain/kernel/id.generator.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import { LedgerEntry } from "../../../domain/ledgerEntry/ledgerEntry.entity.js";
@@ -7,7 +8,6 @@ import type { IHoldRepository } from "../../../domain/ports/hold.repository.js";
 import type { ILedgerEntryRepository } from "../../../domain/ports/ledgerEntry.repository.js";
 import type { IMovementRepository } from "../../../domain/ports/movement.repository.js";
 import type { ITransactionManager } from "../../../../shared/domain/kernel/transaction.manager.js";
-import type { IWithdrawUseCase } from "../../ports/inbound/withdraw.usecase.js";
 import type { ITransactionRepository } from "../../../domain/ports/transaction.repository.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { Transaction } from "../../../domain/transaction/transaction.entity.js";
@@ -19,7 +19,7 @@ import type { WithdrawCommand, WithdrawResult } from "./command.js";
 
 const mainLogTag = "WithdrawUseCase";
 
-export class WithdrawUseCase implements IWithdrawUseCase {
+export class WithdrawUseCase implements ICommandHandler<WithdrawCommand, WithdrawResult> {
   constructor(
     private readonly txManager: ITransactionManager,
     private readonly walletRepo: IWalletRepository,

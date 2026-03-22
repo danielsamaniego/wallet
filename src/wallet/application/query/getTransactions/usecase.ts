@@ -1,7 +1,7 @@
 import { AppError } from "../../../../shared/domain/appError.js";
+import type { IQueryHandler } from "../../../../shared/application/cqrs.js";
 import type { AppContext } from "../../../../shared/domain/kernel/context.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
-import type { IGetTransactionsUseCase } from "../../ports/inbound/get-transactions.usecase.js";
 import type {
   GetTransactionsQuery,
   ITransactionReadStore,
@@ -10,7 +10,7 @@ import type {
 
 const mainLogTag = "GetTransactionsUseCase";
 
-export class GetTransactionsUseCase implements IGetTransactionsUseCase {
+export class GetTransactionsUseCase implements IQueryHandler<GetTransactionsQuery, PaginatedTransactions> {
   constructor(
     private readonly readStore: ITransactionReadStore,
     private readonly logger: ILogger,

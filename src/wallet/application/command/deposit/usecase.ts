@@ -1,4 +1,5 @@
 import type { AppContext } from "../../../../shared/domain/kernel/context.js";
+import type { ICommandHandler } from "../../../../shared/application/cqrs.js";
 import type { IIDGenerator } from "../../../../shared/domain/kernel/id.generator.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import { LedgerEntry } from "../../../domain/ledgerEntry/ledgerEntry.entity.js";
@@ -6,7 +7,6 @@ import { Movement } from "../../../domain/movement/movement.entity.js";
 import type { ILedgerEntryRepository } from "../../../domain/ports/ledgerEntry.repository.js";
 import type { IMovementRepository } from "../../../domain/ports/movement.repository.js";
 import type { ITransactionManager } from "../../../../shared/domain/kernel/transaction.manager.js";
-import type { IDepositUseCase } from "../../ports/inbound/deposit.usecase.js";
 import type { ITransactionRepository } from "../../../domain/ports/transaction.repository.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { Transaction } from "../../../domain/transaction/transaction.entity.js";
@@ -18,7 +18,7 @@ import type { DepositCommand, DepositResult } from "./command.js";
 
 const mainLogTag = "DepositUseCase";
 
-export class DepositUseCase implements IDepositUseCase {
+export class DepositUseCase implements ICommandHandler<DepositCommand, DepositResult> {
   constructor(
     private readonly txManager: ITransactionManager,
     private readonly walletRepo: IWalletRepository,

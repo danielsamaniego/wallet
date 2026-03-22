@@ -1,15 +1,15 @@
 import type { AppContext } from "../../../../shared/domain/kernel/context.js";
+import type { ICommandHandler } from "../../../../shared/application/cqrs.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import { ErrHoldExpired, ErrHoldNotFound } from "../../../domain/hold/hold.errors.js";
 import type { IHoldRepository } from "../../../domain/ports/hold.repository.js";
 import type { ITransactionManager } from "../../../../shared/domain/kernel/transaction.manager.js";
-import type { IVoidHoldUseCase } from "../../ports/inbound/void-hold.usecase.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import type { VoidHoldCommand } from "./command.js";
 
 const mainLogTag = "VoidHoldUseCase";
 
-export class VoidHoldUseCase implements IVoidHoldUseCase {
+export class VoidHoldUseCase implements ICommandHandler<VoidHoldCommand, void> {
   constructor(
     private readonly txManager: ITransactionManager,
     private readonly walletRepo: IWalletRepository,

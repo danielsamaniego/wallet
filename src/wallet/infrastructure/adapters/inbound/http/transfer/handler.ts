@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { ITransferUseCase } from "../../../../../application/ports/inbound/transfer.usecase.js";
-import { TransferCommand } from "../../../../../application/command/transfer/command.js";
+import type { ICommandHandler } from "../../../../../../shared/application/cqrs.js";
+import { TransferCommand, type TransferResult } from "../../../../../application/command/transfer/command.js";
 import { BodySchema, ResponseSchema } from "./schemas.js";
 
-export function transferRoute(handler: ITransferUseCase) {
+export function transferRoute(handler: ICommandHandler<TransferCommand, TransferResult>) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Transfers"],

@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { IGetWalletUseCase } from "../../../../../application/ports/inbound/get-wallet.usecase.js";
-import { GetWalletQuery } from "../../../../../application/query/getWallet/query.js";
+import type { IQueryHandler } from "../../../../../../shared/application/cqrs.js";
+import { GetWalletQuery, type WalletDTO } from "../../../../../application/query/getWallet/query.js";
 import { ParamSchema, ResponseSchema } from "./schemas.js";
 
-export function getWalletRoute(handler: IGetWalletUseCase) {
+export function getWalletRoute(handler: IQueryHandler<GetWalletQuery, WalletDTO>) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],

@@ -1,8 +1,8 @@
 import type { AppContext } from "../../../../shared/domain/kernel/context.js";
 import type { IIDGenerator } from "../../../../shared/domain/kernel/id.generator.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
+import type { ICommandHandler } from "../../../../shared/application/cqrs.js";
 import type { ITransactionManager } from "../../../../shared/domain/kernel/transaction.manager.js";
-import type { ICreateWalletUseCase } from "../../ports/inbound/create-wallet.usecase.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { Wallet } from "../../../domain/wallet/wallet.aggregate.js";
 import { ErrWalletAlreadyExists } from "../../../domain/wallet/wallet.errors.js";
@@ -10,7 +10,7 @@ import type { CreateWalletCommand, CreateWalletResult } from "./command.js";
 
 const mainLogTag = "CreateWalletUseCase";
 
-export class CreateWalletUseCase implements ICreateWalletUseCase {
+export class CreateWalletUseCase implements ICommandHandler<CreateWalletCommand, CreateWalletResult> {
   constructor(
     private readonly txManager: ITransactionManager,
     private readonly walletRepo: IWalletRepository,

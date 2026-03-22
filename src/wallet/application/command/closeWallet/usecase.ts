@@ -1,15 +1,15 @@
 import type { AppContext } from "../../../../shared/domain/kernel/context.js";
+import type { ICommandHandler } from "../../../../shared/application/cqrs.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
 import type { IHoldRepository } from "../../../domain/ports/hold.repository.js";
 import type { ITransactionManager } from "../../../../shared/domain/kernel/transaction.manager.js";
-import type { ICloseWalletUseCase } from "../../ports/inbound/close-wallet.usecase.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { ErrWalletNotFound } from "../../../domain/wallet/wallet.errors.js";
 import type { CloseWalletCommand } from "./command.js";
 
 const mainLogTag = "CloseWalletUseCase";
 
-export class CloseWalletUseCase implements ICloseWalletUseCase {
+export class CloseWalletUseCase implements ICommandHandler<CloseWalletCommand, void> {
   constructor(
     private readonly txManager: ITransactionManager,
     private readonly walletRepo: IWalletRepository,

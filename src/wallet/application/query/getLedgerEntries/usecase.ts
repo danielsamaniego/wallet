@@ -1,7 +1,7 @@
 import { AppError } from "../../../../shared/domain/appError.js";
+import type { IQueryHandler } from "../../../../shared/application/cqrs.js";
 import type { AppContext } from "../../../../shared/domain/kernel/context.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
-import type { IGetLedgerEntriesUseCase } from "../../ports/inbound/get-ledger-entries.usecase.js";
 import type {
   GetLedgerEntriesQuery,
   ILedgerEntryReadStore,
@@ -10,7 +10,7 @@ import type {
 
 const mainLogTag = "GetLedgerEntriesUseCase";
 
-export class GetLedgerEntriesUseCase implements IGetLedgerEntriesUseCase {
+export class GetLedgerEntriesUseCase implements IQueryHandler<GetLedgerEntriesQuery, PaginatedLedgerEntries> {
   constructor(
     private readonly readStore: ILedgerEntryReadStore,
     private readonly logger: ILogger,

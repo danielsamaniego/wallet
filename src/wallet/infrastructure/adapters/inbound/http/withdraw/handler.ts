@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { IWithdrawUseCase } from "../../../../../application/ports/inbound/withdraw.usecase.js";
-import { WithdrawCommand } from "../../../../../application/command/withdraw/command.js";
+import type { ICommandHandler } from "../../../../../../shared/application/cqrs.js";
+import { WithdrawCommand, type WithdrawResult } from "../../../../../application/command/withdraw/command.js";
 import { BodySchema, ParamSchema, ResponseSchema } from "./schemas.js";
 
-export function withdrawRoute(handler: IWithdrawUseCase) {
+export function withdrawRoute(handler: ICommandHandler<WithdrawCommand, WithdrawResult>) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],

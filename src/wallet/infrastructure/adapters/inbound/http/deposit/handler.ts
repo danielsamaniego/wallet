@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { IDepositUseCase } from "../../../../../application/ports/inbound/deposit.usecase.js";
-import { DepositCommand } from "../../../../../application/command/deposit/command.js";
+import type { ICommandHandler } from "../../../../../../shared/application/cqrs.js";
+import { DepositCommand, type DepositResult } from "../../../../../application/command/deposit/command.js";
 import { BodySchema, ParamSchema, ResponseSchema } from "./schemas.js";
 
-export function depositRoute(handler: IDepositUseCase) {
+export function depositRoute(handler: ICommandHandler<DepositCommand, DepositResult>) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],

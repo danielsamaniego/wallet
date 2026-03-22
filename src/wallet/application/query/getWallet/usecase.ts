@@ -1,12 +1,12 @@
 import { AppError } from "../../../../shared/domain/appError.js";
+import type { IQueryHandler } from "../../../../shared/application/cqrs.js";
 import type { AppContext } from "../../../../shared/domain/kernel/context.js";
 import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
-import type { IGetWalletUseCase } from "../../ports/inbound/get-wallet.usecase.js";
 import type { GetWalletQuery, IWalletReadStore, WalletDTO } from "./query.js";
 
 const mainLogTag = "GetWalletUseCase";
 
-export class GetWalletUseCase implements IGetWalletUseCase {
+export class GetWalletUseCase implements IQueryHandler<GetWalletQuery, WalletDTO> {
   constructor(
     private readonly readStore: IWalletReadStore,
     private readonly logger: ILogger,

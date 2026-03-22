@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { ICloseWalletUseCase } from "../../../../../application/ports/inbound/close-wallet.usecase.js";
+import type { ICommandHandler } from "../../../../../../shared/application/cqrs.js";
 import { CloseWalletCommand } from "../../../../../application/command/closeWallet/command.js";
 import { ParamSchema, ResponseSchema } from "./schemas.js";
 
-export function closeWalletRoute(handler: ICloseWalletUseCase) {
+export function closeWalletRoute(handler: ICommandHandler<CloseWalletCommand, void>) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],

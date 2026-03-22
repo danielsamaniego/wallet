@@ -1,11 +1,11 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
 import { ErrorResponseSchema, validationHook } from "../../../../../../shared/infrastructure/kernel/hono.error.js";
 import { buildAppContext, handlerFactory } from "../../../../../../shared/infrastructure/kernel/hono.context.js";
-import type { ICaptureHoldUseCase } from "../../../../../application/ports/inbound/capture-hold.usecase.js";
-import { CaptureHoldCommand } from "../../../../../application/command/captureHold/command.js";
+import type { ICommandHandler } from "../../../../../../shared/application/cqrs.js";
+import { CaptureHoldCommand, type CaptureHoldResult } from "../../../../../application/command/captureHold/command.js";
 import { ParamSchema, ResponseSchema } from "./schemas.js";
 
-export function captureHoldRoute(handler: ICaptureHoldUseCase) {
+export function captureHoldRoute(handler: ICommandHandler<CaptureHoldCommand, CaptureHoldResult>) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Holds"],
