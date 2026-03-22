@@ -55,6 +55,11 @@ import { GetWalletQuery } from "./wallet/application/query/getWallet/query.js";
 import { GetTransactionsQuery } from "./wallet/application/query/getTransactions/query.js";
 import { GetLedgerEntriesQuery } from "./wallet/application/query/getLedgerEntries/query.js";
 
+// Platform BC
+import { PrismaPlatformReadStore } from "./platform/infrastructure/adapters/outbound/prisma/platform.readstore.js";
+import { ListPlatformsUseCase } from "./platform/application/query/listPlatforms/usecase.js";
+import { ListPlatformsQuery } from "./platform/application/query/listPlatforms/query.js";
+
 /**
  * Dependencies holds all injected dependencies for the API.
  * Infrastructure, repos, and app handlers are wired once here
@@ -134,6 +139,7 @@ export function wire(config: Config): Dependencies {
   const walletReadStore = new PrismaWalletReadStore(prisma, logger);
   const transactionReadStore = new PrismaTransactionReadStore(prisma, logger);
   const ledgerEntryReadStore = new PrismaLedgerEntryReadStore(prisma, logger);
+  const platformReadStore = new PrismaPlatformReadStore(prisma, logger);
 
   // Use cases (pre-wired with repos)
   const createWallet = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
@@ -186,6 +192,7 @@ export function wire(config: Config): Dependencies {
   const voidHold = new VoidHoldUseCase(txManager, walletRepo, holdRepo, logger);
   const expireHolds = new ExpireHoldsUseCase(holdRepo, logger);
   const cleanupIdempotency = new CleanupIdempotencyUseCase(idempotencyStore, logger);
+  const listPlatforms = new ListPlatformsUseCase(platformReadStore, logger);
 
   // ── Command Bus ────────────────────────────
   const commandBus = new CommandBus();
@@ -207,6 +214,7 @@ export function wire(config: Config): Dependencies {
   queryBus.register(GetWalletQuery.TYPE, getWallet);
   queryBus.register(GetTransactionsQuery.TYPE, getTransactions);
   queryBus.register(GetLedgerEntriesQuery.TYPE, getLedgerEntries);
+  queryBus.register(ListPlatformsQuery.TYPE, listPlatforms);
 
   return {
     config,

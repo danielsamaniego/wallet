@@ -11,6 +11,7 @@ import { trackingCanonical } from "./utils/middleware/trackingCanonical.js";
 import { errorResponse, httpStatus } from "./utils/infrastructure/hono.error.js";
 import { transferRoutes } from "./wallet/infrastructure/adapters/inbound/http/transfers.routes.js";
 import { walletRoutes } from "./wallet/infrastructure/adapters/inbound/http/wallets.routes.js";
+import { platformRoutes } from "./platform/infrastructure/adapters/inbound/http/platforms.routes.js";
 import { loadConfig } from "./config.js";
 import { startScheduledJobs } from "./utils/infrastructure/scheduler.js";
 import { idempotencyJobs } from "./common/idempotency/infrastructure/adapters/inbound/scheduler/jobs.js";
@@ -103,6 +104,7 @@ async function main() {
   v1.route("/wallets", walletRoutes(deps));
   v1.route("/transfers", transferRoutes(deps));
   v1.route("/holds", holdRoutes(deps));
+  v1.route("/platforms", platformRoutes(deps));
 
   // OpenAPI spec + interactive docs
   app.get(
