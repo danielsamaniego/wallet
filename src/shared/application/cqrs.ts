@@ -31,3 +31,27 @@ export interface IQueryHandler<
 > {
   handle(ctx: AppContext, query: TQuery): Promise<TResult>;
 }
+
+// ────────────────────────────────────────────
+// Bus middleware — intercepts dispatch calls
+// for cross-cutting concerns (logging, metrics, etc.)
+// ────────────────────────────────────────────
+
+export type BusMiddleware = (
+  ctx: AppContext,
+  message: ICommand<unknown> | IQuery<unknown>,
+  next: () => Promise<unknown>,
+) => Promise<unknown>;
+
+// ────────────────────────────────────────────
+// Bus contracts — central dispatch point for
+// commands and queries through a middleware pipeline.
+// ────────────────────────────────────────────
+
+export interface ICommandBus {
+  dispatch<T>(ctx: AppContext, cmd: ICommand<T>): Promise<T>;
+}
+
+export interface IQueryBus {
+  dispatch<T>(ctx: AppContext, query: IQuery<T>): Promise<T>;
+}

@@ -10,7 +10,7 @@ export function transferRoutes(deps: Dependencies) {
   const auth = apiKeyAuth(deps.validateApiKey);
   const idemp = idempotency(deps.idempotencyStore);
 
-  router.post("/", auth, idemp, ...transferRoute(deps.transfer));
+  router.post("/", auth, idemp, ...transferRoute(deps.commandBus));
 
   return router;
 }

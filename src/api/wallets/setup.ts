@@ -19,17 +19,17 @@ export function walletRoutes(deps: Dependencies) {
   const idemp = idempotency(deps.idempotencyStore);
 
   // Commands
-  router.post("/", auth, idemp, ...createWalletRoute(deps.createWallet));
-  router.post("/:walletId/deposit", auth, idemp, ...depositRoute(deps.deposit));
-  router.post("/:walletId/withdraw", auth, idemp, ...withdrawRoute(deps.withdraw));
-  router.post("/:walletId/freeze", auth, ...freezeWalletRoute(deps.freezeWallet));
-  router.post("/:walletId/unfreeze", auth, ...unfreezeWalletRoute(deps.unfreezeWallet));
-  router.post("/:walletId/close", auth, ...closeWalletRoute(deps.closeWallet));
+  router.post("/", auth, idemp, ...createWalletRoute(deps.commandBus));
+  router.post("/:walletId/deposit", auth, idemp, ...depositRoute(deps.commandBus));
+  router.post("/:walletId/withdraw", auth, idemp, ...withdrawRoute(deps.commandBus));
+  router.post("/:walletId/freeze", auth, ...freezeWalletRoute(deps.commandBus));
+  router.post("/:walletId/unfreeze", auth, ...unfreezeWalletRoute(deps.commandBus));
+  router.post("/:walletId/close", auth, ...closeWalletRoute(deps.commandBus));
 
   // Queries
-  router.get("/:walletId", auth, ...getWalletRoute(deps.getWallet));
-  router.get("/:walletId/transactions", auth, ...getTransactionsRoute(deps.getTransactions));
-  router.get("/:walletId/ledger", auth, ...getLedgerEntriesRoute(deps.getLedgerEntries));
+  router.get("/:walletId", auth, ...getWalletRoute(deps.queryBus));
+  router.get("/:walletId/transactions", auth, ...getTransactionsRoute(deps.queryBus));
+  router.get("/:walletId/ledger", auth, ...getLedgerEntriesRoute(deps.queryBus));
 
   return router;
 }

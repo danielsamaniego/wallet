@@ -12,9 +12,9 @@ export function holdRoutes(deps: Dependencies) {
   const auth = apiKeyAuth(deps.validateApiKey);
   const idemp = idempotency(deps.idempotencyStore);
 
-  router.post("/", auth, idemp, ...placeHoldRoute(deps.placeHold));
-  router.post("/:holdId/capture", auth, idemp, ...captureHoldRoute(deps.captureHold));
-  router.post("/:holdId/void", auth, ...voidHoldRoute(deps.voidHold));
+  router.post("/", auth, idemp, ...placeHoldRoute(deps.commandBus));
+  router.post("/:holdId/capture", auth, idemp, ...captureHoldRoute(deps.commandBus));
+  router.post("/:holdId/void", auth, ...voidHoldRoute(deps.commandBus));
 
   return router;
 }

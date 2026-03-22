@@ -8,6 +8,8 @@ import { SafeLogger } from "./shared/infrastructure/observability/safe.logger.js
 import { SensitiveKeysFilter } from "./shared/infrastructure/observability/sensitive.filter.js";
 import type { IIDGenerator } from "./shared/application/id.generator.js";
 import type { ILogger } from "./shared/kernel/observability/logger.port.js";
+import type { ICommandBus, IQueryBus } from "./shared/application/cqrs.js";
+import { CommandBus, QueryBus } from "./shared/infrastructure/kernel/bus.js";
 import { PrismaHoldRepo } from "./wallet/infrastructure/adapters/outbound/prisma/hold.repo.js";
 import { PrismaIdempotencyStore } from "./wallet/infrastructure/adapters/outbound/prisma/idempotency.store.js";
 import { PrismaLedgerEntryReadStore } from "./wallet/infrastructure/adapters/outbound/prisma/ledgerEntry.readstore.js";
@@ -32,6 +34,23 @@ import { GetLedgerEntriesUseCase } from "./wallet/application/query/getLedgerEnt
 import { GetTransactionsUseCase } from "./wallet/application/query/getTransactions/usecase.js";
 import { GetWalletUseCase } from "./wallet/application/query/getWallet/usecase.js";
 
+// Command classes (needed for bus registration)
+import { CreateWalletCommand } from "./wallet/application/command/createWallet/command.js";
+import { DepositCommand } from "./wallet/application/command/deposit/command.js";
+import { WithdrawCommand } from "./wallet/application/command/withdraw/command.js";
+import { TransferCommand } from "./wallet/application/command/transfer/command.js";
+import { FreezeWalletCommand } from "./wallet/application/command/freezeWallet/command.js";
+import { UnfreezeWalletCommand } from "./wallet/application/command/unfreezeWallet/command.js";
+import { CloseWalletCommand } from "./wallet/application/command/closeWallet/command.js";
+import { PlaceHoldCommand } from "./wallet/application/command/placeHold/command.js";
+import { CaptureHoldCommand } from "./wallet/application/command/captureHold/command.js";
+import { VoidHoldCommand } from "./wallet/application/command/voidHold/command.js";
+
+// Query classes (needed for bus registration)
+import { GetWalletQuery } from "./wallet/application/query/getWallet/query.js";
+import { GetTransactionsQuery } from "./wallet/application/query/getTransactions/query.js";
+import { GetLedgerEntriesQuery } from "./wallet/application/query/getLedgerEntries/query.js";
+
 /**
  * Dependencies holds all injected dependencies for the API.
  * Infrastructure, repos, and app handlers are wired once here
@@ -44,21 +63,8 @@ export interface Dependencies {
   logger: ILogger;
   validateApiKey: (apiKey: string) => Promise<{ platformId: string } | null>;
   idempotencyStore: IIdempotencyStore;
-
-  // Use cases (pre-wired with repos)
-  createWallet: CreateWalletUseCase;
-  deposit: DepositUseCase;
-  withdraw: WithdrawUseCase;
-  freezeWallet: FreezeWalletUseCase;
-  unfreezeWallet: UnfreezeWalletUseCase;
-  closeWallet: CloseWalletUseCase;
-  getWallet: GetWalletUseCase;
-  getTransactions: GetTransactionsUseCase;
-  getLedgerEntries: GetLedgerEntriesUseCase;
-  transfer: TransferUseCase;
-  placeHold: PlaceHoldUseCase;
-  captureHold: CaptureHoldUseCase;
-  voidHold: VoidHoldUseCase;
+  commandBus: ICommandBus;
+  queryBus: IQueryBus;
 }
 
 const sensitiveKeys = [
@@ -175,6 +181,25 @@ export function wire(config: Config): Dependencies {
   );
   const voidHold = new VoidHoldUseCase(txManager, walletRepo, holdRepo, logger);
 
+  // ── Command Bus ────────────────────────────
+  const commandBus = new CommandBus();
+  commandBus.register(CreateWalletCommand, createWallet);
+  commandBus.register(DepositCommand, deposit);
+  commandBus.register(WithdrawCommand, withdraw);
+  commandBus.register(TransferCommand, transfer);
+  commandBus.register(FreezeWalletCommand, freezeWallet);
+  commandBus.register(UnfreezeWalletCommand, unfreezeWallet);
+  commandBus.register(CloseWalletCommand, closeWallet);
+  commandBus.register(PlaceHoldCommand, placeHold);
+  commandBus.register(CaptureHoldCommand, captureHold);
+  commandBus.register(VoidHoldCommand, voidHold);
+
+  // ── Query Bus ──────────────────────────────
+  const queryBus = new QueryBus();
+  queryBus.register(GetWalletQuery, getWallet);
+  queryBus.register(GetTransactionsQuery, getTransactions);
+  queryBus.register(GetLedgerEntriesQuery, getLedgerEntries);
+
   return {
     config,
     prisma,
@@ -182,18 +207,7 @@ export function wire(config: Config): Dependencies {
     logger,
     validateApiKey,
     idempotencyStore,
-    createWallet,
-    deposit,
-    withdraw,
-    freezeWallet,
-    unfreezeWallet,
-    closeWallet,
-    getWallet,
-    getTransactions,
-    getLedgerEntries,
-    transfer,
-    placeHold,
-    captureHold,
-    voidHold,
+    commandBus,
+    queryBus,
   };
 }
