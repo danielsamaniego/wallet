@@ -10,8 +10,8 @@ The backend follows **DDD (Domain-Driven Design) + Hexagonal (Ports & Adapters) 
 
 - **Domain** defines **ports** (interfaces); **adapters** implement them.
 - Dependencies point **inward** (domain has no infra dependencies).
-- HTTP = **driving adapters** (entry points).
-- PostgreSQL (Prisma), external APIs = **outgoing adapters** (implement domain ports).
+- HTTP and scheduled jobs = **driving/inbound adapters** (entry points).
+- PostgreSQL (Prisma), external APIs = **outgoing/outbound adapters** (implement domain ports).
 
 ### DDD
 
@@ -21,16 +21,16 @@ The backend follows **DDD (Domain-Driven Design) + Hexagonal (Ports & Adapters) 
 
 ### Dependency Rule: Domain and App — No External Libraries
 
-**Domain** and **app** (commands, queries, handlers) must **not** use any external third-party library.
+**Domain** and **app** (commands, queries, use cases) must **not** use any external third-party library.
 
 - **No** Prisma, Pino, uuidv7, Zod, or other third-party libs in domain or app.
 - **Domain** and **app** may depend **only on**:
   - TypeScript/JavaScript standard library
   - Interfaces (ports) defined in the same module
-  - Project-internal shared domain packages (`shared/domain/`). Never import from `shared/adapters/` in domain or app.
+  - Project-internal shared kernel packages (`utils/kernel/`). Never import from `utils/infrastructure/` or `utils/middleware/` in domain or app.
 - Concretions (Prisma, Pino, uuidv7, Zod) live in **adapters**.
-- Handlers receive repositories, services, and **IDGenerator** as **interfaces**; wiring injects concrete implementations.
-- **ID generation — UUID v7 only, from application code**: Domain treats IDs as plain strings. `IDGenerator` (port) is implemented exclusively by **UUID v7** (RFC 9562, time-ordered). The app generates all IDs; the database must never generate them. **Never** use UUID v4 or DB-generated IDs for entity IDs.
+- Use cases receive repositories, services, and **IIDGenerator** as **interfaces**; wiring injects concrete implementations.
+- **ID generation — UUID v7 only, from application code**: Domain treats IDs as plain strings. `IIDGenerator` (port) is implemented exclusively by **UUID v7** (RFC 9562, time-ordered). The app generates all IDs; the database must never generate them. **Never** use UUID v4 or DB-generated IDs for entity IDs.
 
 ### CQRS
 
@@ -38,6 +38,7 @@ The backend follows **DDD (Domain-Driven Design) + Hexagonal (Ports & Adapters) 
 - **Queries** (read): return **DTOs**; do **not** load aggregates. Use a ReadStore port that returns DTOs directly; the adapter uses Prisma and maps to DTO.
 - Same DB allowed; separate write repo and read store interfaces.
 - Command/Query handlers = **use cases** (Application layer).
+- **CQRS bus**: Commands and queries are dispatched via `ICommandBus` / `IQueryBus` (defined in `utils/application/cqrs.ts`, implemented in `utils/infrastructure/cqrs.ts`). HTTP handlers and scheduled jobs receive the bus, not individual handler instances. Handlers are registered on the bus in `wiring.ts`.
 
 #### Why commands return data
 
@@ -93,73 +94,66 @@ All financial amounts use **integer cents** (BigInt). The smallest currency unit
 
 ```
 src/
-├── api/                      # Composition; one setup per endpoint group
-│   ├── middleware/           # HTTP middlewares (global and route-group)
-│   │   ├── trackingCanonical.ts
-│   │   ├── requestResponseLog.ts
-│   │   ├── apiKeyAuth.ts
-│   │   └── idempotency.ts
-│   ├── wallets/              # /v1/wallets/* route group
-│   │   └── setup.ts
-│   ├── transfers/            # /v1/transfers/* route group
-│   │   └── setup.ts
-│   ├── holds/                # /v1/holds/* route group
-│   │   └── setup.ts
-│   └── platforms/            # /v1/platforms/* route group (API key management)
-│       └── setup.ts
-├── jobs/                     # Background cron jobs
-│   ├── expireHolds.ts        # Marks zombie holds (status='active', expires_at < now) as 'expired'; 30s interval
-│   └── cleanupIdempotencyRecords.ts  # Deletes expired idempotency records (expires_at < now); 60s interval
-├── wallet/
-│   ├── domain/
-│   │   ├── wallet/
-│   │   ├── transaction/
-│   │   ├── ledgerEntry/
-│   │   ├── hold/
-│   │   ├── movement/          # Movement (journal entry) — groups entries that must sum to zero
-│   │   └── ports/
-│   ├── application/
-│   │   ├── command/          # createWallet, deposit, withdraw, transfer, placeHold, captureHold, voidHold, freezeWallet, closeWallet
-│   │   └── query/            # getWallet, getTransactions, getLedgerEntries
-│   ├── adapters/
-│   │   └── persistence/prisma/  # outgoing adapters (repositories, read stores)
-│   └── ports/
-│       └── http/             # driving adapters; one folder per endpoint
-│           ├── deposit/
-│           │   ├── schemas.ts   # Zod request + response schemas
-│           │   └── handler.ts   # describeRoute + validators + handler
-│           └── .../             # same pattern for all endpoints
-├── platform/
-│   ├── domain/
-│   ├── application/
-│   │   ├── command/
-│   │   └── query/
-│   └── adapters/
-├── shared/
-│   ├── domain/
-│   │   ├── appError.ts           # AppError (Kind + Code + Message)
-│   │   ├── kernel/
-│   │   │   ├── context.ts        # AppContext, createAppContext
-│   │   │   ├── id.generator.ts   # IIDGenerator port
-│   │   │   ├── bigint.ts         # toSafeNumber, toNumber, bigIntReplacer
-│   │   │   └── listing.ts        # ListingQuery, ListingConfig, cursor encode/decode
+├── common/                          # Cross-cutting features with full architecture (NOT a bounded context)
+│   └── idempotency/                 # Idempotency feature
+│       ├── application/
+│       │   ├── command/cleanupIdempotency/  # command.ts + usecase.ts
+│       │   └── ports/
+│       │       └── idempotency.store.ts     # IIdempotencyStore + IdempotencyRecord
+│       └── infrastructure/adapters/
+│           ├── inbound/scheduler/           # cleanupIdempotency.job.ts + jobs.ts
+│           └── outbound/prisma/             # idempotency.store.ts (PrismaIdempotencyStore)
+├── utils/                           # Pure toolkit, zero use cases
+│   ├── kernel/                      # Domain-safe abstractions (NO infra deps). Equivalent to domain+application pragmatically
+│   │   ├── appError.ts
+│   │   ├── bigint.ts
+│   │   ├── context.ts              # AppContext, createAppContext
+│   │   ├── listing.ts
 │   │   └── observability/
-│   │       ├── logger.port.ts    # ILogger port
-│   │       └── canonical.ts      # CanonicalAccumulator
-│   └── adapters/
-│       ├── kernel/
-│       │   ├── hono.context.ts   # HonoVariables, buildAppContext, handlerFactory
-│       │   ├── hono.error.ts     # errorResponse, validationHook, ErrorResponseSchema
-│       │   ├── uuidV7.ts         # UUID v7 implementation
-│       │   ├── listing.zod.ts    # createListingQuerySchema (Zod schema factory)
-│       │   └── listing.prisma.ts # buildPrismaListing (Prisma query builder)
-│       └── observability/
-│           ├── pino.adapter.ts
-│           ├── safe.logger.ts
-│           └── sensitive.filter.ts
-├── index.ts
-├── wiring.ts
-└── config.ts
+│   │       ├── canonical.ts
+│   │       └── logger.port.ts      # ILogger port
+│   ├── application/                 # Application-level interfaces
+│   │   ├── cqrs.ts                 # ICommand, IQuery, ICommandHandler, IQueryHandler, BusMiddleware, ICommandBus, IQueryBus
+│   │   ├── id.generator.ts         # IIDGenerator
+│   │   └── transaction.manager.ts  # ITransactionManager
+│   ├── infrastructure/              # Infra implementations
+│   │   ├── cqrs.ts                 # CommandBus, QueryBus implementations
+│   │   ├── hono.context.ts         # HonoVariables, buildAppContext, handlerFactory
+│   │   ├── hono.error.ts           # errorResponse, validationHook, ErrorResponseSchema
+│   │   ├── listing.prisma.ts       # buildPrismaListing
+│   │   ├── listing.zod.ts          # createListingQuerySchema
+│   │   ├── prisma.transaction.manager.ts
+│   │   ├── scheduler.ts            # startScheduledJobs (inbound adapter for timer-based command dispatch)
+│   │   ├── uuidV7.ts               # UUIDV7Generator
+│   │   └── observability/
+│   │       ├── pino.adapter.ts
+│   │       ├── safe.logger.ts
+│   │       └── sensitive.filter.ts
+│   └── middleware/                   # All HTTP middlewares in one place
+│       ├── apiKeyAuth.ts
+│       ├── idempotency.ts           # middleware (imports IIdempotencyStore from common/)
+│       ├── requestResponseLog.ts
+│       └── trackingCanonical.ts
+├── wallet/                          # Bounded context
+│   ├── domain/
+│   │   ├── wallet/, hold/, transaction/, ledgerEntry/, movement/  # entities/aggregates
+│   │   └── ports/                   # domain repository interfaces (IWalletRepository, IHoldRepository, etc.)
+│   ├── application/
+│   │   ├── command/                 # 11 commands (createWallet, deposit, withdraw, transfer, placeHold, captureHold, voidHold, freezeWallet, unfreezeWallet, closeWallet, expireHolds)
+│   │   ├── query/                   # 3 queries (getWallet, getTransactions, getLedgerEntries)
+│   │   └── ports/                   # read store interfaces (IWalletReadStore, ITransactionReadStore, ILedgerEntryReadStore)
+│   └── infrastructure/adapters/
+│       ├── inbound/
+│       │   ├── http/                # route files + per-endpoint handler/schemas folders
+│       │   │   ├── wallets.routes.ts
+│       │   │   ├── transfers.routes.ts
+│       │   │   ├── holds.routes.ts
+│       │   │   └── deposit/, withdraw/, transfer/, ...  # per-endpoint folders (schemas.ts + handler.ts)
+│       │   └── scheduler/           # expireHolds.job.ts + jobs.ts (wallet-specific scheduled jobs)
+│       └── outbound/prisma/         # repository and readstore implementations
+├── config.ts
+├── index.ts                         # App bootstrap, mounts routes and scheduled jobs
+└── wiring.ts                        # DI: instantiates all deps, registers commands/queries on buses
 ```
 
 ---
@@ -169,7 +163,17 @@ src/
 | BC | Responsibility |
 |----|----------------|
 | **Wallet** | Wallets, transactions, ledger entries, holds. Deposits, withdrawals, transfers, hold lifecycle. Double-entry bookkeeping. |
-| **Platform** | API key management, platform registration. Authentication of API consumers. |
+| **Platform** | API key management, platform registration. Authentication of API consumers. *(Not yet implemented — planned.)* |
+
+---
+
+## Cross-Cutting Modules
+
+| Module | Location | Role |
+|--------|----------|------|
+| **common/** | `src/common/` | Global features with complete architecture (ports, adapters, use cases) that don't belong to specific BCs. Currently contains idempotency feature (cleanup job, store port, Prisma adapter). NOT a bounded context. |
+| **utils/** | `src/utils/` | Pure toolkit — reusable utilities that are NOT features. Contains kernel (domain-safe abstractions), application interfaces (CQRS, IIDGenerator, ITransactionManager), infrastructure implementations, and HTTP middlewares. |
+| **utils/kernel/** | `src/utils/kernel/` | Domain-safe abstractions. Equivalent to domain+application pragmatically. Kernel must NOT depend on infrastructure or external libraries. Contains AppError, AppContext, BigInt utils, listing types, ILogger port. |
 
 ---
 
@@ -177,23 +181,22 @@ src/
 
 | Layer | Location | Role |
 |-------|----------|------|
-| **HTTP / Driving** | `adapters/ports/http/` | Parse request, validate format, map to Command/Query, call use case, return response. |
-| **Application** | `application/command/`, `application/query/` | Orchestrate domain and ports; use case logic. |
+| **HTTP / Inbound** | `wallet/infrastructure/adapters/inbound/http/` | Parse request, validate format, dispatch Command/Query via bus, return response. |
+| **Application** | `wallet/application/command/`, `wallet/application/query/` | Orchestrate domain and ports; use case logic. |
 
 ---
 
-## API Composition (api/)
+## Route Registration (routes.ts)
 
-Each route group has its own setup module:
+Each route group has its own routes file colocated with the bounded context:
 
 | Module | Base path | Responsibilities |
 |--------|-----------|-------------------|
-| `api/wallets/setup.ts` | `/v1/wallets` | Create wallet, deposit, withdraw, freeze, close, get balance |
-| `api/transfers/setup.ts` | `/v1/transfers` | P2P transfers between wallets |
-| `api/holds/setup.ts` | `/v1/holds` | Place, capture, void holds |
-| `api/platforms/setup.ts` | `/v1/platforms` | Platform registration, API key management |
+| `wallet/infrastructure/adapters/inbound/http/wallets.routes.ts` | `/v1/wallets` | Create wallet, deposit, withdraw, freeze, unfreeze, close, get balance |
+| `wallet/infrastructure/adapters/inbound/http/transfers.routes.ts` | `/v1/transfers` | P2P transfers between wallets |
+| `wallet/infrastructure/adapters/inbound/http/holds.routes.ts` | `/v1/holds` | Place, capture, void holds |
 
-`index.ts` creates the app, registers middleware, and calls each `setup(app, deps)` to wire routes.
+`index.ts` creates the app, registers middleware, and mounts each route group. Route files receive `commandBus` / `queryBus` (not individual handler instances).
 
 ### API documentation (auto-generated)
 
@@ -208,17 +211,17 @@ Request schemas (`ParamSchema`, `BodySchema`, `QueryParamsSchema`) are autodisco
 
 ## Handler Rules
 
-### Command handler (write)
+### Command use case (write)
 
 Each command use case lives in its own directory with **two files**:
 
 - **`command.ts`** — Pure type definitions: the command interface (input) and optional result interface (output). No dependencies, no logic. This keeps the contract readable and importable without pulling in handler dependencies.
-- **`handler.ts`** — The handler class. Imports the command/result types from `./command.js`. Depends only on interfaces (repos, services, ports); no external libraries.
+- **`usecase.ts`** — The use case class (handler). Imports the command/result types from `./command.js`. Depends only on interfaces (repos, services, ports); no external libraries.
 
 ```
 application/command/deposit/
 ├── command.ts    ← DepositCommand, DepositResult (types only)
-└── handler.ts    ← DepositHandler (imports from command.ts)
+└── usecase.ts    ← DepositHandler (imports from command.ts)
 ```
 
 Rules:
@@ -228,25 +231,27 @@ Rules:
 - **May return**: IDs or minimal data for follow-up GET.
 - **Must not**: return full aggregates or rich DTOs.
 
-### Query handler (read)
+### Query use case (read)
 
 Each query use case lives in its own directory with **two files**:
 
-- **`query.ts`** — Pure type definitions: the query interface (input), DTO interfaces (output), ReadStore interface (port), and pagination types. No dependencies.
-- **`handler.ts`** — The handler class. Imports types from `./query.js`.
+- **`query.ts`** — Pure type definitions: the query interface (input), DTO interfaces (output), and pagination types. No dependencies.
+- **`usecase.ts`** — The use case class (handler). Imports types from `./query.js`.
 
 ```
 application/query/getWallet/
-├── query.ts      ← GetWalletQuery, WalletDTO, WalletReadStore (types only)
-└── handler.ts    ← GetWalletHandler (imports from query.ts)
+├── query.ts      ← GetWalletQuery, WalletDTO (types only)
+└── usecase.ts    ← GetWalletHandler (imports from query.ts)
 ```
+
+ReadStore interfaces are extracted into `wallet/application/ports/` (e.g., `wallet.readstore.ts`, `transaction.readstore.ts`, `ledgerEntry.readstore.ts`).
 
 Rules:
 - Depends only on **interfaces** (ReadStore, etc.); no external libraries.
 - Validate params → call ReadStore → return DTO.
 - **Must not**: load aggregates to build response.
 
-### HTTP handler (ports/http/)
+### HTTP handler (inbound adapter)
 
 Each endpoint folder has **two files**:
 
@@ -254,7 +259,7 @@ Each endpoint folder has **two files**:
 - **`handler.ts`** — Imports from `schemas.ts`. Uses `describeRoute()` (tags, summary, responses with `resolver()`) + `validator()` from `hono-openapi` + the async handler function, all inside `handlerFactory.createHandlers()`.
 
 ```
-ports/http/deposit/
+wallet/infrastructure/adapters/inbound/http/deposit/
 ├── schemas.ts    ← ParamSchema, BodySchema, ResponseSchema (Zod)
 └── handler.ts    ← describeRoute + validators + handler logic
 ```
@@ -263,10 +268,10 @@ ports/http/deposit/
 
 ```typescript
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
-import { ErrorResponseSchema, validationHook } from "shared/adapters/kernel/hono.error.js";
+import { ErrorResponseSchema, validationHook } from "utils/infrastructure/hono.error.js";
 import { BodySchema, ParamSchema, ResponseSchema } from "./schemas.js";
 
-export function depositRoute(handler: DepositHandler) {
+export function depositRoute(commandBus: ICommandBus) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],
@@ -283,7 +288,7 @@ export function depositRoute(handler: DepositHandler) {
       const { walletId } = c.req.valid("param");
       const data = c.req.valid("json");
       const ctx = buildAppContext(c);
-      const result = await handler.handle(ctx, { ... });
+      const result = await commandBus.dispatch(ctx, { ... });
       return c.json({ transaction_id: result.transactionId, movement_id: result.movementId }, 201);
     },
   );
@@ -295,7 +300,7 @@ Rules:
 - No try/catch — errors propagate to the global `onError`.
 - Use `validator` from `hono-openapi` (aliased as `zValidator`), **not** `@hono/zod-validator`.
 - Every endpoint must have `describeRoute()` with `resolver(ResponseSchema)` and `resolver(ErrorResponseSchema)`.
-- Setup files receive pre-wired app handlers from `Dependencies` and only do routing.
+- Route files receive `commandBus`/`queryBus` and only do routing.
 
 ### Listing endpoints (paginated queries)
 
@@ -304,8 +309,8 @@ Paginated GET endpoints use the **reusable listing system** for Stripe-style fil
 **In `schemas.ts`**, define a `ListingConfig` and generate the query schema:
 
 ```typescript
-import { createListingQuerySchema } from "shared/adapters/kernel/listing.zod.js";
-import type { ListingConfig } from "shared/domain/kernel/listing.js";
+import { createListingQuerySchema } from "utils/infrastructure/listing.zod.js";
+import type { ListingConfig } from "utils/kernel/listing.js";
 
 const listingConfig: ListingConfig = {
   filterableFields: [
@@ -340,7 +345,7 @@ export const QueryParamsSchema = createListingQuerySchema(listingConfig);
 
 **In the handler**, use `zValidator("query", QueryParamsSchema, validationHook)` — the schema auto-validates filters, sort, limit, and cursor (including sort signature mismatch detection).
 
-**In the readstore**, use `buildPrismaListing()` from `listing.prisma.ts` to convert the `ListingQuery` into Prisma `where`/`orderBy`/`take` clauses with keyset WHERE pagination.
+**In the readstore**, use `buildPrismaListing()` from `utils/infrastructure/listing.prisma.ts` to convert the `ListingQuery` into Prisma `where`/`orderBy`/`take` clauses with keyset WHERE pagination.
 
 ---
 
@@ -369,11 +374,11 @@ When reusable rules appear ("can withdraw", "can freeze", "is eligible for X"):
 
 ## Error Handling
 
-The backend uses a **structured, layered error strategy** built on `shared/appError`. Errors flow from domain → app → HTTP adapter, where they are translated to HTTP responses. Domain and app remain transport-agnostic.
+The backend uses a **structured, layered error strategy** built on `utils/kernel/appError`. Errors flow from domain → app → HTTP adapter, where they are translated to HTTP responses. Domain and app remain transport-agnostic.
 
 ### Error type: `AppError`
 
-`shared/appError.ts` defines a single error class used across all layers. No external dependencies.
+`utils/kernel/appError.ts` defines a single error class used across all layers. No external dependencies.
 
 ```typescript
 class AppError extends Error {
@@ -409,7 +414,7 @@ export const ErrInsufficientFunds = (walletId: string) =>
 **Application** — defines use-case sentinels as `AppError`:
 
 ```typescript
-// wallet/application/command/deposit/handler.ts
+// wallet/application/command/deposit/usecase.ts
 const ErrWalletNotFound = AppError.notFound("WALLET_NOT_FOUND", "wallet does not exist");
 ```
 
@@ -431,8 +436,8 @@ All error responses follow a consistent structure:
 
 ### Rules
 
-1. **Domain and app** import only from `shared/domain/` (no external deps). Never from `shared/adapters/`. No Hono, no HTTP concepts.
-2. **Error translation** is centralized: `errorResponse()` and `httpStatus()` in `shared/adapters/kernel/hono.error.ts`. Middleware calls `errorResponse()` directly; handlers let errors propagate to the global `onError`.
+1. **Domain and app** import only from `utils/kernel/` (no external deps). Never from `utils/infrastructure/` or `utils/middleware/`. No Hono, no HTTP concepts.
+2. **Error translation** is centralized: `errorResponse()` and `httpStatus()` in `utils/infrastructure/hono.error.ts`. Middleware calls `errorResponse()` directly; handlers let errors propagate to the global `onError`.
 3. **Use `AppError.is()`** for type checking. Never compare errors with `===`.
 4. Every new error must have a **unique, stable Code** (UPPER_SNAKE_CASE). Codes are part of the API contract.
 5. **Infrastructure errors** (Prisma, external APIs) not wrapped in `AppError` are caught by the global `onError` and returned as 500 `INTERNAL_ERROR`.
@@ -441,11 +446,11 @@ All error responses follow a consistent structure:
 
 ## Logging
 
-**The entire backend** uses a single logging abstraction. Domain and app depend only on the **port** `ILogger` (`shared/domain/observability/logger.port.ts`); concrete implementations (PinoAdapter, SafeLogger, SensitiveKeysFilter) live in `shared/adapters/observability/`. Wiring builds the logger chain: **PinoAdapter → SensitiveKeysFilter → SafeLogger**.
+**The entire backend** uses a single logging abstraction. Domain and app depend only on the **port** `ILogger` (`utils/kernel/observability/logger.port.ts`); concrete implementations (PinoAdapter, SafeLogger, SensitiveKeysFilter) live in `utils/infrastructure/observability/`. Wiring builds the logger chain: **PinoAdapter → SensitiveKeysFilter → SafeLogger**.
 
 ### Logger port and SafeLogger
 
-- **Interface**: `ILogger` in `shared/domain/observability/logger.port.ts`. Domain and app must not import Pino; they depend only on the port.
+- **Interface**: `ILogger` in `utils/kernel/observability/logger.port.ts`. Domain and app must not import Pino; they depend only on the port.
 - **SensitiveKeysFilter**: Wraps any `Logger`. Omits any key-value pair whose key is in the sensitive set (exact match, recursive through nested objects). Configured in wiring with keys: `password`, `token`, `authorization`, `secret`, `cookie`, `access_token`, `refresh_token`, `api_key`, `api_key_hash`.
 - **SafeLogger**: Wraps any `Logger` so that **under no circumstance does a logger failure stop execution**. Exceptions inside the logger are caught; only `fatal()` is allowed to terminate the process. Do not rely on the logger for control flow.
 
@@ -520,7 +525,7 @@ Always pass the `AppContext` (built via `buildAppContext(c)`) so these fields ar
 
 ---
 
-## Middleware (api/middleware/)
+## Middleware (utils/middleware/)
 
 ### Global middleware (registered on all routes in `index.ts`)
 
@@ -529,7 +534,7 @@ Always pass the `AppContext` (built via `buildAppContext(c)`) so these fields ar
 | **trackingCanonical** | Generate tracking_id (UUID v7), inject request start, canonical accumulator; dispatch canonical on exit. |
 | **requestResponseLog** | Log every request (method, path, body) and response (status, duration). Reads body via `c.req.raw.clone()` to avoid consuming the stream for downstream handlers. |
 
-### Route-group middleware (registered per endpoint group in `setup.ts`)
+### Route-group middleware (registered per route group in route files)
 
 | Middleware | Responsibility |
 |------------|----------------|
@@ -537,6 +542,19 @@ Always pass the `AppContext` (built via `buildAppContext(c)`) so these fields ar
 | **idempotency** | Atomic acquire-then-complete pattern for `Idempotency-Key` header. Applied to mutation endpoints only. Returns `409 IDEMPOTENCY_KEY_IN_PROGRESS` if another request is processing the same key. |
 
 **Why the split?** `trackingCanonical` and `requestResponseLog` apply to everything including `/health`. `apiKeyAuth` and `idempotency` only apply to authenticated, mutation-capable routes — registering them globally would break health checks and GET endpoints.
+
+---
+
+## Scheduled Jobs (Inbound Adapters)
+
+Scheduled jobs (cron) are **inbound adapters**, the same category as HTTP routes. The scheduler dispatches commands via the `CommandBus`, following the same pattern as HTTP routes dispatching commands.
+
+| Job | Location | Interval | Description |
+|-----|----------|----------|-------------|
+| **expireHolds** | `wallet/infrastructure/adapters/inbound/scheduler/expireHolds.job.ts` | 30s | Marks zombie holds (status='active', expires_at < now) as 'expired' via CommandBus |
+| **cleanupIdempotency** | `common/idempotency/infrastructure/adapters/inbound/scheduler/cleanupIdempotency.job.ts` | 60s | Deletes expired idempotency records via CommandBus |
+
+The scheduler infrastructure lives in `utils/infrastructure/scheduler.ts` (`startScheduledJobs`). Each BC or common feature registers its own jobs.
 
 ---
 
@@ -552,7 +570,7 @@ Always pass the `AppContext` (built via `buildAppContext(c)`) so these fields ar
 
 ## BigInt Serialization
 
-Prisma `BigInt` fields return native `bigint` which does not serialize to JSON. Use `shared/kernel/bigint.ts`:
+Prisma `BigInt` fields return native `bigint` which does not serialize to JSON. Use `utils/kernel/bigint.ts`:
 
 - `toSafeNumber(value)` — returns `number` if safe, `string` if exceeds `MAX_SAFE_INTEGER`.
 - `toNumber(value)` — unconditional cast to `number`; use for timestamps and small amounts.
@@ -564,17 +582,17 @@ Adapters and read stores must convert BigInt values before returning DTOs. Never
 
 ## AppContext Helper
 
-Use `buildAppContext(c)` from `shared/adapters/kernel/hono.context.ts` to construct `AppContext` from Hono context in HTTP handlers. Avoids repeating `c.get()` boilerplate:
+Use `buildAppContext(c)` from `utils/infrastructure/hono.context.ts` to construct `AppContext` from Hono context in HTTP handlers. Avoids repeating `c.get()` boilerplate:
 
 ```typescript
-import { buildAppContext } from "../../shared/adapters/kernel/hono.context.js";
+import { buildAppContext } from "utils/infrastructure/hono.context.js";
 const ctx = buildAppContext(c);
 ```
 
-For non-HTTP flows (background jobs, scripts, tests, domain events), use `createAppContext(idGen)` from `shared/domain/kernel/context.ts`. It generates a fresh `trackingId`, sets `startTs = Date.now()`, and creates a new `CanonicalAccumulator`:
+For non-HTTP flows (background jobs, scripts, tests, domain events), use `createAppContext(idGen)` from `utils/kernel/context.ts`. It generates a fresh `trackingId`, sets `startTs = Date.now()`, and creates a new `CanonicalAccumulator`:
 
 ```typescript
-import { createAppContext } from "../../shared/domain/kernel/context.js";
+import { createAppContext } from "utils/kernel/context.js";
 const ctx = createAppContext(idGen);
 ```
 
@@ -604,7 +622,7 @@ Two construction paths:
 ```typescript
 // wallet/domain/wallet/aggregate.ts
 
-import { AppError } from "../../../shared/appError.js";
+import { AppError } from "utils/kernel/appError.js";
 
 export class Wallet {
   private readonly _id: string;
@@ -733,7 +751,7 @@ Each bounded context defines its errors in a dedicated file (`domain/<aggregate>
 ```typescript
 // wallet/domain/wallet/errors.ts
 
-import { AppError } from "../../../shared/appError.js";
+import { AppError } from "utils/kernel/appError.js";
 
 // Domain rule violations → 422
 export const ErrInsufficientFunds = (walletId: string) =>
@@ -775,12 +793,12 @@ export const ErrWalletNotFound = (walletId: string) =>
 
 ### Repository port (write store)
 
-Repository ports live in `domain/ports/`. They accept and return **aggregates**, not DTOs. **All methods receive `ctx: AppContext` as first parameter**, enabling adapters to log with full request traceability. Single `save()` method for both insert and update (upsert pattern).
+Repository ports live in `wallet/domain/ports/`. They accept and return **aggregates**, not DTOs. **All methods receive `ctx: AppContext` as first parameter**, enabling adapters to log with full request traceability. Single `save()` method for both insert and update (upsert pattern).
 
 ```typescript
 // wallet/domain/ports/wallet.repository.ts
 
-import type { AppContext } from "../../../shared/domain/kernel/context.js";
+import type { AppContext } from "utils/kernel/context.js";
 import type { Wallet } from "../wallet/wallet.aggregate.js";
 
 export interface IWalletRepository {
@@ -802,12 +820,12 @@ export interface IWalletRepository {
 The adapter implements the port using Prisma. It receives `ILogger` in the constructor for traceability, maps between aggregate and Prisma model, and handles **optimistic locking** via `version`.
 
 ```typescript
-// wallet/adapters/persistence/prisma/wallet.repo.ts
+// wallet/infrastructure/adapters/outbound/prisma/wallet.repo.ts
 
 import type { PrismaClient } from "@prisma/client";
-import type { AppContext } from "../../../../shared/domain/kernel/context.js";
-import type { ILogger } from "../../../../shared/domain/observability/logger.port.js";
-import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
+import type { AppContext } from "utils/kernel/context.js";
+import type { ILogger } from "utils/kernel/observability/logger.port.js";
+import type { IWalletRepository } from "../../../../domain/ports/wallet.repository.js";
 
 export class PrismaWalletRepo implements IWalletRepository {
   constructor(private readonly prisma: PrismaClient, private readonly logger: ILogger) {}
@@ -860,29 +878,18 @@ export class PrismaWalletRepo implements IWalletRepository {
 
 ---
 
-### Command handler (Load-Mutate-Save)
+### Command use case (Load-Mutate-Save)
 
-Command handlers orchestrate the flow: load aggregate → call domain methods → persist changes. They depend **only on interfaces** (ports). No Prisma, no Hono.
+Command use cases orchestrate the flow: load aggregate → call domain methods → persist changes. They depend **only on interfaces** (ports). No Prisma, no Hono.
 
 ```typescript
-// wallet/application/command/deposit/handler.ts
+// wallet/application/command/deposit/usecase.ts
 
-import type { AppContext } from "../../../../shared/kernel/context.js";
-import type { IDGenerator } from "../../../../shared/kernel/idGenerator.js";
-import type { Logger } from "../../../../shared/observability/logger.js";
-import type { WalletRepository } from "../../../domain/ports/walletRepository.js";
+import type { AppContext } from "utils/kernel/context.js";
+import type { IIDGenerator } from "utils/application/id.generator.js";
+import type { ILogger } from "utils/kernel/observability/logger.port.js";
+import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { ErrWalletNotFound } from "../../../domain/wallet/errors.js";
-
-export interface DepositCommand {
-  walletId: string;
-  amountCents: bigint;
-  reference?: string;
-  idempotencyKey: string;
-}
-
-export interface DepositResult {
-  transactionId: string;
-}
 
 const mainLogTag = "DepositHandler";
 
@@ -943,51 +950,30 @@ export class DepositHandler {
 }
 ```
 
-**Why the handler doesn't import Prisma**: The handler depends on `WalletRepository` (interface). Prisma is an implementation detail injected at wiring time. This keeps the app layer testable (mock the interface) and framework-independent.
+**Why the handler doesn't import Prisma**: The handler depends on `IWalletRepository` (interface). Prisma is an implementation detail injected at wiring time. This keeps the app layer testable (mock the interface) and framework-independent.
 
 **Why commands return minimal data**: Strict CQRS says commands return nothing. Pragmatically, returning the created ID avoids an unnecessary follow-up query. Never return the full aggregate or a rich DTO — that's the query side's job.
 
 ---
 
-### Query handler + ReadStore
+### Query use case + ReadStore
 
-Query handlers return **DTOs**, not aggregates. They use a `ReadStore` port optimized for reads (can use JOINs, aggregations).
+Query use cases return **DTOs**, not aggregates. They use a `ReadStore` port optimized for reads (can use JOINs, aggregations).
 
 ```typescript
-// wallet/application/query/getWallet/handler.ts
+// wallet/application/query/getWallet/usecase.ts
 
-import { AppError } from "../../../../shared/appError.js";
-import type { AppContext } from "../../../../shared/kernel/context.js";
-import type { Logger } from "../../../../shared/observability/logger.js";
-
-export interface GetWalletQuery {
-  walletId: string;
-  platformId: string;
-}
-
-export interface WalletDTO {
-  id: string;
-  owner_id: string;
-  currency_code: string;
-  balance_cents: number;       // converted from BigInt
-  available_balance_cents: number; // balance minus active holds
-  status: string;
-  is_system: boolean;
-  created_at: number;
-  updated_at: number;
-}
-
-// ReadStore port — returns DTOs, not aggregates
-export interface WalletReadStore {
-  getById(walletId: string, platformId: string): Promise<WalletDTO | null>;
-}
+import { AppError } from "utils/kernel/appError.js";
+import type { AppContext } from "utils/kernel/context.js";
+import type { ILogger } from "utils/kernel/observability/logger.port.js";
+import type { IWalletReadStore } from "../../ports/wallet.readstore.js";
 
 const mainLogTag = "GetWalletHandler";
 
 export class GetWalletHandler {
   constructor(
-    private readonly readStore: WalletReadStore,
-    private readonly logger: Logger,
+    private readonly readStore: IWalletReadStore,
+    private readonly logger: ILogger,
   ) {}
 
   async handle(ctx: AppContext, query: GetWalletQuery): Promise<WalletDTO> {
@@ -1007,18 +993,18 @@ export class GetWalletHandler {
 
 ---
 
-### HTTP handler (driving adapter)
+### HTTP handler (inbound adapter)
 
-HTTP handlers live in `ports/http/<endpoint>/`. They parse the request, validate format, call the command/query handler, and map the result to an HTTP response.
+HTTP handlers live in `wallet/infrastructure/adapters/inbound/http/<endpoint>/`. They parse the request, validate format, dispatch the command/query via the bus, and map the result to an HTTP response.
 
 ```typescript
-// wallet/ports/http/deposit/handler.ts
+// wallet/infrastructure/adapters/inbound/http/deposit/handler.ts
 
-import { zValidator } from "@hono/zod-validator";
+import { validator as zValidator } from "hono-openapi";
 import { z } from "zod";
-import { validationHook } from "../../../../shared/adapters/kernel/hono.error.js";
-import { buildAppContext, handlerFactory } from "../../../../shared/adapters/kernel/hono.context.js";
-import type { DepositHandler } from "../../../application/command/deposit/handler.js";
+import { validationHook } from "utils/infrastructure/hono.error.js";
+import { buildAppContext, handlerFactory } from "utils/infrastructure/hono.context.js";
+import type { ICommandBus } from "utils/application/cqrs.js";
 
 const ParamSchema = z.object({ walletId: z.string().min(1).max(255) });
 const BodySchema = z.object({
@@ -1026,7 +1012,7 @@ const BodySchema = z.object({
   reference: z.string().max(500).optional(),
 });
 
-export function depositRoute(handler: DepositHandler) {
+export function depositRoute(commandBus: ICommandBus) {
   return handlerFactory.createHandlers(
     zValidator("param", ParamSchema, validationHook),
     zValidator("json", BodySchema, validationHook),
@@ -1035,7 +1021,7 @@ export function depositRoute(handler: DepositHandler) {
       const data = c.req.valid("json");
       const ctx = buildAppContext(c);
 
-      const result = await handler.handle(ctx, {
+      const result = await commandBus.dispatch(ctx, {
         walletId,
         amountCents: BigInt(data.amount_cents),
         reference: data.reference,
@@ -1052,40 +1038,41 @@ export function depositRoute(handler: DepositHandler) {
 }
 ```
 
-**Why Zod is OK here**: Zod lives in the HTTP adapter (driving adapter), not in domain or app. The HTTP handler validates request **format** (is it a number? is it positive?). Domain validates **business rules** (is the wallet active? sufficient funds?). Format validation and business validation are separate concerns — the adapter handles the former, the domain handles the latter.
+**Why Zod is OK here**: Zod lives in the HTTP adapter (inbound adapter), not in domain or app. The HTTP handler validates request **format** (is it a number? is it positive?). Domain validates **business rules** (is the wallet active? sufficient funds?). Format validation and business validation are separate concerns — the adapter handles the former, the domain handles the latter.
 
 **Why `handlerFactory.createHandlers()`**: Hono's `createFactory` preserves type inference through the middleware chain — `c.req.valid("json")` and `c.req.valid("param")` are fully typed without casts. Validators and handler are composed in a single call. No try/catch needed — errors propagate to the global `onError` in `index.ts`, which maps `AppError.kind` → HTTP status via `errorResponse()`.
 
 ---
 
-### Route registration (setup.ts)
+### Route registration (routes.ts)
 
-Each API group has a `setup.ts` that returns a Hono sub-app. Route-group middleware (apiKeyAuth, idempotency) is registered here, not globally. App handlers come pre-wired from `Dependencies` (wiring.ts).
+Each route group has a routes file colocated with the bounded context. Route-group middleware (apiKeyAuth, idempotency) is registered here, not globally. Routes receive `commandBus` / `queryBus` from wiring.
 
 ```typescript
-// api/wallets/setup.ts
+// wallet/infrastructure/adapters/inbound/http/wallets.routes.ts
 
 import { Hono } from "hono";
-import type { HonoVariables } from "../../shared/adapters/kernel/hono.context.js";
-import { depositRoute } from "../../wallet/ports/http/deposit/handler.js";
-import { getWalletRoute } from "../../wallet/ports/http/getWallet/handler.js";
-import type { Dependencies } from "../../wiring.js";
-import { apiKeyAuth } from "../middleware/apiKeyAuth.js";
-import { idempotency } from "../middleware/idempotency.js";
+import type { HonoVariables } from "utils/infrastructure/hono.context.js";
+import { depositRoute } from "./deposit/handler.js";
+import { getWalletRoute } from "./getWallet/handler.js";
+import type { ICommandBus } from "utils/application/cqrs.js";
+import type { IQueryBus } from "utils/application/cqrs.js";
+import { apiKeyAuth } from "utils/middleware/apiKeyAuth.js";
+import { idempotency } from "utils/middleware/idempotency.js";
 
-export function walletRoutes(deps: Dependencies) {
+export function walletRoutes(commandBus: ICommandBus, queryBus: IQueryBus, deps: Dependencies) {
   const router = new Hono<{ Variables: HonoVariables }>();
   const auth = apiKeyAuth(deps.validateApiKey);
   const idemp = idempotency(deps.idempotencyStore);
 
-  router.post("/:walletId/deposit", auth, idemp, ...depositRoute(deps.deposit));
-  router.get("/:walletId", auth, ...getWalletRoute(deps.getWallet));
+  router.post("/:walletId/deposit", auth, idemp, ...depositRoute(commandBus));
+  router.get("/:walletId", auth, ...getWalletRoute(queryBus));
 
   return router;
 }
 ```
 
-**Why wiring happens in wiring.ts**: All repos and app handlers are instantiated once in `wiring.ts` and passed via `Dependencies`. Setup files only do routing — no imports of repos, no `new Handler(...)`. This eliminates duplicate repo instantiation across route groups.
+**Why wiring happens in wiring.ts**: All repos and use case handlers are instantiated once in `wiring.ts`, registered on the command/query buses, and the buses are passed to route files. Route files only do routing — no imports of repos, no `new Handler(...)`. This eliminates duplicate repo instantiation across route groups.
 
 ---
 
@@ -1094,7 +1081,7 @@ export function walletRoutes(deps: Dependencies) {
 Use `prisma.$transaction()` when multiple writes must be atomic (e.g., deposit: update wallet + create transaction + create ledger entries).
 
 ```typescript
-// Inside command handler or repository adapter:
+// Inside command use case or repository adapter:
 await prisma.$transaction(async (tx) => {
   // All operations inside use `tx`, not `prisma`
   await tx.wallet.update({ where: { id: walletId, version: expectedVersion }, data: { ... } });

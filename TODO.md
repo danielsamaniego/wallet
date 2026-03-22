@@ -51,11 +51,11 @@ Referencia completa: [AUDIT_REPORT.md](AUDIT_REPORT.md)
 | Archivo | Cambio |
 |---------|--------|
 | `domain/transaction/transaction.errors.ts` | Nuevo: `ErrIdempotencyKeyAlreadyUsed` |
-| `adapters/persistence/prisma/errors.ts` | Nuevo: `isUniqueViolation()` helper |
-| `adapters/persistence/prisma/transaction.repo.ts` | Catch P2002 → domain error; `findByIdempotencyKey`, `findByMovementId` |
+| `wallet/infrastructure/adapters/outbound/prisma/errors.ts` | Nuevo: `isUniqueViolation()` helper |
+| `wallet/infrastructure/adapters/outbound/prisma/transaction.repo.ts` | Catch P2002 → domain error; `findByIdempotencyKey`, `findByMovementId` |
 | `domain/ports/transaction.repository.ts` | Agregar queries al port |
 | 4 command handlers | try/catch recovery via `AppError.code` |
-| `api/middleware/idempotency.ts` | Stale pending recovery; retry en release/complete |
+| `utils/middleware/idempotency.ts` | Stale pending recovery; retry en release/complete |
 
 **Esfuerzo:** 4-6h
 

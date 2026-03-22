@@ -187,7 +187,7 @@ Internal components and workflows.
 - **Transient error handling**: Responses with status `>= 500` or `409` (e.g. VERSION_CONFLICT) are NOT cached. The pending idempotency record is deleted (`release`) so the client can safely retry with the same key. Only deterministic responses (2xx, 400, 404, 422) are cached.
 - **Payload mismatch detection**: A SHA-256 hash of `method:path:body` is stored alongside the idempotency record. Including the HTTP method and path ensures the same key used on a different endpoint is rejected (per IETF draft recommendation). If a retry arrives with the same key but a different hash, the middleware returns `422 IDEMPOTENCY_PAYLOAD_MISMATCH` instead of the cached response.
 - Idempotency records have a 48h TTL (`expires_at`).
-- **Cleanup**: A background job (`cleanupIdempotencyRecords`, 60s interval) deletes records where `expires_at < now()`. At scale (1M+ tx/day), consider partitioning by `created_at` via `pg_partman`.
+- **Cleanup**: A background job (`common/idempotency/infrastructure/adapters/inbound/scheduler/cleanupIdempotency.job.ts`) dispatches a `CleanupIdempotencyCommand` via the CommandBus every 60s. The use case deletes records where `expires_at < now()`. At scale (1M+ tx/day), consider partitioning by `created_at` via `pg_partman`.
 
 ---
 

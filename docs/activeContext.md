@@ -2,17 +2,18 @@
 
 ## Current Focus
 
-Wallet bounded context fully implemented and audited. All critical concurrency bugs resolved. The service is feature-complete for the Wallet BC.
+Wallet bounded context fully implemented and audited. Major architectural refactoring completed: `shared/` replaced by `utils/` + `common/`, `src/api/` eliminated (routes colocated with BC), `src/jobs/` replaced by scheduled jobs as inbound adapters dispatching commands via bus. CQRS bus (CommandBus/QueryBus) with middleware pipeline fully operational.
 
 **Completed:**
 - Hono app with middleware chain (tracking, logging, CORS, apiKeyAuth, idempotency)
-- Shared infrastructure: AppError, IDGenerator (UUID v7), Logger chain (Pino -> SensitiveKeysFilter -> SafeLogger)
+- Utils infrastructure: AppError, IIDGenerator (UUID v7), Logger chain (Pino -> SensitiveKeysFilter -> SafeLogger)
+- CQRS bus: ICommandBus/IQueryBus interfaces (`utils/application/cqrs.ts`) and implementations (`utils/infrastructure/cqrs.ts`) with middleware pipeline
 - Prisma schema with all models (Platform, Wallet, Transaction, LedgerEntry, Hold, Movement, IdempotencyRecord)
 - Immutable ledger SQL (trigger + constraints)
-- Wallet BC: all command handlers (create, deposit, withdraw, transfer, placeHold, captureHold, voidHold, freeze, unfreeze, close)
-- Wallet BC: all query handlers (getWallet, getTransactions, getLedgerEntries)
+- Wallet BC: all command use cases (createWallet, deposit, withdraw, transfer, placeHold, captureHold, voidHold, freeze, unfreeze, close, expireHolds)
+- Wallet BC: all query use cases (getWallet, getTransactions, getLedgerEntries)
 - Movement entity for true double-entry ledger grouping (entries per movement sum to zero)
-- Hold expiration cron job (30s interval)
+- Scheduled jobs as inbound adapters: hold expiration (`wallet/infrastructure/adapters/inbound/scheduler/`) and idempotency cleanup (`common/idempotency/infrastructure/adapters/inbound/scheduler/`) dispatch commands via CommandBus
 - Concurrency hardening: PlaceHold + VoidHold participate in optimistic locking
 - CaptureHold validates real wallet balance
 - Idempotency: transient error release, payload mismatch (SHA-256 of method:path:body), endpoint scoping
@@ -22,19 +23,24 @@ Wallet bounded context fully implemented and audited. All critical concurrency b
 - Auto-generated OpenAPI 3.1 spec (hono-openapi) + interactive Scalar UI at `/docs`
 - All 13 endpoints documented with `describeRoute()` (tags, summary, response schemas)
 - Endpoint `schemas.ts` pattern: request + response Zod schemas per endpoint
-- Shared `ErrorResponseSchema` in `hono.error.ts`
+- Shared `ErrorResponseSchema` in `utils/infrastructure/hono.error.ts`
 - Reusable listing system: Stripe-style flat filters (`filter[field][op]=value`), dynamic multi-field sorting (`sort=-field`), keyset cursor pagination with sort signature validation
-- Listing modules: `listing.ts` (domain types + cursor), `listing.zod.ts` (Zod schema factory), `listing.prisma.ts` (Prisma query builder)
+- Listing modules: `utils/kernel/listing.ts` (domain types + cursor), `utils/infrastructure/listing.zod.ts` (Zod schema factory), `utils/infrastructure/listing.prisma.ts` (Prisma query builder)
 - Composite indexes for filter+sort patterns on Transaction and LedgerEntry
+- Architecture refactoring: `shared/` → `utils/` (toolkit) + `common/` (cross-cutting features)
+- Route files colocated with BC: `wallet/infrastructure/adapters/inbound/http/wallets.routes.ts`, `transfers.routes.ts`, `holds.routes.ts`
+- Read store interfaces extracted to `wallet/application/ports/` (wallet.readstore.ts, transaction.readstore.ts, ledgerEntry.readstore.ts)
+- Command/query handler files renamed from `handler.ts` to `usecase.ts`
+- HTTP handlers receive `commandBus`/`queryBus` instead of individual handler instances
+- Handler dispatch uses static TYPE for bus dispatch instead of constructor.name
 
 ## Next Steps
 
 1. **Platform BC**: Implement Platform bounded context (API key management, registration)
 2. **Rate limiting**: Add rate limiting middleware
-3. **Idempotency cleanup**: TTL cleanup job for expired idempotency records
-4. **Server-side retry**: Optional retry loop (2-3 attempts) for VERSION_CONFLICT
-5. **Deploy**: Production configuration (managed PostgreSQL + Node.js process)
-6. **Tests**: Integration tests
+3. **Server-side retry**: Optional retry loop (2-3 attempts) for VERSION_CONFLICT
+4. **Deploy**: Production configuration (managed PostgreSQL + Node.js process)
+5. **Tests**: Integration tests
 
 ## Active Decisions
 
@@ -42,5 +48,7 @@ Wallet bounded context fully implemented and audited. All critical concurrency b
 - **Concurrency**: Optimistic locking (version field) for ALL wallet mutations including PlaceHold/VoidHold — no SELECT FOR UPDATE in domain (see systemPatterns.md)
 - **Ledger**: Double-entry via Movement entity, append-only, protected by PostgreSQL trigger. Audit invariant: `SUM(amount_cents) GROUP BY movement_id = 0`
 - **Auth**: API key per platform (not user JWT)
-- **DI**: Manual wiring (no DI container)
-- **Hold expiration**: Two layers — query filter (`expires_at > now`) for immediate correctness + cron job for DB hygiene
+- **DI**: Manual wiring (no DI container). All deps instantiated in `wiring.ts`, registered on CommandBus/QueryBus
+- **Hold expiration**: Two layers — query filter (`expires_at > now`) for immediate correctness + scheduled job (inbound adapter) dispatching command via bus for DB hygiene
+- **CQRS dispatch**: Commands/queries dispatched via bus with middleware pipeline. Handlers registered using static TYPE field (not constructor.name)
+- **Architecture split**: `utils/` = pure toolkit (no use cases), `common/` = cross-cutting features with full architecture (ports, adapters, use cases)

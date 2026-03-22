@@ -9,9 +9,9 @@
 - **Platform type**: Backend microservice — no UI; API-only
 - **Framework**: Hono (TypeScript) — fast, lightweight HTTP
 - **Database**: PostgreSQL with Prisma ORM
-- **Architecture**: DDD + Hexagonal + CQRS
+- **Architecture**: DDD + Hexagonal + CQRS (with CommandBus/QueryBus dispatch)
 - **Integration**: REST API; platforms authenticate with API keys
-- **Deployment**: Vercel / Cloudflare serverless, or containerized (Docker)
+- **Deployment**: Plain Node.js process + managed PostgreSQL (no Docker in production)
 
 ## Key Features
 
@@ -37,6 +37,13 @@
 | Testing | Vitest |
 | Linting/formatting | Biome |
 
+## Architecture Overview
+
+- **`utils/`** — Pure toolkit: kernel (domain-safe abstractions), application interfaces (CQRS bus, IIDGenerator), infrastructure implementations, HTTP middlewares
+- **`common/`** — Cross-cutting features with full architecture (ports, adapters, use cases). Currently: idempotency feature
+- **`wallet/`** — Wallet bounded context: domain, application (commands + queries dispatched via bus), infrastructure adapters (inbound HTTP + scheduler, outbound Prisma)
+- **Scheduled jobs** are inbound adapters dispatching commands via CommandBus (same pattern as HTTP routes)
+
 ## Deep Context
 
 For full domain, flows, and business rules: **[domain.md](domain.md)**
@@ -45,4 +52,4 @@ For entities and data structures: **[datamodel.md](datamodel.md)**
 
 ## Current Phase
 
-Service under development. Core wallet, transaction, ledger, and hold models defined. Architecture aligned with DDD + Hexagonal + CQRS patterns.
+Service under development. Core wallet, transaction, ledger, and hold models fully implemented. Architecture aligned with DDD + Hexagonal + CQRS patterns. Platform BC planned but not yet implemented.

@@ -6,16 +6,16 @@ Architecture patterns and technical decisions for the Wallet Service.
 
 **DDD + Hexagonal (Ports & Adapters) + CQRS** — **without Event Sourcing or Event-Driven** patterns. Coordination between bounded contexts is synchronous (direct function calls, no message bus).
 
-- **Dependency rule**: Domain and app must **not** import from adapters or HTTP. They depend only on interfaces (ports) and `shared/domain/` packages. Never import from `shared/adapters/` in domain or app — that's an architecture violation. Third-party libs (Prisma, Pino, uuidv7, Hono) live only in adapters.
-- **ID generation — UUID v7 only, from application**: `IDGenerator` interface; implementation uses `uuidv7`. App generates all IDs; DB never generates them (no `DEFAULT gen_random_uuid()`).
+- **Dependency rule**: Domain and app must **not** import from adapters or HTTP. They depend only on interfaces (ports) and `utils/kernel/` packages. Never import from `utils/infrastructure/` or `utils/middleware/` in domain or app — that's an architecture violation. Third-party libs (Prisma, Pino, uuidv7, Hono) live only in adapters.
+- **ID generation — UUID v7 only, from application**: `IIDGenerator` interface; implementation uses `uuidv7`. App generates all IDs; DB never generates them (no `DEFAULT gen_random_uuid()`).
 - **Amounts**: Integer values in smallest currency unit per ISO 4217 (`bigint` / BigInt) everywhere. Column names use `_cents` as convention; the actual unit depends on the currency's minor unit exponent (2 for USD/EUR, 0 for JPY, 3 for BHD). No floating point.
 - **Timestamps**: Unix milliseconds (ms since epoch) everywhere: DB (BigInt), domain, ports, DTOs, API.
-- **Commands**: Write side; mutate aggregates via domain repositories (interface). May return minimal data (e.g. created ID) — see backend-architecture.md for rationale.
-- **Queries**: Read side; return DTOs via ReadStore (interface); no aggregate loading for display.
+- **Commands**: Write side; mutate aggregates via domain repositories (interface). May return minimal data (e.g. created ID) — see backend-architecture.md for rationale. Dispatched via `ICommandBus`.
+- **Queries**: Read side; return DTOs via ReadStore (interface); no aggregate loading for display. Dispatched via `IQueryBus`.
 - **No Event Sourcing**: The immutable `ledger_entries` table provides the audit trail that Event Sourcing would offer. Direct state persistence with `cached_balance_cents` gives O(1) reads without event replay. See backend-architecture.md § "No Event Sourcing — and why" for full rationale.
 - **No Event-Driven**: BCs communicate synchronously within the same process. No message bus, no eventual consistency.
-- **Driving adapters**: HTTP (Hono); each route group has its own setup.
-- **Outgoing adapters**: PostgreSQL (Prisma).
+- **Driving/inbound adapters**: HTTP (Hono route files in `wallet/infrastructure/adapters/inbound/http/`) and scheduled jobs (in `wallet/infrastructure/adapters/inbound/scheduler/` and `common/idempotency/infrastructure/adapters/inbound/scheduler/`).
+- **Outgoing/outbound adapters**: PostgreSQL (Prisma) in `wallet/infrastructure/adapters/outbound/prisma/`.
 - **Outbound port convention**: All outbound port methods (repositories, read stores, transaction manager) receive `ctx: AppContext` as their first parameter. Adapters receive `ILogger` in their constructor. This enables adapters to log with full traceability (`tracking_id`, `platform_id`) without leaking infrastructure into the domain.
 
 See **[backend-architecture.md](backend-architecture.md)** for full directory layout, bounded contexts, and handler rules.
@@ -33,20 +33,20 @@ Command handlers use a `TransactionManager` port to execute multiple repository 
 
 **Why not a full UoW?** A real Unit of Work requires change tracking and an identity map, which adds significant complexity for marginal benefit in our case. Our handlers are short, explicit, and easy to reason about: load → mutate → save. The `TransactionManager` gives us the atomicity guarantee we need (all-or-nothing within `run()`) without the machinery of tracking entity state.
 
-**Port**: `TransactionManager` interface in `domain/ports/transactionManager.ts`. Its `run()` method receives the current `AppContext` and passes an enriched copy (with `opCtx` populated) to the callback.
+**Port**: `ITransactionManager` interface in `utils/application/transaction.manager.ts`. Its `run()` method receives the current `AppContext` and passes an enriched copy (with `opCtx` populated) to the callback.
 **Repositories**: Each repository method receives a single `ctx: AppContext`. The Prisma adapter inspects `ctx.opCtx` internally — when present it uses the transaction client, otherwise the default client. This keeps the `TransactionManager` decoupled from repositories — it only opens/closes the transaction scope.
-**Adapter**: `PrismaTransactionManager` wraps `prisma.$transaction()` and spreads the original `AppContext` with `opCtx: tx` to produce the enriched context.
+**Adapter**: `PrismaTransactionManager` (`utils/infrastructure/prisma.transaction.manager.ts`) wraps `prisma.$transaction()` and spreads the original `AppContext` with `opCtx: tx` to produce the enriched context.
 
 ## Logging
 
 **Production goal: full traceability.** Every request must be reconstructable from logs alone — follow `tracking_id` through HTTP → app handler → adapter → DB.
 
-Structured logging via port `ILogger` (implementation: PinoAdapter). Wiring chain: **PinoAdapter → SensitiveKeysFilter** (omits configured keys, recursive through nested objects) → **SafeLogger** (logger failure never stops execution).
+Structured logging via port `ILogger` (`utils/kernel/observability/logger.port.ts`; implementation: PinoAdapter in `utils/infrastructure/observability/`). Wiring chain: **PinoAdapter → SensitiveKeysFilter** (omits configured keys, recursive through nested objects) → **SafeLogger** (logger failure never stops execution).
 
 - **Applied across the entire backend**: every handler, adapter, and service must follow the log tag convention (**mainLogTag** per file, **methodLogTag** per method; every message starts with methodLogTag; never pass logTag as parameter).
 - **Context fields** on every log event: `tracking_id` (UUID v7), `platform_id` (when authenticated), `start_ts` (request start Unix ms).
 - **Canonical log** dispatched at end of each request with `end_ts`, `duration_ms`, accumulated `canonical_meta` and `canonical_counters`.
-- **HTTP middleware**: `trackingCanonical` (global) injects tracking context and dispatches canonical; `requestResponseLog` (global) logs request/response (reads body via clone to preserve stream).
+- **HTTP middleware**: `trackingCanonical` (global) injects tracking context and dispatches canonical; `requestResponseLog` (global) logs request/response (reads body via clone to preserve stream). Both in `utils/middleware/`.
 - **Sensitive keys**: `password`, `api_key`, `api_key_hash`, `secret`, `token`, `authorization`, `cookie`, `access_token`, `refresh_token`.
 
 ### Log level summary
@@ -65,12 +65,12 @@ See **[backend-architecture.md](backend-architecture.md)** § Logging for full d
 
 ## Error Handling
 
-- **AppError**: Kind (semantic category) + Code (stable UPPER_SNAKE_CASE) + Message (fallback). No external dependencies.
+- **AppError**: Kind (semantic category) + Code (stable UPPER_SNAKE_CASE) + Message (fallback). No external dependencies. Defined in `utils/kernel/appError.ts`.
 - **Domain**: Defines error constructors returning `AppError`.
 - **HTTP translation**: Two paths, same output shape `{"error": "CODE", "message": "..."}`:
   - **Handlers**: throw `AppError` — caught by global `onError` in `index.ts` which maps Kind → HTTP status via `httpStatus()` and responds with `errorResponse()`.
   - **Middleware** (apiKeyAuth, idempotency, validationHook): call `errorResponse()` directly with the appropriate status code.
-  - Both use `errorResponse()` from `shared/adapters/kernel/hono.error.ts` — single source of truth for the error shape.
+  - Both use `errorResponse()` from `utils/infrastructure/hono.error.ts` — single source of truth for the error shape.
 - Use `AppError.is()` or error checks; never compare with `===` on opaque errors.
 
 ## API
@@ -86,7 +86,7 @@ See **[backend-architecture.md](backend-architecture.md)** § Logging for full d
 
 ## Listing and Pagination
 
-Paginated GET endpoints use a **reusable listing system** (`shared/domain/kernel/listing.ts` + `shared/adapters/kernel/listing.zod.ts` + `listing.prisma.ts`).
+Paginated GET endpoints use a **reusable listing system** (`utils/kernel/listing.ts` + `utils/infrastructure/listing.zod.ts` + `utils/infrastructure/listing.prisma.ts`).
 
 **Design:**
 - **Flat filters** (AND logic, no nesting): `filter[field]=value`, `filter[field][op]=value`. Operators: `eq`, `gt`, `gte`, `lt`, `lte`, `in`.
@@ -128,7 +128,7 @@ We use optimistic locking (version field) for **user wallet** mutations, includi
 ## BigInt Serialization
 
 Prisma returns `BigInt` fields as native `bigint`, which does not serialize to JSON. Strategy:
-- Use `shared/kernel/bigint.ts` utilities (`toSafeNumber`, `toNumber`, `bigIntReplacer`) in adapters/DTOs.
+- Use `utils/kernel/bigint.ts` utilities (`toSafeNumber`, `toNumber`, `bigIntReplacer`) in adapters/DTOs.
 - Amounts and timestamps that fit within `Number.MAX_SAFE_INTEGER` (~9 quadrillion cents) → convert to `number`.
 - System wallet balances that may exceed safe range → serialize as `string`.
 - API DTOs document whether each field is `number` or `string`.
@@ -136,14 +136,15 @@ Prisma returns `BigInt` fields as native `bigint`, which does not serialize to J
 ## Idempotency Record Cleanup
 
 - Records have 48h TTL (`expires_at` field).
-- A background job (`src/jobs/cleanupIdempotencyRecords.ts`) runs every 60s and deletes records where `expires_at < now()`.
+- A background job (`common/idempotency/infrastructure/adapters/inbound/scheduler/cleanupIdempotency.job.ts`) dispatches a `CleanupIdempotencyCommand` via the CommandBus every 60s. The use case (`common/idempotency/application/command/cleanupIdempotency/usecase.ts`) deletes records where `expires_at < now()`.
+- Scheduled jobs are inbound adapters — same pattern as HTTP routes dispatching commands via the bus.
 - At scale (1M+ tx/day), consider partitioning `idempotency_records` by `created_at` using `pg_partman`.
 
 ## Hold Expiration
 
 - Expired holds are detected **on-access** (when calculating available_balance) and **via batch cron**.
 - On-access: any query/command that reads active holds for a wallet must filter `WHERE (expires_at IS NULL OR expires_at > now())`.
-- Batch: periodic job marks expired holds as `expired` status.
+- Batch: periodic job (`wallet/infrastructure/adapters/inbound/scheduler/expireHolds.job.ts`) dispatches an `ExpireHoldsCommand` via the CommandBus. The use case marks expired holds as `expired` status.
 
 ## References
 

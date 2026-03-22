@@ -26,6 +26,7 @@ Standalone backend service providing digital wallet functionality as a platform 
 ## Architecture
 
 - **DDD + Hexagonal + CQRS** — domain and app layers depend only on interfaces
+- **CQRS bus** — commands/queries dispatched via ICommandBus/IQueryBus with middleware pipeline
 - **Double-entry bookkeeping** — every financial operation produces exactly 2 ledger entries
 - **Integer cents** — all amounts stored as BIGINT (smallest currency unit, like Stripe)
 - **Immutable ledger** — `ledger_entries` is append-only (PostgreSQL trigger prevents UPDATE/DELETE)
@@ -162,22 +163,20 @@ pnpm start   # node dist/index.js
 
 ```
 src/
-├── api/              # Route groups (Hono sub-apps) and middleware
-│   ├── middleware/    # trackingCanonical, requestResponseLog, apiKeyAuth, idempotency
-│   ├── wallets/      # /v1/wallets route group
-│   ├── transfers/    # /v1/transfers route group
-│   └── holds/        # /v1/holds route group
-├── wallet/           # Bounded context: Wallet
-│   ├── domain/       # Aggregates, value objects, errors, ports
-│   ├── application/  # Command and query handlers (use cases)
-│   ├── adapters/     # Prisma repositories
-│   └── ports/http/   # HTTP handlers (schemas.ts + handler.ts per endpoint)
-├── shared/
-│   ├── domain/       # AppError, kernel (IDGenerator, context, listing types), observability (Logger port)
-│   └── adapters/     # kernel (Hono context, handlerFactory, error response, listing adapters), observability (Pino)
-├── index.ts          # App bootstrap, global middleware, onError, route mounting
-├── wiring.ts         # DI: repos, app handlers, infrastructure — instantiated once
-└── config.ts         # Environment variables
+├── common/                          # Cross-cutting features with full architecture (NOT a bounded context)
+│   └── idempotency/                 # Idempotency feature (cleanup job, store port, Prisma adapter)
+├── utils/                           # Pure toolkit, zero use cases
+│   ├── kernel/                      # Domain-safe abstractions (NO infra deps)
+│   ├── application/                 # Application-level interfaces (CQRS bus, IIDGenerator, ITransactionManager)
+│   ├── infrastructure/              # Infra implementations (CommandBus, QueryBus, Hono helpers, Prisma adapters)
+│   └── middleware/                   # HTTP middlewares (apiKeyAuth, idempotency, logging, tracking)
+├── wallet/                          # Bounded context: Wallet
+│   ├── domain/                      # Aggregates, value objects, errors, repository ports
+│   ├── application/                 # Command/query use cases + read store ports
+│   └── infrastructure/adapters/     # Inbound (HTTP routes, scheduler jobs) + Outbound (Prisma repos)
+├── index.ts                         # App bootstrap, global middleware, onError, route mounting
+├── wiring.ts                        # DI: repos, use cases, bus registration — instantiated once
+└── config.ts                        # Environment variables
 ```
 
 ## API Documentation

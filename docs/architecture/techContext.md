@@ -55,12 +55,18 @@ Rules:
 | Path | Description |
 |------|-------------|
 | `src/` | Application source |
-| `src/api/` | HTTP composition, middleware, respond helpers |
-| `src/wallet/` | Wallet bounded context (domain, app, adapters, ports) |
-| `src/platform/` | Platform bounded context (API key management) |
-| `src/shared/` | Cross-cutting: appError, kernel, observability |
+| `src/common/` | Cross-cutting features with full architecture (NOT a BC). Currently: idempotency (cleanup job, store port, Prisma adapter). |
+| `src/utils/` | Pure toolkit — reusable utilities, NOT features. Contains kernel (domain-safe abstractions), application interfaces (CQRS bus, IIDGenerator, ITransactionManager), infrastructure implementations, HTTP middlewares. |
+| `src/utils/kernel/` | Domain-safe abstractions (NO infra deps). Equivalent to domain+application pragmatically. AppError, AppContext, BigInt utils, listing types, ILogger port. |
+| `src/utils/middleware/` | All HTTP middlewares: apiKeyAuth, idempotency, requestResponseLog, trackingCanonical. |
+| `src/wallet/` | Wallet bounded context (domain, application, infrastructure adapters) |
+| `src/wallet/infrastructure/adapters/inbound/http/` | HTTP route files + per-endpoint handler/schemas folders |
+| `src/wallet/infrastructure/adapters/inbound/scheduler/` | Wallet-specific scheduled jobs (expireHolds) |
+| `src/wallet/infrastructure/adapters/outbound/prisma/` | Prisma repository and read store implementations |
 | `prisma/` | Schema, config, migrations, immutable ledger SQL |
 | `docs/` | Domain, data model, architecture docs |
+
+**Note:** `src/platform/` is planned for the Platform bounded context (API key management) but is not yet implemented.
 
 ## Environment
 
@@ -74,8 +80,8 @@ Credentials via environment variables — never hardcode.
 
 ## Constraints
 
-- **Domain and app**: No external third-party libraries. Depend only on interfaces (ports) and shared packages. Third-party libs live in adapters.
-- **Entity IDs**: UUID v7 only (RFC 9562); generated in application via `IDGenerator`. Database never generates IDs.
+- **Domain and app**: No external third-party libraries. Depend only on interfaces (ports) and `utils/kernel/`. Third-party libs live in adapters.
+- **Entity IDs**: UUID v7 only (RFC 9562); generated in application via `IIDGenerator`. Database never generates IDs.
 - **Timestamps**: Unix milliseconds (number) everywhere.
 - **Amounts**: Integer cents (BigInt); no floats.
 - **API**: REST; idempotency keys required for mutations.
