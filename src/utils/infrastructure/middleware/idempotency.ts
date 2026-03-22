@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import type { MiddlewareHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import type { HonoVariables } from "../infrastructure/hono.context.js";
-import { errorResponse } from "../infrastructure/hono.error.js";
-import type { IIdempotencyStore } from "../../common/idempotency/application/ports/idempotency.store.js";
+import type { HonoVariables } from "../hono.context.js";
+import { buildAppContext } from "../hono.context.js";
+import { errorResponse } from "../hono.error.js";
+import type { IIdempotencyStore } from "../../../common/idempotency/application/ports/idempotency.store.js";
 
 const IDEMPOTENCY_HEADER = "idempotency-key";
 
@@ -56,7 +57,8 @@ export function idempotency(
       .digest("hex");
 
     // Atomic acquire: INSERT pending record or return existing
-    const existing = await store.acquire(key, platformId, requestHash, now, expiresAt);
+    const ctx = buildAppContext(c);
+    const existing = await store.acquire(ctx, key, platformId, requestHash, now, expiresAt);
 
     if (existing) {
       // Key already processed — return cached response
@@ -95,7 +97,7 @@ export function idempotency(
     // Transient errors (5xx, 409 Conflict) must NOT be cached —
     // release the key so clients can retry with the same idempotency key.
     if (status >= 500 || status === 409) {
-      store.release(key, platformId).catch(() => {});
+      store.release(ctx, key, platformId).catch(() => {});
       return;
     }
 
@@ -105,7 +107,7 @@ export function idempotency(
       .json()
       .catch(() => null);
 
-    store.complete(key, platformId, status, responseBody).catch(() => {
+    store.complete(ctx, key, platformId, status, responseBody).catch(() => {
       // Non-critical: record stays pending; will be overwritten on next acquire after TTL
     });
   };

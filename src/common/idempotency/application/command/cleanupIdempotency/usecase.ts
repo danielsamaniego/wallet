@@ -15,7 +15,7 @@ export class CleanupIdempotencyUseCase
   ) {}
 
   async handle(ctx: AppContext, _cmd: CleanupIdempotencyCommand): Promise<CleanupIdempotencyResult> {
-    const deletedCount = await this.idempotencyStore.deleteExpired();
+    const deletedCount = await this.idempotencyStore.deleteExpired(ctx);
 
     if (deletedCount > 0) {
       this.logger.info(ctx, `${mainLogTag} | deleted ${deletedCount} expired records`);

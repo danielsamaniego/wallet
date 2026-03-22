@@ -1,3 +1,5 @@
+import type { AppContext } from "../../../../utils/kernel/context.js";
+
 export interface IdempotencyRecord {
   idempotencyKey: string;
   platformId: string;
@@ -25,6 +27,7 @@ export interface IIdempotencyStore {
    *   (either pending or completed).
    */
   acquire(
+    ctx: AppContext,
     idempotencyKey: string,
     platformId: string,
     requestHash: string,
@@ -36,6 +39,7 @@ export interface IIdempotencyStore {
    * Update a pending record with the actual response after handler execution.
    */
   complete(
+    ctx: AppContext,
     idempotencyKey: string,
     platformId: string,
     responseStatus: number,
@@ -46,8 +50,8 @@ export interface IIdempotencyStore {
    * Delete a pending record so the idempotency key can be reused.
    * Called when the handler fails with a transient error (e.g. VERSION_CONFLICT, 5xx).
    */
-  release(idempotencyKey: string, platformId: string): Promise<void>;
+  release(ctx: AppContext, idempotencyKey: string, platformId: string): Promise<void>;
 
   /** Delete all records past their expiresAt. Returns count of deleted rows. */
-  deleteExpired(): Promise<number>;
+  deleteExpired(ctx: AppContext): Promise<number>;
 }

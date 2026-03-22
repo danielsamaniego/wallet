@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import type { AppContext } from "../../../../../../utils/kernel/context.js";
 import type {
   IdempotencyRecord,
   IIdempotencyStore,
@@ -11,6 +12,7 @@ export class PrismaIdempotencyStore implements IIdempotencyStore {
   ) {}
 
   async acquire(
+    _ctx: AppContext,
     idempotencyKey: string,
     platformId: string,
     requestHash: string,
@@ -70,6 +72,7 @@ export class PrismaIdempotencyStore implements IIdempotencyStore {
   }
 
   async complete(
+    _ctx: AppContext,
     idempotencyKey: string,
     _platformId: string,
     responseStatus: number,
@@ -84,13 +87,13 @@ export class PrismaIdempotencyStore implements IIdempotencyStore {
     });
   }
 
-  async release(idempotencyKey: string, _platformId: string): Promise<void> {
+  async release(_ctx: AppContext, idempotencyKey: string, _platformId: string): Promise<void> {
     await this.prisma.idempotencyRecord.delete({
       where: { idempotencyKey },
     });
   }
 
-  async deleteExpired(): Promise<number> {
+  async deleteExpired(_ctx: AppContext): Promise<number> {
     const now = BigInt(Date.now());
     const result = await this.prisma.idempotencyRecord.deleteMany({
       where: { expiresAt: { lt: now } },
