@@ -1,12 +1,14 @@
 import { AppError } from "../../../shared/kernel/appError.js";
 
+export type WalletStatus = "active" | "frozen" | "closed";
+
 export class Wallet {
   private readonly _id: string;
   private readonly _ownerId: string;
   private readonly _platformId: string;
   private readonly _currencyCode: string;
   private _cachedBalanceCents: bigint;
-  private _status: string;
+  private _status: WalletStatus;
   private _version: number;
   private readonly _isSystem: boolean;
   private _createdAt: number;
@@ -60,7 +62,7 @@ export class Wallet {
     platformId: string,
     currencyCode: string,
     cachedBalanceCents: bigint,
-    status: string,
+    status: WalletStatus,
     version: number,
     isSystem: boolean,
     createdAt: number,
@@ -97,7 +99,7 @@ export class Wallet {
   get cachedBalanceCents(): bigint {
     return this._cachedBalanceCents;
   }
-  get status(): string {
+  get status(): WalletStatus {
     return this._status;
   }
   get version(): number {

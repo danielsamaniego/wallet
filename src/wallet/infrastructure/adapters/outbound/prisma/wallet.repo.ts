@@ -2,7 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { AppContext } from "../../../../../shared/kernel/context.js";
 import type { ILogger } from "../../../../../shared/kernel/observability/logger.port.js";
 import type { IWalletRepository } from "../../../../domain/ports/wallet.repository.js";
-import { Wallet } from "../../../../domain/wallet/wallet.aggregate.js";
+import { Wallet, type WalletStatus } from "../../../../domain/wallet/wallet.aggregate.js";
 import { ErrVersionConflict } from "../../../../domain/wallet/wallet.errors.js";
 
 type PrismaTransactionClient = Omit<
@@ -183,7 +183,7 @@ export class PrismaWalletRepo implements IWalletRepository {
       row.platformId,
       row.currencyCode,
       row.cachedBalanceCents,
-      row.status,
+      row.status as WalletStatus,
       row.version,
       row.isSystem,
       Number(row.createdAt),
