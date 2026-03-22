@@ -8,14 +8,14 @@ import { openAPIRouteHandler } from "hono-openapi";
 import { holdRoutes } from "./api/holds/setup.js";
 import { requestResponseLog } from "./api/middleware/requestResponseLog.js";
 import { trackingCanonical } from "./api/middleware/trackingCanonical.js";
-import { errorResponse, httpStatus } from "./shared/adapters/kernel/hono.error.js";
+import { errorResponse, httpStatus } from "./shared/infrastructure/kernel/hono.error.js";
 import { transferRoutes } from "./api/transfers/setup.js";
 import { walletRoutes } from "./api/wallets/setup.js";
 import { loadConfig } from "./config.js";
 import { startCleanupIdempotencyJob } from "./jobs/cleanupIdempotencyRecords.js";
 import { startExpireHoldsJob } from "./jobs/expireHolds.js";
-import type { HonoVariables } from "./shared/adapters/kernel/hono.context.js";
-import { buildAppContext } from "./shared/adapters/kernel/hono.context.js";
+import type { HonoVariables } from "./shared/infrastructure/kernel/hono.context.js";
+import { buildAppContext } from "./shared/infrastructure/kernel/hono.context.js";
 import { AppError } from "./shared/domain/appError.js";
 import { wire } from "./wiring.js";
 

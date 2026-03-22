@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import type { HonoVariables } from "../../shared/adapters/kernel/hono.context.js";
-import { captureHoldRoute } from "../../wallet/ports/http/captureHold/handler.js";
-import { placeHoldRoute } from "../../wallet/ports/http/placeHold/handler.js";
-import { voidHoldRoute } from "../../wallet/ports/http/voidHold/handler.js";
+import type { HonoVariables } from "../../shared/infrastructure/kernel/hono.context.js";
+import { captureHoldRoute } from "../../wallet/infrastructure/adapters/inbound/http/captureHold/handler.js";
+import { placeHoldRoute } from "../../wallet/infrastructure/adapters/inbound/http/placeHold/handler.js";
+import { voidHoldRoute } from "../../wallet/infrastructure/adapters/inbound/http/voidHold/handler.js";
 import type { Dependencies } from "../../wiring.js";
 import { apiKeyAuth } from "../middleware/apiKeyAuth.js";
 import { idempotency } from "../middleware/idempotency.js";

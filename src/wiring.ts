@@ -2,35 +2,35 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import type { IIdempotencyStore } from "./api/middleware/idempotency.js";
 import type { Config } from "./config.js";
-import { UUIDV7Generator } from "./shared/adapters/kernel/uuidV7.js";
-import { PinoAdapter } from "./shared/adapters/observability/pino.adapter.js";
-import { SafeLogger } from "./shared/adapters/observability/safe.logger.js";
-import { SensitiveKeysFilter } from "./shared/adapters/observability/sensitive.filter.js";
+import { UUIDV7Generator } from "./shared/infrastructure/kernel/uuidV7.js";
+import { PinoAdapter } from "./shared/infrastructure/observability/pino.adapter.js";
+import { SafeLogger } from "./shared/infrastructure/observability/safe.logger.js";
+import { SensitiveKeysFilter } from "./shared/infrastructure/observability/sensitive.filter.js";
 import type { IIDGenerator } from "./shared/domain/kernel/id.generator.js";
 import type { ILogger } from "./shared/domain/observability/logger.port.js";
-import { PrismaHoldRepo } from "./wallet/adapters/persistence/prisma/hold.repo.js";
-import { PrismaIdempotencyStore } from "./wallet/adapters/persistence/prisma/idempotency.store.js";
-import { PrismaLedgerEntryReadStore } from "./wallet/adapters/persistence/prisma/ledgerEntry.readstore.js";
-import { PrismaLedgerEntryRepo } from "./wallet/adapters/persistence/prisma/ledgerEntry.repo.js";
-import { PrismaMovementRepo } from "./wallet/adapters/persistence/prisma/movement.repo.js";
-import { PrismaTransactionManager } from "./wallet/adapters/persistence/prisma/transaction.manager.js";
-import { PrismaTransactionReadStore } from "./wallet/adapters/persistence/prisma/transaction.readstore.js";
-import { PrismaTransactionRepo } from "./wallet/adapters/persistence/prisma/transaction.repo.js";
-import { PrismaWalletReadStore } from "./wallet/adapters/persistence/prisma/wallet.readstore.js";
-import { PrismaWalletRepo } from "./wallet/adapters/persistence/prisma/wallet.repo.js";
-import { CaptureHoldHandler } from "./wallet/application/command/captureHold/handler.js";
-import { CloseWalletHandler } from "./wallet/application/command/closeWallet/handler.js";
-import { CreateWalletHandler } from "./wallet/application/command/createWallet/handler.js";
-import { DepositHandler } from "./wallet/application/command/deposit/handler.js";
-import { FreezeWalletHandler } from "./wallet/application/command/freezeWallet/handler.js";
-import { PlaceHoldHandler } from "./wallet/application/command/placeHold/handler.js";
-import { TransferHandler } from "./wallet/application/command/transfer/handler.js";
-import { UnfreezeWalletHandler } from "./wallet/application/command/unfreezeWallet/handler.js";
-import { VoidHoldHandler } from "./wallet/application/command/voidHold/handler.js";
-import { WithdrawHandler } from "./wallet/application/command/withdraw/handler.js";
-import { GetLedgerEntriesHandler } from "./wallet/application/query/getLedgerEntries/handler.js";
-import { GetTransactionsHandler } from "./wallet/application/query/getTransactions/handler.js";
-import { GetWalletHandler } from "./wallet/application/query/getWallet/handler.js";
+import { PrismaHoldRepo } from "./wallet/infrastructure/adapters/outbound/prisma/hold.repo.js";
+import { PrismaIdempotencyStore } from "./wallet/infrastructure/adapters/outbound/prisma/idempotency.store.js";
+import { PrismaLedgerEntryReadStore } from "./wallet/infrastructure/adapters/outbound/prisma/ledgerEntry.readstore.js";
+import { PrismaLedgerEntryRepo } from "./wallet/infrastructure/adapters/outbound/prisma/ledgerEntry.repo.js";
+import { PrismaMovementRepo } from "./wallet/infrastructure/adapters/outbound/prisma/movement.repo.js";
+import { PrismaTransactionManager } from "./shared/infrastructure/kernel/prisma.transaction.manager.js";
+import { PrismaTransactionReadStore } from "./wallet/infrastructure/adapters/outbound/prisma/transaction.readstore.js";
+import { PrismaTransactionRepo } from "./wallet/infrastructure/adapters/outbound/prisma/transaction.repo.js";
+import { PrismaWalletReadStore } from "./wallet/infrastructure/adapters/outbound/prisma/wallet.readstore.js";
+import { PrismaWalletRepo } from "./wallet/infrastructure/adapters/outbound/prisma/wallet.repo.js";
+import { CaptureHoldUseCase } from "./wallet/application/command/captureHold/usecase.js";
+import { CloseWalletUseCase } from "./wallet/application/command/closeWallet/usecase.js";
+import { CreateWalletUseCase } from "./wallet/application/command/createWallet/usecase.js";
+import { DepositUseCase } from "./wallet/application/command/deposit/usecase.js";
+import { FreezeWalletUseCase } from "./wallet/application/command/freezeWallet/usecase.js";
+import { PlaceHoldUseCase } from "./wallet/application/command/placeHold/usecase.js";
+import { TransferUseCase } from "./wallet/application/command/transfer/usecase.js";
+import { UnfreezeWalletUseCase } from "./wallet/application/command/unfreezeWallet/usecase.js";
+import { VoidHoldUseCase } from "./wallet/application/command/voidHold/usecase.js";
+import { WithdrawUseCase } from "./wallet/application/command/withdraw/usecase.js";
+import { GetLedgerEntriesUseCase } from "./wallet/application/query/getLedgerEntries/usecase.js";
+import { GetTransactionsUseCase } from "./wallet/application/query/getTransactions/usecase.js";
+import { GetWalletUseCase } from "./wallet/application/query/getWallet/usecase.js";
 
 /**
  * Dependencies holds all injected dependencies for the API.
@@ -45,20 +45,20 @@ export interface Dependencies {
   validateApiKey: (apiKey: string) => Promise<{ platformId: string } | null>;
   idempotencyStore: IIdempotencyStore;
 
-  // App handlers (pre-wired with repos)
-  createWallet: CreateWalletHandler;
-  deposit: DepositHandler;
-  withdraw: WithdrawHandler;
-  freezeWallet: FreezeWalletHandler;
-  unfreezeWallet: UnfreezeWalletHandler;
-  closeWallet: CloseWalletHandler;
-  getWallet: GetWalletHandler;
-  getTransactions: GetTransactionsHandler;
-  getLedgerEntries: GetLedgerEntriesHandler;
-  transfer: TransferHandler;
-  placeHold: PlaceHoldHandler;
-  captureHold: CaptureHoldHandler;
-  voidHold: VoidHoldHandler;
+  // Use cases (pre-wired with repos)
+  createWallet: CreateWalletUseCase;
+  deposit: DepositUseCase;
+  withdraw: WithdrawUseCase;
+  freezeWallet: FreezeWalletUseCase;
+  unfreezeWallet: UnfreezeWalletUseCase;
+  closeWallet: CloseWalletUseCase;
+  getWallet: GetWalletUseCase;
+  getTransactions: GetTransactionsUseCase;
+  getLedgerEntries: GetLedgerEntriesUseCase;
+  transfer: TransferUseCase;
+  placeHold: PlaceHoldUseCase;
+  captureHold: CaptureHoldUseCase;
+  voidHold: VoidHoldUseCase;
 }
 
 const sensitiveKeys = [
@@ -125,9 +125,9 @@ export function wire(config: Config): Dependencies {
   const transactionReadStore = new PrismaTransactionReadStore(prisma, logger);
   const ledgerEntryReadStore = new PrismaLedgerEntryReadStore(prisma, logger);
 
-  // App handlers (pre-wired with repos)
-  const createWallet = new CreateWalletHandler(txManager, walletRepo, idGen, logger);
-  const deposit = new DepositHandler(
+  // Use cases (pre-wired with repos)
+  const createWallet = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
+  const deposit = new DepositUseCase(
     txManager,
     walletRepo,
     transactionRepo,
@@ -136,23 +136,7 @@ export function wire(config: Config): Dependencies {
     idGen,
     logger,
   );
-  const withdraw = new WithdrawHandler(
-    txManager,
-    walletRepo,
-    holdRepo,
-    transactionRepo,
-    ledgerEntryRepo,
-    movementRepo,
-    idGen,
-    logger,
-  );
-  const freezeWallet = new FreezeWalletHandler(txManager, walletRepo, logger);
-  const unfreezeWallet = new UnfreezeWalletHandler(txManager, walletRepo, logger);
-  const closeWallet = new CloseWalletHandler(txManager, walletRepo, holdRepo, logger);
-  const getWallet = new GetWalletHandler(walletReadStore, logger);
-  const getTransactions = new GetTransactionsHandler(transactionReadStore, logger);
-  const getLedgerEntries = new GetLedgerEntriesHandler(ledgerEntryReadStore, logger);
-  const transfer = new TransferHandler(
+  const withdraw = new WithdrawUseCase(
     txManager,
     walletRepo,
     holdRepo,
@@ -162,8 +146,13 @@ export function wire(config: Config): Dependencies {
     idGen,
     logger,
   );
-  const placeHold = new PlaceHoldHandler(txManager, walletRepo, holdRepo, idGen, logger);
-  const captureHold = new CaptureHoldHandler(
+  const freezeWallet = new FreezeWalletUseCase(txManager, walletRepo, logger);
+  const unfreezeWallet = new UnfreezeWalletUseCase(txManager, walletRepo, logger);
+  const closeWallet = new CloseWalletUseCase(txManager, walletRepo, holdRepo, logger);
+  const getWallet = new GetWalletUseCase(walletReadStore, logger);
+  const getTransactions = new GetTransactionsUseCase(transactionReadStore, logger);
+  const getLedgerEntries = new GetLedgerEntriesUseCase(ledgerEntryReadStore, logger);
+  const transfer = new TransferUseCase(
     txManager,
     walletRepo,
     holdRepo,
@@ -173,7 +162,18 @@ export function wire(config: Config): Dependencies {
     idGen,
     logger,
   );
-  const voidHold = new VoidHoldHandler(txManager, walletRepo, holdRepo, logger);
+  const placeHold = new PlaceHoldUseCase(txManager, walletRepo, holdRepo, idGen, logger);
+  const captureHold = new CaptureHoldUseCase(
+    txManager,
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    movementRepo,
+    idGen,
+    logger,
+  );
+  const voidHold = new VoidHoldUseCase(txManager, walletRepo, holdRepo, logger);
 
   return {
     config,

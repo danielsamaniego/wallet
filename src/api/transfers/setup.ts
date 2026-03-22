@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import type { HonoVariables } from "../../shared/adapters/kernel/hono.context.js";
-import { transferRoute } from "../../wallet/ports/http/transfer/handler.js";
+import type { HonoVariables } from "../../shared/infrastructure/kernel/hono.context.js";
+import { transferRoute } from "../../wallet/infrastructure/adapters/inbound/http/transfer/handler.js";
 import type { Dependencies } from "../../wiring.js";
 import { apiKeyAuth } from "../middleware/apiKeyAuth.js";
 import { idempotency } from "../middleware/idempotency.js";

@@ -1,7 +1,5 @@
-export interface GetWalletQuery {
-  walletId: string;
-  platformId: string;
-}
+import { IQuery } from "../../../../shared/application/cqrs.js";
+import type { AppContext } from "../../../../shared/domain/kernel/context.js";
 
 /**
  * Wallet read DTO exposed to API consumers.
@@ -22,7 +20,14 @@ export interface WalletDTO {
   updated_at: number;
 }
 
-import type { AppContext } from "../../../../shared/domain/kernel/context.js";
+export class GetWalletQuery extends IQuery<WalletDTO> {
+  constructor(
+    public readonly walletId: string,
+    public readonly platformId: string,
+  ) {
+    super();
+  }
+}
 
 export interface IWalletReadStore {
   getById(ctx: AppContext, walletId: string, platformId: string): Promise<WalletDTO | null>;

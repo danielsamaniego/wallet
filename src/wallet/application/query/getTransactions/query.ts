@@ -1,10 +1,6 @@
+import { IQuery } from "../../../../shared/application/cqrs.js";
+import type { AppContext } from "../../../../shared/domain/kernel/context.js";
 import type { ListingQuery } from "../../../../shared/domain/kernel/listing.js";
-
-export interface GetTransactionsQuery {
-  walletId: string;
-  platformId: string;
-  listing: ListingQuery;
-}
 
 export interface TransactionDTO {
   id: string;
@@ -25,7 +21,15 @@ export interface PaginatedTransactions {
   next_cursor: string | null;
 }
 
-import type { AppContext } from "../../../../shared/domain/kernel/context.js";
+export class GetTransactionsQuery extends IQuery<PaginatedTransactions> {
+  constructor(
+    public readonly walletId: string,
+    public readonly platformId: string,
+    public readonly listing: ListingQuery,
+  ) {
+    super();
+  }
+}
 
 export interface ITransactionReadStore {
   getByWallet(
