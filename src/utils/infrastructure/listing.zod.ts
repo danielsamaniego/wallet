@@ -3,6 +3,8 @@ import type {
   FilterCondition,
   FilterableFieldConfig,
   FilterOperator,
+  JsonFilterableFieldConfig,
+  JsonFilterCondition,
   ListingConfig,
   ListingQuery,
   SortDirection,
@@ -43,6 +45,11 @@ export function createListingQuerySchema(config: ListingConfig) {
   // Build set of all known keys for unknown-key detection
   const knownKeys = new Set(["limit", "cursor", "sort", ...Object.keys(filterShape)]);
 
+  // Build JSON-filterable prefixes (e.g. "metadata" → config)
+  const jsonPrefixes = new Map(
+    (config.jsonFilterableFields ?? []).map((f) => [f.apiName, f]),
+  );
+
   return z
     .object({
       limit: z.coerce.number().int().min(1).max(config.maxLimit).default(config.defaultLimit),
@@ -54,8 +61,11 @@ export function createListingQuerySchema(config: ListingConfig) {
     .transform((raw, ctx) => {
       // Reject unknown filter[...] keys
       for (const key of Object.keys(raw)) {
-        if (key.startsWith("filter[") && !knownKeys.has(key)) {
-          const allowed = config.filterableFields.map((f) => f.apiName).join(", ");
+        if (key.startsWith("filter[") && !knownKeys.has(key) && !isJsonFilterKey(key, jsonPrefixes)) {
+          const allowed = [
+            ...config.filterableFields.map((f) => f.apiName),
+            ...(config.jsonFilterableFields ?? []).map((f) => `${f.apiName}.*`),
+          ].join(", ");
           ctx.addIssue({ code: "custom", message: `unknown filter parameter: ${key}. Allowed fields: ${allowed}` });
           return z.NEVER;
         }
@@ -75,6 +85,13 @@ export function createListingQuerySchema(config: ListingConfig) {
         return z.NEVER;
       }
 
+      // Parse JSON path filters (e.g. filter[metadata.source]=settlement)
+      const jsonFiltersResult = parseJsonFilters(raw as Record<string, unknown>, jsonPrefixes);
+      if (!jsonFiltersResult.ok) {
+        ctx.addIssue({ code: "custom", message: jsonFiltersResult.error });
+        return z.NEVER;
+      }
+
       // Validate cursor against sort signature
       if (raw.cursor) {
         try {
@@ -90,6 +107,7 @@ export function createListingQuerySchema(config: ListingConfig) {
 
       return {
         filters: filtersResult.data,
+        jsonFilters: jsonFiltersResult.data.length > 0 ? jsonFiltersResult.data : undefined,
         sort: sortResult.data,
         limit: raw.limit,
         cursor: raw.cursor,
@@ -232,4 +250,65 @@ function coerceSingle(
       return { ok: true, data: raw };
     }
   }
+}
+
+// ── JSON Filter Helpers ──────────────────────────────────────────────────────
+
+const JSON_FILTER_RE = /^filter\[([a-zA-Z_][a-zA-Z0-9_]*)\.(.+)]$/;
+const PATH_SEGMENT_RE = /^[a-zA-Z0-9_]+$/;
+
+function isJsonFilterKey(
+  key: string,
+  prefixes: Map<string, JsonFilterableFieldConfig>,
+): boolean {
+  const match = JSON_FILTER_RE.exec(key);
+  return match !== null && prefixes.has(match[1]!);
+}
+
+function parseJsonFilters(
+  raw: Record<string, unknown>,
+  prefixes: Map<string, JsonFilterableFieldConfig>,
+): Result<JsonFilterCondition[]> {
+  if (prefixes.size === 0) return { ok: true, data: [] };
+
+  const conditions: JsonFilterCondition[] = [];
+
+  for (const key of Object.keys(raw)) {
+    const match = JSON_FILTER_RE.exec(key);
+    if (!match) continue;
+
+    const prefix = match[1]!;
+    const fieldConfig = prefixes.get(prefix);
+    if (!fieldConfig) continue;
+
+    const pathStr = match[2]!;
+    const segments = pathStr.split(".");
+
+    if (segments.length > fieldConfig.maxDepth) {
+      return {
+        ok: false,
+        error: `${prefix}: path depth ${segments.length} exceeds max ${fieldConfig.maxDepth}`,
+      };
+    }
+
+    for (const segment of segments) {
+      if (!PATH_SEGMENT_RE.test(segment)) {
+        return {
+          ok: false,
+          error: `${prefix}: invalid path segment "${segment}". Only alphanumeric and underscores allowed`,
+        };
+      }
+    }
+
+    const value = raw[key];
+    if (typeof value !== "string" || value === "") continue;
+
+    conditions.push({
+      field: fieldConfig.prismaName,
+      path: segments,
+      value,
+    });
+  }
+
+  return { ok: true, data: conditions };
 }

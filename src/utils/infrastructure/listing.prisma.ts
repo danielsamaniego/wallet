@@ -1,4 +1,4 @@
-import type { FilterCondition, FilterOperator, SortField } from "../kernel/listing.js";
+import type { FilterCondition, FilterOperator, JsonFilterCondition, SortField } from "../kernel/listing.js";
 import { decodeCursor, ensureTiebreaker } from "../kernel/listing.js";
 
 export interface PrismaListingClause {
@@ -17,6 +17,7 @@ export function buildPrismaListing(
   sort: readonly SortField[],
   limit: number,
   cursor?: string,
+  jsonFilters?: readonly JsonFilterCondition[],
 ): PrismaListingClause {
   const sortWithTiebreaker = ensureTiebreaker(sort);
 
@@ -25,15 +26,22 @@ export function buildPrismaListing(
     [f.field]: operatorToPrisma(f.operator, f.value),
   }));
 
+  // Build JSON path filter conditions (e.g. metadata.source = "settlement")
+  const jsonConditions: Record<string, unknown>[] = (jsonFilters ?? []).map((jf) => ({
+    [jf.field]: { path: [...jf.path], equals: jf.value },
+  }));
+
+  const allConditions = [...filterConditions, ...jsonConditions];
+
   // Build WHERE with AND array
   let where: Record<string, unknown>;
 
   if (cursor) {
     const keysetValues = decodeCursor(cursor, sort);
     const cursorWhere = buildKeysetWhere(sortWithTiebreaker, keysetValues);
-    where = { AND: [baseWhere, ...filterConditions, cursorWhere] };
-  } else if (filterConditions.length > 0) {
-    where = { AND: [baseWhere, ...filterConditions] };
+    where = { AND: [baseWhere, ...allConditions, cursorWhere] };
+  } else if (allConditions.length > 0) {
+    where = { AND: [baseWhere, ...allConditions] };
   } else {
     where = baseWhere;
   }

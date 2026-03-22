@@ -8,6 +8,12 @@ export interface FilterCondition {
   readonly value: unknown;
 }
 
+export interface JsonFilterCondition {
+  readonly field: string;
+  readonly path: readonly string[];
+  readonly value: string;
+}
+
 // ── Sort ────────────────────────────────────────────────────────────────────
 
 export type SortDirection = "asc" | "desc";
@@ -21,6 +27,7 @@ export interface SortField {
 
 export interface ListingQuery {
   readonly filters: readonly FilterCondition[];
+  readonly jsonFilters?: readonly JsonFilterCondition[];
   readonly sort: readonly SortField[];
   readonly limit: number;
   readonly cursor?: string;
@@ -45,6 +52,12 @@ export interface FilterableFieldConfig {
   readonly enumValues?: readonly string[];
 }
 
+export interface JsonFilterableFieldConfig {
+  readonly apiName: string;
+  readonly prismaName: string;
+  readonly maxDepth: number;
+}
+
 export interface SortableFieldConfig {
   readonly apiName: string;
   readonly prismaName: string;
@@ -52,6 +65,7 @@ export interface SortableFieldConfig {
 
 export interface ListingConfig {
   readonly filterableFields: readonly FilterableFieldConfig[];
+  readonly jsonFilterableFields?: readonly JsonFilterableFieldConfig[];
   readonly sortableFields: readonly SortableFieldConfig[];
   readonly defaultSort: readonly SortField[];
   readonly maxLimit: number;

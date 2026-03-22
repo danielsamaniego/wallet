@@ -40,6 +40,7 @@ export class PrismaTransactionReadStore implements ITransactionReadStore {
       listing.sort,
       listing.limit,
       listing.cursor,
+      listing.jsonFilters,
     );
 
     const rows = await this.prisma.transaction.findMany({ where, orderBy, take });
