@@ -12,8 +12,9 @@ import { errorResponse, httpStatus } from "./shared/infrastructure/kernel/hono.e
 import { transferRoutes } from "./wallet/infrastructure/adapters/inbound/http/transfers.routes.js";
 import { walletRoutes } from "./wallet/infrastructure/adapters/inbound/http/wallets.routes.js";
 import { loadConfig } from "./config.js";
-import { startCleanupIdempotencyJob } from "./jobs/cleanupIdempotencyRecords.js";
-import { startExpireHoldsJob } from "./jobs/expireHolds.js";
+import { startScheduledJobs } from "./shared/infrastructure/adapters/inbound/scheduler/scheduler.js";
+import { sharedJobs } from "./shared/infrastructure/adapters/inbound/scheduler/jobs.js";
+import { walletJobs } from "./wallet/infrastructure/adapters/inbound/scheduler/jobs.js";
 import type { HonoVariables } from "./shared/infrastructure/kernel/hono.context.js";
 import { buildAppContext } from "./shared/infrastructure/kernel/hono.context.js";
 import { AppError } from "./shared/kernel/appError.js";
@@ -119,9 +120,8 @@ async function main() {
   );
   app.get("/docs", Scalar({ url: "/openapi" }));
 
-  // Background cron jobs
-  startExpireHoldsJob(deps.prisma, deps.logger, deps.idGen);
-  startCleanupIdempotencyJob(deps.prisma, deps.logger, deps.idGen);
+  // Background scheduled jobs
+  startScheduledJobs([...sharedJobs, ...walletJobs], deps.commandBus, deps.idGen, deps.logger);
 
   serve({ fetch: app.fetch, port: config.httpPort }, (info) => {
     console.log(`Wallet service running on http://localhost:${info.port}`);

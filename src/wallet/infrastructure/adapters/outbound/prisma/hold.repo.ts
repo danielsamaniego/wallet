@@ -70,6 +70,22 @@ export class PrismaHoldRepo implements IHoldRepository {
     return this.client(ctx).hold.count({ where: this.activeHoldFilter(walletId) });
   }
 
+  async expireOverdue(ctx: AppContext): Promise<number> {
+    this.logger.debug(ctx, "HoldRepo | expireOverdue");
+    const now = BigInt(Date.now());
+    const result = await this.client(ctx).hold.updateMany({
+      where: {
+        status: "active",
+        expiresAt: { not: null, lt: now },
+      },
+      data: {
+        status: "expired",
+        updatedAt: now,
+      },
+    });
+    return result.count;
+  }
+
   /** Filter: status = 'active' AND not expired by time. */
   private activeHoldFilter(walletId: string) {
     const now = BigInt(Date.now());

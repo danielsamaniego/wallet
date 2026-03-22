@@ -7,4 +7,6 @@ export interface IHoldRepository {
   findActiveByWallet(ctx: AppContext, walletId: string): Promise<Hold[]>;
   sumActiveHolds(ctx: AppContext, walletId: string): Promise<bigint>;
   countActiveHolds(ctx: AppContext, walletId: string): Promise<number>;
+  /** Mark all holds past their expiresAt as 'expired'. Returns count of affected rows. */
+  expireOverdue(ctx: AppContext): Promise<number>;
 }

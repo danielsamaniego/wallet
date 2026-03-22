@@ -55,6 +55,9 @@ export interface IIdempotencyStore {
    * Called when the handler fails with a transient error (e.g. VERSION_CONFLICT, 5xx).
    */
   release(idempotencyKey: string, platformId: string): Promise<void>;
+
+  /** Delete all records past their expiresAt. Returns count of deleted rows. */
+  deleteExpired(): Promise<number>;
 }
 
 /**

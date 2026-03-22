@@ -33,6 +33,8 @@ import { WithdrawUseCase } from "./wallet/application/command/withdraw/usecase.j
 import { GetLedgerEntriesUseCase } from "./wallet/application/query/getLedgerEntries/usecase.js";
 import { GetTransactionsUseCase } from "./wallet/application/query/getTransactions/usecase.js";
 import { GetWalletUseCase } from "./wallet/application/query/getWallet/usecase.js";
+import { ExpireHoldsUseCase } from "./wallet/application/command/expireHolds/usecase.js";
+import { CleanupIdempotencyUseCase } from "./shared/application/command/cleanupIdempotency/usecase.js";
 
 // Command classes (needed for bus registration)
 import { CreateWalletCommand } from "./wallet/application/command/createWallet/command.js";
@@ -45,6 +47,8 @@ import { CloseWalletCommand } from "./wallet/application/command/closeWallet/com
 import { PlaceHoldCommand } from "./wallet/application/command/placeHold/command.js";
 import { CaptureHoldCommand } from "./wallet/application/command/captureHold/command.js";
 import { VoidHoldCommand } from "./wallet/application/command/voidHold/command.js";
+import { ExpireHoldsCommand } from "./wallet/application/command/expireHolds/command.js";
+import { CleanupIdempotencyCommand } from "./shared/application/command/cleanupIdempotency/command.js";
 
 // Query classes (needed for bus registration)
 import { GetWalletQuery } from "./wallet/application/query/getWallet/query.js";
@@ -180,6 +184,8 @@ export function wire(config: Config): Dependencies {
     logger,
   );
   const voidHold = new VoidHoldUseCase(txManager, walletRepo, holdRepo, logger);
+  const expireHolds = new ExpireHoldsUseCase(holdRepo, logger);
+  const cleanupIdempotency = new CleanupIdempotencyUseCase(idempotencyStore, logger);
 
   // ── Command Bus ────────────────────────────
   const commandBus = new CommandBus();
@@ -193,6 +199,8 @@ export function wire(config: Config): Dependencies {
   commandBus.register(PlaceHoldCommand.TYPE, placeHold);
   commandBus.register(CaptureHoldCommand.TYPE, captureHold);
   commandBus.register(VoidHoldCommand.TYPE, voidHold);
+  commandBus.register(ExpireHoldsCommand.TYPE, expireHolds);
+  commandBus.register(CleanupIdempotencyCommand.TYPE, cleanupIdempotency);
 
   // ── Query Bus ──────────────────────────────
   const queryBus = new QueryBus();

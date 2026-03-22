@@ -89,4 +89,12 @@ export class PrismaIdempotencyStore implements IIdempotencyStore {
       where: { idempotencyKey },
     });
   }
+
+  async deleteExpired(): Promise<number> {
+    const now = BigInt(Date.now());
+    const result = await this.prisma.idempotencyRecord.deleteMany({
+      where: { expiresAt: { lt: now } },
+    });
+    return result.count;
+  }
 }
