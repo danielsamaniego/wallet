@@ -1,6 +1,7 @@
 import type { ModuleHandlers, SharedInfra } from "../wiring.js";
 
 // Repos
+import { PrismaHoldReadStore } from "./infrastructure/adapters/outbound/prisma/hold.readstore.js";
 import { PrismaHoldRepo } from "./infrastructure/adapters/outbound/prisma/hold.repo.js";
 import { PrismaLedgerEntryReadStore } from "./infrastructure/adapters/outbound/prisma/ledgerEntry.readstore.js";
 import { PrismaLedgerEntryRepo } from "./infrastructure/adapters/outbound/prisma/ledgerEntry.repo.js";
@@ -22,9 +23,11 @@ import { TransferUseCase } from "./application/command/transfer/usecase.js";
 import { UnfreezeWalletUseCase } from "./application/command/unfreezeWallet/usecase.js";
 import { VoidHoldUseCase } from "./application/command/voidHold/usecase.js";
 import { WithdrawUseCase } from "./application/command/withdraw/usecase.js";
+import { GetHoldUseCase } from "./application/query/getHold/usecase.js";
 import { GetLedgerEntriesUseCase } from "./application/query/getLedgerEntries/usecase.js";
 import { GetTransactionsUseCase } from "./application/query/getTransactions/usecase.js";
 import { GetWalletUseCase } from "./application/query/getWallet/usecase.js";
+import { ListHoldsUseCase } from "./application/query/listHolds/usecase.js";
 
 // Commands & Queries (for bus registration)
 import { CaptureHoldCommand } from "./application/command/captureHold/command.js";
@@ -38,9 +41,11 @@ import { TransferCommand } from "./application/command/transfer/command.js";
 import { UnfreezeWalletCommand } from "./application/command/unfreezeWallet/command.js";
 import { VoidHoldCommand } from "./application/command/voidHold/command.js";
 import { WithdrawCommand } from "./application/command/withdraw/command.js";
+import { GetHoldQuery } from "./application/query/getHold/query.js";
 import { GetLedgerEntriesQuery } from "./application/query/getLedgerEntries/query.js";
 import { GetTransactionsQuery } from "./application/query/getTransactions/query.js";
 import { GetWalletQuery } from "./application/query/getWallet/query.js";
+import { ListHoldsQuery } from "./application/query/listHolds/query.js";
 
 export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleHandlers {
   // Repos
@@ -50,6 +55,7 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
   const ledgerEntryRepo = new PrismaLedgerEntryRepo(prisma, logger);
   const movementRepo = new PrismaMovementRepo(prisma, logger);
   const walletReadStore = new PrismaWalletReadStore(prisma, logger);
+  const holdReadStore = new PrismaHoldReadStore(prisma, logger);
   const transactionReadStore = new PrismaTransactionReadStore(prisma, logger);
   const ledgerEntryReadStore = new PrismaLedgerEntryReadStore(prisma, logger);
 
@@ -61,6 +67,8 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
   const unfreezeWallet = new UnfreezeWalletUseCase(txManager, walletRepo, logger);
   const closeWallet = new CloseWalletUseCase(txManager, walletRepo, holdRepo, logger);
   const getWallet = new GetWalletUseCase(walletReadStore, logger);
+  const getHold = new GetHoldUseCase(holdReadStore, logger);
+  const listHolds = new ListHoldsUseCase(holdReadStore, logger);
   const getTransactions = new GetTransactionsUseCase(transactionReadStore, logger);
   const getLedgerEntries = new GetLedgerEntriesUseCase(ledgerEntryReadStore, logger);
   const transfer = new TransferUseCase(txManager, walletRepo, holdRepo, transactionRepo, ledgerEntryRepo, movementRepo, idGen, logger);
@@ -85,6 +93,8 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
     ],
     queries: [
       { type: GetWalletQuery.TYPE, handler: getWallet },
+      { type: GetHoldQuery.TYPE, handler: getHold },
+      { type: ListHoldsQuery.TYPE, handler: listHolds },
       { type: GetTransactionsQuery.TYPE, handler: getTransactions },
       { type: GetLedgerEntriesQuery.TYPE, handler: getLedgerEntries },
     ],

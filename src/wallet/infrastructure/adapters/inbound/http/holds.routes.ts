@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import type { HonoVariables } from "../../../../../utils/infrastructure/hono.context.js";
 import { captureHoldRoute } from "./captureHold/handler.js";
+import { getHoldRoute } from "./getHold/handler.js";
+import { listHoldsRoute } from "./listHolds/handler.js";
 import { placeHoldRoute } from "./placeHold/handler.js";
 import { voidHoldRoute } from "./voidHold/handler.js";
 import type { Dependencies } from "../../../../../wiring.js";
@@ -12,9 +14,14 @@ export function holdRoutes(deps: Dependencies) {
   const auth = apiKeyAuth(deps.prisma);
   const idemp = idempotency(deps.idempotencyStore);
 
+  // Commands
   router.post("/", auth, idemp, ...placeHoldRoute(deps.commandBus));
   router.post("/:holdId/capture", auth, idemp, ...captureHoldRoute(deps.commandBus));
   router.post("/:holdId/void", auth, ...voidHoldRoute(deps.commandBus));
+
+  // Queries
+  router.get("/:holdId", auth, ...getHoldRoute(deps.queryBus));
+  router.get("/wallet/:walletId", auth, ...listHoldsRoute(deps.queryBus));
 
   return router;
 }
