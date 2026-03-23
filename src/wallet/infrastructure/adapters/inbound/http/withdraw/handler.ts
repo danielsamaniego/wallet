@@ -30,6 +30,7 @@ export function withdrawRoute(commandBus: ICommandBus) {
         BigInt(data.amount_cents),
         c.req.header("idempotency-key")!,
         data.reference,
+        data.metadata,
       ));
 
       return c.json({ transaction_id: result.transactionId, movement_id: result.movementId }, 201);

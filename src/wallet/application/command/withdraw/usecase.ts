@@ -102,7 +102,7 @@ export class WithdrawUseCase implements ICommandHandler<WithdrawCommand, Withdra
         status: "completed",
         idempotencyKey: cmd.idempotencyKey,
         reference: cmd.reference ?? null,
-        metadata: null,
+        metadata: cmd.metadata ?? null,
         holdId: null,
         movementId,
         createdAt: now,

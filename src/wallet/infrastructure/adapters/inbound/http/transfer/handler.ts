@@ -29,6 +29,7 @@ export function transferRoute(commandBus: ICommandBus) {
         BigInt(data.amount_cents),
         c.req.header("idempotency-key")!,
         data.reference,
+        data.metadata,
       ));
 
       return c.json(

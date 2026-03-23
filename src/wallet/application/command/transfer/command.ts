@@ -15,5 +15,6 @@ export class TransferCommand extends ICommand<TransferResult> {
     public readonly amountCents: bigint,
     public readonly idempotencyKey: string,
     public readonly reference?: string,
+    public readonly metadata?: Record<string, unknown>,
   ) { super(TransferCommand.TYPE); }
 }
