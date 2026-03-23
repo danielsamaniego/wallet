@@ -68,7 +68,7 @@ model Transaction {
   type                String /// deposit | withdrawal | transfer_in | transfer_out | hold_capture
   amountCents         BigInt        @map("amount_cents") /// Always positive, integer cents
   status              String        @default("completed") /// completed | failed | reversed
-  idempotencyKey      String?       @unique @map("idempotency_key")
+  idempotencyKey      String?       @map("idempotency_key")
   reference           String? /// External reference from caller
   metadata            Json? /// Arbitrary JSON metadata
   holdId              String?       @map("hold_id") /// If from a captured hold
@@ -128,7 +128,7 @@ model Hold {
 /// Idempotency record — prevents duplicate financial operations. TTL 48h.
 model IdempotencyRecord {
   id             String @id /// UUID v7, app-generated
-  idempotencyKey String @unique @map("idempotency_key")
+  idempotencyKey String @map("idempotency_key")
   platformId     String @map("platform_id")
   requestHash    String @default("") @map("request_hash") /// SHA-256 of request body for payload mismatch detection
   responseStatus Int    @map("response_status")
@@ -136,6 +136,6 @@ model IdempotencyRecord {
   createdAt      BigInt @map("created_at") /// Unix ms
   expiresAt      BigInt @map("expires_at") /// Unix ms
 
-  @@index([idempotencyKey, platformId])
+  @@unique([idempotencyKey, platformId])
   @@map("idempotency_records")
 }

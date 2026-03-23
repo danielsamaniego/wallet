@@ -21,7 +21,7 @@ export class PrismaIdempotencyStore implements IIdempotencyStore {
   ): Promise<IdempotencyRecord | null> {
     // Try to find existing
     const existing = await this.prisma.idempotencyRecord.findUnique({
-      where: { idempotencyKey },
+      where: { idempotencyKey_platformId: { idempotencyKey, platformId } },
     });
 
     if (existing) {
@@ -54,7 +54,7 @@ export class PrismaIdempotencyStore implements IIdempotencyStore {
     } catch (err: unknown) {
       // Unique constraint violation — another request won the race
       const existing = await this.prisma.idempotencyRecord.findUnique({
-        where: { idempotencyKey },
+        where: { idempotencyKey_platformId: { idempotencyKey, platformId } },
       });
       if (existing) {
         return {
@@ -74,12 +74,12 @@ export class PrismaIdempotencyStore implements IIdempotencyStore {
   async complete(
     _ctx: AppContext,
     idempotencyKey: string,
-    _platformId: string,
+    platformId: string,
     responseStatus: number,
     responseBody: unknown,
   ): Promise<void> {
     await this.prisma.idempotencyRecord.update({
-      where: { idempotencyKey },
+      where: { idempotencyKey_platformId: { idempotencyKey, platformId } },
       data: {
         responseStatus,
         responseBody: responseBody as any,
@@ -87,9 +87,9 @@ export class PrismaIdempotencyStore implements IIdempotencyStore {
     });
   }
 
-  async release(_ctx: AppContext, idempotencyKey: string, _platformId: string): Promise<void> {
+  async release(_ctx: AppContext, idempotencyKey: string, platformId: string): Promise<void> {
     await this.prisma.idempotencyRecord.delete({
-      where: { idempotencyKey },
+      where: { idempotencyKey_platformId: { idempotencyKey, platformId } },
     });
   }
 
