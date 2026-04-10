@@ -39,7 +39,7 @@ export class SafeLogger implements ILogger {
 
   fatal(ctx: AppContext, msg: string, extras?: Record<string, unknown>): void {
     this.safe(() => this.inner.fatal(ctx, msg, extras));
-    process.exit(1);
+    throw new Error(`FATAL: ${msg}`);
   }
 
   with(key: string, value: unknown): ILogger {
