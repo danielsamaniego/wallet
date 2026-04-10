@@ -14,6 +14,9 @@ import { errorResponse, httpStatus } from "./utils/infrastructure/hono.error.js"
 import type { HonoVariables } from "./utils/infrastructure/hono.context.js";
 import { buildAppContext } from "./utils/infrastructure/hono.context.js";
 import { AppError } from "./utils/kernel/appError.js";
+import { createAppContext } from "./utils/kernel/context.js";
+import { ExpireHoldsCommand } from "./wallet/application/command/expireHolds/command.js";
+import { CleanupIdempotencyCommand } from "./common/idempotency/application/command/cleanupIdempotency/command.js";
 import type { Dependencies } from "./wiring.js";
 
 /**
@@ -79,6 +82,30 @@ export function createApp(deps: Dependencies) {
     }),
   );
   app.get("/docs", Scalar({ url: "/openapi" }));
+
+  // ── Internal cron routes (Vercel Cron Jobs) ──────────────────
+  // Protected by CRON_SECRET — Vercel sends it as Authorization: Bearer <secret>.
+  const internal = app.basePath("/internal");
+
+  internal.get("/cron/expire-holds", async (c) => {
+    const authHeader = c.req.header("authorization");
+    if (deps.config.cronSecret && authHeader !== `Bearer ${deps.config.cronSecret}`) {
+      return errorResponse(c, "UNAUTHORIZED", "invalid cron secret", 401);
+    }
+    const ctx = createAppContext(deps.idGen);
+    await deps.commandBus.dispatch(ctx, new ExpireHoldsCommand());
+    return c.json({ ok: true, job: "expire-holds" });
+  });
+
+  internal.get("/cron/cleanup-idempotency", async (c) => {
+    const authHeader = c.req.header("authorization");
+    if (deps.config.cronSecret && authHeader !== `Bearer ${deps.config.cronSecret}`) {
+      return errorResponse(c, "UNAUTHORIZED", "invalid cron secret", 401);
+    }
+    const ctx = createAppContext(deps.idGen);
+    await deps.commandBus.dispatch(ctx, new CleanupIdempotencyCommand());
+    return c.json({ ok: true, job: "cleanup-idempotency" });
+  });
 
   return app;
 }
