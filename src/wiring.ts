@@ -71,11 +71,17 @@ const sensitiveKeys = [
   "refresh_token",
 ];
 
+/** Memoized deps — survives across warm requests in the same serverless instance. */
+let _deps: Dependencies | null = null;
+
 /**
  * Wire initializes and wires all dependencies.
  * Logger chain: PinoAdapter -> SensitiveKeysFilter -> SafeLogger
+ * Memoized: returns the same instance on subsequent calls within the same process.
  */
 export function wire(config: Config): Dependencies {
+  if (_deps) return _deps;
+
   // ── Shared infrastructure ────────────────
   const adapter = new PrismaPg({ connectionString: config.databaseUrl });
   const prisma = new PrismaClient({ adapter });
@@ -103,7 +109,7 @@ export function wire(config: Config): Dependencies {
     for (const q of mod.queries ?? []) queryBus.register(q.type, q.handler);
   }
 
-  return {
+  _deps = {
     config,
     prisma,
     idGen,
@@ -112,4 +118,6 @@ export function wire(config: Config): Dependencies {
     commandBus,
     queryBus,
   };
+
+  return _deps;
 }
