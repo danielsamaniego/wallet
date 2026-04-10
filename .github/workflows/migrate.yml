@@ -2,7 +2,7 @@ name: Run Prisma Migrations
 
 on:
   push:
-    branches: [master]
+    branches: [main]
     paths:
       - 'prisma/**'
 
