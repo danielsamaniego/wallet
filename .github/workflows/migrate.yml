@@ -32,6 +32,7 @@ jobs:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
 
       - name: Apply database safety nets
-        run: psql "$DIRECT_URL" -f prisma/immutable_ledger.sql
+        run: pnpm prisma db execute --file prisma/immutable_ledger.sql --config prisma/prisma.config.ts
         env:
+          DATABASE_URL: ${{ secrets.DIRECT_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
