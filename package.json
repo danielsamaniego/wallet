@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
+    "postinstall": "prisma generate --config prisma/prisma.config.ts",
     "fmt": "biome format --write src/",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
@@ -56,6 +57,9 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
