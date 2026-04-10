@@ -58,7 +58,7 @@ export function createApp(deps: Dependencies) {
   app.use("*", requestResponseLog(deps.logger));
 
   // Health check
-  app.get("/health", (c) => c.json({ status: "ok" }));
+  app.get("/health", (c) => c.json({ status: "ok", version: "1.0.0" }));
 
   // Route groups
   const v1 = app.basePath("/v1");
