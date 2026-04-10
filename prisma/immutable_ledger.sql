@@ -1,5 +1,5 @@
--- Immutable ledger enforcement for ledger_entries table.
--- Apply after Prisma migrations via: psql -f prisma/immutable_ledger.sql
+-- Immutable ledger enforcement for financial audit trail tables.
+-- Apply after Prisma migrations via: prisma db execute --file prisma/immutable_ledger.sql
 
 -- Level 1: Trigger that prevents UPDATE and DELETE on immutable tables.
 -- Shared function used by all append-only financial tables.
