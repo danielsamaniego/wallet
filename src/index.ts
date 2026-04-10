@@ -1,25 +1,11 @@
 import { serve } from "@hono/node-server";
 import type { PrismaClient } from "@prisma/client";
-import { Scalar } from "@scalar/hono-api-reference";
-import { Hono } from "hono";
-import { cors } from "hono/cors";
-import { secureHeaders } from "hono/secure-headers";
-import { openAPIRouteHandler } from "hono-openapi";
-import { holdRoutes } from "./wallet/infrastructure/adapters/inbound/http/holds.routes.js";
-import { requestResponseLog } from "./utils/infrastructure/middleware/requestResponseLog.js";
-import { trackingCanonical } from "./utils/infrastructure/middleware/trackingCanonical.js";
-import { errorResponse, httpStatus } from "./utils/infrastructure/hono.error.js";
-import { transferRoutes } from "./wallet/infrastructure/adapters/inbound/http/transfers.routes.js";
-import { walletRoutes } from "./wallet/infrastructure/adapters/inbound/http/wallets.routes.js";
-import { platformRoutes } from "./platform/infrastructure/adapters/inbound/http/platforms.routes.js";
 import { loadConfig } from "./config.js";
+import { wire } from "./wiring.js";
+import { createApp } from "./app.js";
 import { startScheduledJobs } from "./utils/infrastructure/scheduler.js";
 import { idempotencyJobs } from "./common/idempotency/infrastructure/adapters/inbound/scheduler/jobs.js";
 import { walletJobs } from "./wallet/infrastructure/adapters/inbound/scheduler/jobs.js";
-import type { HonoVariables } from "./utils/infrastructure/hono.context.js";
-import { buildAppContext } from "./utils/infrastructure/hono.context.js";
-import { AppError } from "./utils/kernel/appError.js";
-import { wire } from "./wiring.js";
 
 /**
  * Verifies that critical DB safety nets (triggers, constraints) exist.
@@ -57,6 +43,11 @@ async function verifyDatabaseSafetyNets(prisma: PrismaClient): Promise<void> {
   }
 }
 
+/**
+ * Local development entry point.
+ * Starts a long-running Node.js server with scheduled jobs and DB verification.
+ * For Vercel deployment, see api/index.ts instead.
+ */
 async function main() {
   const config = loadConfig();
   const deps = wire(config);
@@ -64,65 +55,9 @@ async function main() {
   // Preflight: verify DB safety nets before accepting traffic
   await verifyDatabaseSafetyNets(deps.prisma);
 
-  const app = new Hono<{ Variables: HonoVariables }>();
+  const app = createApp(deps);
 
-  // Global error handler — maps AppError to HTTP status, catches unhandled exceptions.
-  app.onError((err, c) => {
-    const ctx = buildAppContext(c);
-
-    if (AppError.is(err)) {
-      const status = httpStatus(err.kind);
-      if (status >= 500) {
-        deps.logger.error(ctx, err.code, { error: err.message });
-      } else {
-        deps.logger.warn(ctx, err.code);
-      }
-      return errorResponse(c, err.code, err.msg, status);
-    }
-
-    const message = err instanceof Error ? err.message : "unknown error";
-    deps.logger.error(ctx, "Unhandled exception", { error: message });
-    return errorResponse(c, "INTERNAL_ERROR", "an unexpected error occurred", 500);
-  });
-
-  // Structured 404 for undefined routes
-  app.notFound((c) => {
-    return errorResponse(c, "NOT_FOUND", `${c.req.method} ${c.req.path} not found`, 404);
-  });
-
-  // Global middleware chain (order matters: tracking → security → logging → handler)
-  app.use("*", trackingCanonical(deps.idGen, deps.logger));
-  app.use("*", cors());
-  app.use("*", secureHeaders());
-  app.use("*", requestResponseLog(deps.logger));
-
-  // Health check
-  app.get("/health", (c) => c.json({ status: "ok" }));
-
-  // Route groups
-  const v1 = app.basePath("/v1");
-  v1.route("/wallets", walletRoutes(deps));
-  v1.route("/transfers", transferRoutes(deps));
-  v1.route("/holds", holdRoutes(deps));
-  v1.route("/platforms", platformRoutes(deps));
-
-  // OpenAPI spec + interactive docs
-  app.get(
-    "/openapi",
-    openAPIRouteHandler(app, {
-      documentation: {
-        info: {
-          title: "Wallet API",
-          version: "1.0.0",
-          description: "Digital wallet microservice — deposits, withdrawals, transfers, holds, and ledger.",
-        },
-        servers: [{ url: `http://localhost:${config.httpPort}`, description: "Local" }],
-      },
-    }),
-  );
-  app.get("/docs", Scalar({ url: "/openapi" }));
-
-  // Background scheduled jobs
+  // Background scheduled jobs (only in long-running server, not in serverless)
   startScheduledJobs([...idempotencyJobs, ...walletJobs], deps.commandBus, deps.idGen, deps.logger);
 
   serve({ fetch: app.fetch, port: config.httpPort }, (info) => {
