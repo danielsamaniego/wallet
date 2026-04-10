@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "api/index.ts", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "api/index.ts" }
+  ],
+  "crons": [
+    {
+      "path": "/internal/cron/expire-holds",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/internal/cron/cleanup-idempotency",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
