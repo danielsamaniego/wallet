@@ -3,6 +3,8 @@ import { defineConfig } from "prisma/config";
 
 const databaseUrl =
   process.env.DATABASE_URL ?? "postgresql://wallet:wallet@localhost:5432/wallet";
+const directUrl =
+  process.env.DIRECT_URL ?? databaseUrl;
 
 export default defineConfig({
   earlyAccess: true,
@@ -12,7 +14,7 @@ export default defineConfig({
   },
   migrate: {
     async url() {
-      return databaseUrl;
+      return directUrl;
     },
   },
 });
