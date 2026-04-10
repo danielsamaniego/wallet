@@ -28,5 +28,5 @@ jobs:
       - name: Run migrations
         run: pnpm prisma migrate deploy --config prisma/prisma.config.ts
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DIRECT_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
