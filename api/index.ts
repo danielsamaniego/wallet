@@ -1,4 +1,4 @@
-import { handle } from "hono/vercel";
+import { getRequestListener } from "@hono/node-server";
 import { loadConfig } from "../src/config.js";
 import { wire } from "../src/wiring.js";
 import { createApp } from "../src/app.js";
@@ -9,4 +9,4 @@ const config = loadConfig();
 const deps = wire(config);
 const app = createApp(deps);
 
-export default handle(app);
+export default getRequestListener(app.fetch);
