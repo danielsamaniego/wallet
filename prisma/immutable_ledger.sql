@@ -1,18 +1,32 @@
 -- Immutable ledger enforcement for ledger_entries table.
 -- Apply after Prisma migrations via: psql -f prisma/immutable_ledger.sql
 
--- Level 1: Trigger that prevents UPDATE and DELETE on ledger_entries.
-CREATE OR REPLACE FUNCTION prevent_ledger_modify()
+-- Level 1: Trigger that prevents UPDATE and DELETE on immutable tables.
+-- Shared function used by all append-only financial tables.
+CREATE OR REPLACE FUNCTION prevent_immutable_modify()
 RETURNS trigger AS $$
 BEGIN
-  RAISE EXCEPTION 'ledger_entries is append-only: % operation not allowed', TG_OP;
+  RAISE EXCEPTION '% is append-only: % operation not allowed', TG_TABLE_NAME, TG_OP;
 END;
 $$ LANGUAGE plpgsql;
 
+-- ledger_entries: double-entry audit trail
 DROP TRIGGER IF EXISTS ledger_entries_immutable ON ledger_entries;
 CREATE TRIGGER ledger_entries_immutable
   BEFORE UPDATE OR DELETE ON ledger_entries
-  FOR EACH ROW EXECUTE FUNCTION prevent_ledger_modify();
+  FOR EACH ROW EXECUTE FUNCTION prevent_immutable_modify();
+
+-- transactions: financial operation records
+DROP TRIGGER IF EXISTS transactions_immutable ON transactions;
+CREATE TRIGGER transactions_immutable
+  BEFORE UPDATE OR DELETE ON transactions
+  FOR EACH ROW EXECUTE FUNCTION prevent_immutable_modify();
+
+-- movements: groups of transactions (journal entries)
+DROP TRIGGER IF EXISTS movements_immutable ON movements;
+CREATE TRIGGER movements_immutable
+  BEFORE UPDATE OR DELETE ON movements
+  FOR EACH ROW EXECUTE FUNCTION prevent_immutable_modify();
 
 -- Safety constraints
 ALTER TABLE wallets

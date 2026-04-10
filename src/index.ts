@@ -15,12 +15,15 @@ import { walletJobs } from "./wallet/infrastructure/adapters/inbound/scheduler/j
 async function verifyDatabaseSafetyNets(prisma: PrismaClient): Promise<void> {
   const triggers = await prisma.$queryRaw<{ tgname: string }[]>`
     SELECT tgname FROM pg_trigger
-    WHERE tgrelid = 'ledger_entries'::regclass
-      AND tgname = 'ledger_entries_immutable'`;
+    WHERE tgname IN ('ledger_entries_immutable', 'transactions_immutable', 'movements_immutable')`;
 
-  if (triggers.length === 0) {
+  const expectedTriggers = ["ledger_entries_immutable", "transactions_immutable", "movements_immutable"];
+  const foundTriggers = triggers.map((t) => t.tgname);
+  const missingTriggers = expectedTriggers.filter((name) => !foundTriggers.includes(name));
+
+  if (missingTriggers.length > 0) {
     throw new Error(
-      "FATAL: ledger_entries_immutable trigger is missing. " +
+      `FATAL: missing immutability triggers: ${missingTriggers.join(", ")}. ` +
         "Run: cat prisma/immutable_ledger.sql | docker exec -i <container> psql -U wallet -d wallet",
     );
   }
