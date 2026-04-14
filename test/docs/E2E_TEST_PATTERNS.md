@@ -2,6 +2,7 @@
 
 > How to write robust end-to-end tests against the Dockerized Wallet Service.
 > **E2E tests are the last line of defense. They must be thorough, paranoid, and cover every attack vector.**
+> **Every HTTP endpoint in the service MUST have e2e coverage. There are no exceptions for "simple" endpoints.**
 
 ---
 
@@ -130,7 +131,7 @@ app.reset()                    // TRUNCATE all tables + re-seed both platforms
 
 ## THE 12 SECURITY CATEGORIES (MANDATORY)
 
-Every new endpoint MUST have e2e tests for ALL applicable categories below. This is not optional — it's how we ensure the system is robust against real-world attacks.
+Every HTTP endpoint MUST have e2e tests for ALL applicable categories below. New endpoints require new e2e coverage, and changes to existing endpoints require updating their e2e tests in the same work. This is not optional — it's how we ensure the system is robust against real-world attacks.
 
 ### 1. Authentication Attacks
 Test that unauthenticated and badly-authenticated requests are rejected:
@@ -310,6 +311,7 @@ describe("Given a wallet with 50000 cents", () => {
 ## Checklist Before Submitting E2E Tests
 
 - [ ] All 12 security categories addressed (where applicable to the endpoint)
+- [ ] The endpoint is covered by e2e tests; no endpoint change ships without e2e coverage updates
 - [ ] `beforeEach` calls `app.reset()` (truncate + re-seed)
 - [ ] Every mutation has unique `Idempotency-Key`
 - [ ] Authenticated requests use `app.request()` (auto-includes API key)

@@ -196,6 +196,7 @@ If pre-push fails, fix the issues before pushing. **Do not use `--no-verify`** �
 | **TDD mindset** | Write the test first, see it fail (red), implement the code, see it pass (green), refactor. Every new feature, bugfix, or refactor starts with a test. |
 | **BDD structure** | All tests use `describe("Given X") / describe("When Y") / it("Then Z")`. No exceptions. See `test/docs/BDD_STYLE_GUIDE.md`. |
 | **Exhaustive cases** | Happy path is the minimum. Every test MUST also cover: all error paths (every `throw`), edge cases (0, 1, MAX, negative, null, boundary), and security cases (invalid input, cross-tenant, injection). |
+| **Every endpoint needs E2E** | Every HTTP endpoint in the service — existing or new — MUST have e2e coverage. If a change affects an endpoint, its e2e tests must be created or updated in the same task. |
 | **1 test file per source file** | Every `.ts` file with logic has a corresponding `.test.ts`. Domain entities, use cases, handlers, repos, middleware — all have tests. |
 
 ### Unit tests (`tests/unit/`)
@@ -206,7 +207,7 @@ If pre-push fails, fix the issues before pushing. **Do not use `--no-verify`** �
 
 ### E2E tests (`tests/e2e/`) — MUST be robust
 
-E2E tests run in Docker (PostgreSQL + App containers, isolated from dev). They MUST cover the **12 security categories** for every endpoint:
+E2E tests run in Docker (PostgreSQL + App containers, isolated from dev). Every HTTP endpoint in the service MUST have e2e coverage, and those tests MUST cover the **12 security categories** for that endpoint where applicable:
 
 1. **Authentication** — missing/invalid/malformed API keys, SQL injection in credentials
 2. **Input validation** — negative, zero, float, string, overflow, XSS, prototype pollution, malformed JSON
@@ -220,7 +221,7 @@ E2E tests run in Docker (PostgreSQL + App containers, isolated from dev). They M
 10. **Edge cases** — minimum values (1 cent), cross-currency rejection, non-existent resources, invalid UUIDs
 11. **Information disclosure** — no stack traces in errors, no framework headers, consistent 404 (no enumeration)
 
-When adding a new endpoint, create e2e tests covering ALL applicable categories above.
+When adding a new endpoint, create e2e tests covering ALL applicable categories above. When modifying an existing endpoint, update its e2e tests in the same change.
 
 ### Test commands
 

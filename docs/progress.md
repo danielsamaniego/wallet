@@ -59,6 +59,7 @@
 - [x] Architecture refactoring: `shared/` → `utils/` (toolkit) + `common/` (cross-cutting features)
 - [x] CQRS bus refactoring: CommandBus/QueryBus with middleware pipeline, static TYPE for dispatch
 - [x] Common: idempotency feature with full architecture (ports, command, use case, scheduler adapter, Prisma adapter)
+- [x] E2E coverage for balance adjustments endpoint (`tests/e2e/wallet/adjustments.e2e.test.ts`) including success, hold-aware insufficient funds, frozen/closed states, auth, validation, idempotency, cross-tenant isolation, concurrency, and ledger assertions
 
 ## What's Left to Build
 

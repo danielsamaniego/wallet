@@ -17,6 +17,8 @@ Every test uses BDD structure: `describe("Given X") / describe("When Y") / it("T
 
 **Coverage is 100% — enforced by CI.** If you add code without tests, the build breaks.
 
+**No endpoint is exempt from e2e coverage.** Every HTTP endpoint in the service, existing or new, MUST be covered by e2e tests. If an endpoint changes, its e2e suite must be updated in the same work.
+
 ---
 
 ## Architecture Overview
@@ -97,7 +99,7 @@ test/                                        # Shared test infrastructure
 - **Config:** `vitest.e2e.config.ts` (sequential, 30s timeout)
 - **Infrastructure:** Docker PostgreSQL (`:5433`) + Docker App (`:3333`), fully isolated from dev.
 - **Purpose:** Full HTTP request → middleware → handler → use case → Prisma → PostgreSQL cycle.
-- **Rule:** Every endpoint MUST have e2e tests covering the **12 security categories**. See `test/docs/E2E_TEST_PATTERNS.md`.
+- **Rule:** Every HTTP endpoint in the service MUST have e2e tests. New endpoints require new e2e coverage; existing endpoints modified by a change require their e2e tests to be updated. Cover the **12 security categories** where applicable. See `test/docs/E2E_TEST_PATTERNS.md`.
 - **Pattern:** Tests create their own data via API. `app.reset()` truncates + re-seeds between tests.
 
 ---
@@ -200,8 +202,10 @@ When modifying existing code:
 ### For a new HTTP endpoint:
 
 1. Create handler test at `tests/unit/wallet/infrastructure/http/`.
-2. Create e2e tests at `tests/e2e/wallet/` covering ALL 12 security categories.
-3. Run `pnpm test:coverage` — must be 100%.
+2. Create e2e tests at `tests/e2e/wallet/`. No endpoint may ship without e2e coverage.
+3. Cover ALL 12 security categories that apply to the endpoint.
+4. If the endpoint changes existing behavior, update the existing e2e suite in the same task.
+5. Run `pnpm test:coverage` — must be 100%.
 
 ### For a new Prisma repo method:
 

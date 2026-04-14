@@ -23,6 +23,7 @@ Wallet bounded context fully implemented and audited. Major architectural refact
 - Full documentation set + concurrency audit
 - Auto-generated OpenAPI 3.1 spec (hono-openapi) + interactive Scalar UI at `/docs`
 - All 13 endpoints documented with `describeRoute()` (tags, summary, response schemas)
+- Dedicated e2e coverage for balance adjustments endpoint (`POST /v1/wallets/:walletId/adjust`) across auth, validation, idempotency, cross-tenant, concurrency, and ledger integrity scenarios
 - Endpoint `schemas.ts` pattern: request + response Zod schemas per endpoint
 - Shared `ErrorResponseSchema` in `utils/infrastructure/hono.error.ts`
 - Reusable listing system: Stripe-style flat filters (`filter[field][op]=value`), dynamic multi-field sorting (`sort=-field`), keyset cursor pagination with sort signature validation
