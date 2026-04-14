@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Biome check (lint + format)
+        run: pnpm lint
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: TypeScript strict check
+        run: pnpm tsc --noEmit
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Run unit tests
+        run: pnpm test
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wallet
+          POSTGRES_PASSWORD: wallet
+          POSTGRES_DB: wallet_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd="pg_isready -U wallet -d wallet_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Apply schema to test DB
+        run: pnpm prisma db push --config prisma/prisma.config.ts --skip-generate
+        env:
+          DATABASE_URL: postgresql://wallet:wallet@localhost:5433/wallet_test
+          DIRECT_URL: postgresql://wallet:wallet@localhost:5433/wallet_test
+
+      - name: Apply DB safety nets
+        run: pnpm prisma db execute --file prisma/immutable_ledger.sql --config prisma/prisma.config.ts
+        env:
+          DATABASE_URL: postgresql://wallet:wallet@localhost:5433/wallet_test
+          DIRECT_URL: postgresql://wallet:wallet@localhost:5433/wallet_test
+
+      - name: Seed test data
+        run: pnpm db:seed
+        env:
+          DATABASE_URL: postgresql://wallet:wallet@localhost:5433/wallet_test
+
+      - name: Run E2E tests
+        run: pnpm test:e2e
+        env:
+          DATABASE_URL: postgresql://wallet:wallet@localhost:5433/wallet_test
+          DIRECT_URL: postgresql://wallet:wallet@localhost:5433/wallet_test
+          HTTP_PORT: 3333
+          LOG_LEVEL: silent
