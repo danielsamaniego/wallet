@@ -6,7 +6,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { createHash } from "node:crypto";
 
-const DATABASE_URL = process.env.DATABASE_URL ?? "postgresql://wallet:wallet@localhost:5432/wallet";
+const DATABASE_URL = process.env.DATABASE_URL ?? "postgresql://wallet:wallet@localhost:5433/wallet_test";
 
 let _prisma: PrismaClient | null = null;
 

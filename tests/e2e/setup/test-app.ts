@@ -1,36 +1,30 @@
 /**
- * Creates a real Hono app instance wired against the test database.
- * Used by all e2e tests to make authenticated HTTP requests via app.fetch().
+ * Creates a test client that makes real HTTP requests against the running Hono server.
+ * The server is started by global-setup.ts on TEST_PORT.
  */
-import { loadConfig } from "@/config.js";
-import { createApp } from "@/app.js";
-import { wire } from "@/wiring.js";
-import type { Dependencies } from "@/wiring.js";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   TEST_API_KEY,
   ATTACKER_API_KEY,
   truncateAll,
   seedTestPlatform,
   seedAttackerPlatform,
+  getTestPrisma,
 } from "@test/helpers/db.js";
 
-// Force wiring to create a fresh instance for tests
-// (the memoization in wiring.ts uses a module-level `_deps` variable)
-let _testDeps: Dependencies | null = null;
+const PORT_FILE = resolve(import.meta.dirname, "../../../node_modules/.e2e-port");
 
-function getTestDeps(): Dependencies {
-  if (!_testDeps) {
-    const config = loadConfig();
-    _testDeps = wire(config);
-  }
-  return _testDeps;
+function getBaseUrl(): string {
+  const port = process.env.TEST_PORT ?? readFileSync(PORT_FILE, "utf-8").trim();
+  return `http://localhost:${port}`;
 }
 
 export interface TestApp {
-  /** The raw Hono app for direct app.fetch() calls */
-  app: ReturnType<typeof createApp>;
-  /** Dependencies for direct Prisma access in assertions */
-  deps: Dependencies;
+  /** Base URL of the running server */
+  baseUrl: string;
+  /** Prisma client for direct DB assertions */
+  prisma: ReturnType<typeof getTestPrisma>;
   /** Make an authenticated request as the test platform */
   request: (path: string, init?: RequestInit) => Promise<Response>;
   /** Make an authenticated request as the attacker platform */
@@ -42,8 +36,8 @@ export interface TestApp {
 }
 
 export async function createTestApp(): Promise<TestApp> {
-  const deps = getTestDeps();
-  const app = createApp(deps);
+  const baseUrl = getBaseUrl();
+  const prisma = getTestPrisma();
 
   const makeRequest = (apiKey?: string) => async (path: string, init?: RequestInit): Promise<Response> => {
     const headers: Record<string, string> = {
@@ -53,12 +47,10 @@ export async function createTestApp(): Promise<TestApp> {
     if (apiKey) {
       headers["X-API-Key"] = apiKey;
     }
-    return app.fetch(
-      new Request(`http://localhost${path}`, {
-        ...init,
-        headers,
-      }),
-    );
+    return fetch(`${baseUrl}${path}`, {
+      ...init,
+      headers,
+    });
   };
 
   const reset = async () => {
@@ -68,8 +60,8 @@ export async function createTestApp(): Promise<TestApp> {
   };
 
   return {
-    app,
-    deps,
+    baseUrl,
+    prisma,
     request: makeRequest(TEST_API_KEY),
     attackerRequest: makeRequest(ATTACKER_API_KEY),
     unauthenticatedRequest: makeRequest(),
