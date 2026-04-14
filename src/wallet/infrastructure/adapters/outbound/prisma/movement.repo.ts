@@ -25,6 +25,7 @@ export class PrismaMovementRepo implements IMovementRepository {
       data: {
         id: movement.id,
         type: movement.type,
+        reason: movement.reason,
         createdAt: BigInt(movement.createdAt),
       },
     });

@@ -3,7 +3,9 @@ export type TransactionType =
   | "withdrawal"
   | "transfer_in"
   | "transfer_out"
-  | "hold_capture";
+  | "hold_capture"
+  | "adjustment_credit"
+  | "adjustment_debit";
 
 export type TransactionStatus = "completed" | "failed" | "reversed";
 

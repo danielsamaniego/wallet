@@ -3,6 +3,7 @@ import type { HonoVariables } from "../../../../../utils/infrastructure/hono.con
 import { apiKeyAuth } from "../../../../../utils/infrastructure/middleware/apiKeyAuth.js";
 import { idempotency } from "../../../../../utils/infrastructure/middleware/idempotency.js";
 import type { Dependencies } from "../../../../../wiring.js";
+import { adjustBalanceRoute } from "./adjustBalance/handler.js";
 import { closeWalletRoute } from "./closeWallet/handler.js";
 import { createWalletRoute } from "./createWallet/handler.js";
 import { depositRoute } from "./deposit/handler.js";
@@ -22,6 +23,7 @@ export function walletRoutes(deps: Dependencies) {
   router.post("/", auth, idemp, ...createWalletRoute(deps.commandBus));
   router.post("/:walletId/deposit", auth, idemp, ...depositRoute(deps.commandBus));
   router.post("/:walletId/withdraw", auth, idemp, ...withdrawRoute(deps.commandBus));
+  router.post("/:walletId/adjust", auth, idemp, ...adjustBalanceRoute(deps.commandBus));
   router.post("/:walletId/freeze", auth, ...freezeWalletRoute(deps.commandBus));
   router.post("/:walletId/unfreeze", auth, ...unfreezeWalletRoute(deps.commandBus));
   router.post("/:walletId/close", auth, ...closeWalletRoute(deps.commandBus));

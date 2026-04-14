@@ -1,5 +1,7 @@
 import type { ModuleHandlers, SharedInfra } from "../wiring.js";
 // Commands & Queries (for bus registration)
+import { AdjustBalanceCommand } from "./application/command/adjustBalance/command.js";
+import { AdjustBalanceUseCase } from "./application/command/adjustBalance/usecase.js";
 import { CaptureHoldCommand } from "./application/command/captureHold/command.js";
 // Use cases
 import { CaptureHoldUseCase } from "./application/command/captureHold/usecase.js";
@@ -58,6 +60,16 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
 
   // Use cases
   const createWallet = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
+  const adjustBalance = new AdjustBalanceUseCase(
+    txManager,
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    movementRepo,
+    idGen,
+    logger,
+  );
   const deposit = new DepositUseCase(
     txManager,
     walletRepo,
@@ -111,6 +123,7 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
 
   return {
     commands: [
+      { type: AdjustBalanceCommand.TYPE, handler: adjustBalance },
       { type: CreateWalletCommand.TYPE, handler: createWallet },
       { type: DepositCommand.TYPE, handler: deposit },
       { type: WithdrawCommand.TYPE, handler: withdraw },

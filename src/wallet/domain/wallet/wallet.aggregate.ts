@@ -185,6 +185,24 @@ export class Wallet {
     this.touch(now);
   }
 
+  /** Administrative balance adjustment. Allowed on active and frozen wallets (not closed). */
+  adjust(amountCents: bigint, availableBalanceCents: bigint, now: number): void {
+    if (this._status === "closed") {
+      throw AppError.domainRule("WALLET_CLOSED", `wallet ${this._id} is closed`);
+    }
+    if (amountCents === 0n) {
+      throw AppError.validation("INVALID_AMOUNT", "adjustment amount must not be zero");
+    }
+    if (amountCents < 0n && !this._isSystem && availableBalanceCents < -amountCents) {
+      throw AppError.domainRule(
+        "INSUFFICIENT_FUNDS",
+        `wallet ${this._id} has insufficient available funds`,
+      );
+    }
+    this._cachedBalanceCents += amountCents;
+    this.touch(now);
+  }
+
   /** Bump version without mutating balance. Used by PlaceHold/VoidHold to participate in optimistic locking. */
   touchForHoldChange(now: number): void {
     if (this._status !== "active") {

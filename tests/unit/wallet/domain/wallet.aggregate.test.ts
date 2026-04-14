@@ -271,6 +271,101 @@ describe("Wallet Aggregate", () => {
     });
   });
 
+  // ── adjust ───────────────────────────────────────────────────────────
+  describe("adjust", () => {
+    describe("Given an active wallet with balance 1000 cents", () => {
+      describe("When adjusting +500 cents (positive)", () => {
+        it("Then balance becomes 1500 cents", () => {
+          const w = activeWallet(1000n);
+          w.adjust(500n, 1000n, LATER);
+          expect(w.cachedBalanceCents).toBe(1500n);
+        });
+
+        it("Then version increments", () => {
+          const w = activeWallet(1000n);
+          w.adjust(500n, 1000n, LATER);
+          expect(w.version).toBe(2);
+        });
+
+        it("Then updatedAt changes", () => {
+          const w = activeWallet(1000n);
+          w.adjust(500n, 1000n, LATER);
+          expect(w.updatedAt).toBe(LATER);
+        });
+      });
+
+      describe("When adjusting -500 cents (negative) with available balance 1000", () => {
+        it("Then balance becomes 500 cents", () => {
+          const w = activeWallet(1000n);
+          w.adjust(-500n, 1000n, LATER);
+          expect(w.cachedBalanceCents).toBe(500n);
+        });
+      });
+
+      describe("When adjusting -1000 cents (exact available balance)", () => {
+        it("Then balance becomes 0", () => {
+          const w = activeWallet(1000n);
+          w.adjust(-1000n, 1000n, LATER);
+          expect(w.cachedBalanceCents).toBe(0n);
+        });
+      });
+
+      describe("When adjusting -1500 cents (more than available)", () => {
+        it("Then throws INSUFFICIENT_FUNDS", () => {
+          const w = activeWallet(1000n);
+          expect(() => w.adjust(-1500n, 1000n, LATER))
+            .toThrowAppError(ErrorKind.DomainRule, "INSUFFICIENT_FUNDS");
+        });
+      });
+
+      describe("When adjusting 0 cents", () => {
+        it("Then throws INVALID_AMOUNT", () => {
+          const w = activeWallet(1000n);
+          expect(() => w.adjust(0n, 1000n, LATER))
+            .toThrowAppError(ErrorKind.Validation, "INVALID_AMOUNT");
+        });
+      });
+    });
+
+    describe("Given a frozen wallet with balance 1000 cents", () => {
+      describe("When adjusting +500 cents (positive)", () => {
+        it("Then allows adjustment (admin operation)", () => {
+          const w = frozenWallet(1000n);
+          w.adjust(500n, 1000n, LATER);
+          expect(w.cachedBalanceCents).toBe(1500n);
+        });
+      });
+
+      describe("When adjusting -500 cents (negative)", () => {
+        it("Then allows adjustment (admin operation)", () => {
+          const w = frozenWallet(1000n);
+          w.adjust(-500n, 1000n, LATER);
+          expect(w.cachedBalanceCents).toBe(500n);
+        });
+      });
+    });
+
+    describe("Given a closed wallet", () => {
+      describe("When adjusting", () => {
+        it("Then throws WALLET_CLOSED", () => {
+          const w = closedWallet();
+          expect(() => w.adjust(100n, 0n, LATER))
+            .toThrowAppError(ErrorKind.DomainRule, "WALLET_CLOSED");
+        });
+      });
+    });
+
+    describe("Given a system wallet", () => {
+      describe("When adjusting negative more than balance (system bypasses funds check)", () => {
+        it("Then allows negative balance", () => {
+          const w = systemWallet(1000n);
+          w.adjust(-5000n, 1000n, LATER);
+          expect(w.cachedBalanceCents).toBe(-4000n);
+        });
+      });
+    });
+  });
+
   // ── freeze ───────────────────────────────────────────────────────────
   describe("freeze", () => {
     describe("Given an active non-system wallet", () => {

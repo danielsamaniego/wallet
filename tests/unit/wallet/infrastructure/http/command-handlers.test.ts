@@ -4,6 +4,7 @@ import type { HonoVariables } from "@/utils/infrastructure/hono.context.js";
 import { CanonicalAccumulator } from "@/utils/kernel/observability/canonical.js";
 import type { ICommandBus, IQueryBus } from "@/utils/application/cqrs.js";
 
+import { adjustBalanceRoute } from "@/wallet/infrastructure/adapters/inbound/http/adjustBalance/handler.js";
 import { captureHoldRoute } from "@/wallet/infrastructure/adapters/inbound/http/captureHold/handler.js";
 import { closeWalletRoute } from "@/wallet/infrastructure/adapters/inbound/http/closeWallet/handler.js";
 import { createWalletRoute } from "@/wallet/infrastructure/adapters/inbound/http/createWallet/handler.js";
@@ -29,6 +30,28 @@ function withContext(app: Hono<{ Variables: HonoVariables }>) {
 }
 
 describe("Wallet command HTTP handlers", () => {
+  // ── adjustBalance ──────────────────────────────────────────────
+  describe("adjustBalanceRoute", () => {
+    it("Given a valid walletId and body, When POST is called, Then dispatches AdjustBalanceCommand and returns 201", async () => {
+      const commandBus: ICommandBus = {
+        dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-adj", movementId: "mov-adj" }),
+      };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      const handlers = adjustBalanceRoute(commandBus);
+      app.post("/wallets/:walletId/adjust", ...handlers);
+
+      const res = await app.request("/wallets/wallet-1/adjust", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "idem-1" },
+        body: JSON.stringify({ amount_cents: 5000, reason: "Promotional credit" }),
+      });
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body).toEqual({ transaction_id: "txn-adj", movement_id: "mov-adj" });
+    });
+  });
+
   // ── captureHold ────────────────────────────────────────────────
   describe("captureHoldRoute", () => {
     it("Given a valid holdId, When POST is called, Then dispatches CaptureHoldCommand and returns 201", async () => {
@@ -275,6 +298,26 @@ describe("Wallet command HTTP handlers", () => {
 
   // ── Missing idempotency-key header (?? "" branch) ─────────────
   describe("Handlers without idempotency-key header", () => {
+    it("Given adjustBalance called without idempotency-key header, When POST is called, Then dispatches command with empty string idempotency key", async () => {
+      const commandBus: ICommandBus = {
+        dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-1", movementId: "mov-1" }),
+      };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      app.post("/wallets/:walletId/adjust", ...adjustBalanceRoute(commandBus));
+
+      const res = await app.request("/wallets/wallet-1/adjust", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ amount_cents: 1000, reason: "test" }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(commandBus.dispatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ idempotencyKey: "" }),
+      );
+    });
+
     it("Given captureHold called without idempotency-key header, When POST is called, Then dispatches command with empty string idempotency key", async () => {
       const commandBus: ICommandBus = {
         dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-1", movementId: "mov-1" }),

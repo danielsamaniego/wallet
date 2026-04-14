@@ -46,10 +46,11 @@ model Wallet {
 }
 
 /// Groups all transactions and ledger entries for a single financial operation (journal entry).
-/// One movement per deposit, withdrawal, transfer, or hold capture. Entries must sum to zero.
+/// One movement per deposit, withdrawal, transfer, hold capture, or adjustment. Entries must sum to zero.
 model Movement {
   id            String        @id /// UUID v7, app-generated
-  type          String /// deposit | withdrawal | transfer | hold_capture
+  type          String /// deposit | withdrawal | transfer | hold_capture | adjustment
+  reason        String? /// Human-readable reason (used for adjustments)
   createdAt     BigInt        @map("created_at") /// Unix ms
 
   transactions  Transaction[]
@@ -65,7 +66,7 @@ model Transaction {
   wallet              Wallet        @relation("WalletTransactions", fields: [walletId], references: [id])
   counterpartWalletId String?       @map("counterpart_wallet_id")
   counterpartWallet   Wallet?       @relation("CounterpartTransactions", fields: [counterpartWalletId], references: [id])
-  type                String /// deposit | withdrawal | transfer_in | transfer_out | hold_capture
+  type                String /// deposit | withdrawal | transfer_in | transfer_out | hold_capture | adjustment_credit | adjustment_debit
   amountCents         BigInt        @map("amount_cents") /// Always positive, integer cents
   status              String        @default("completed") /// completed | failed | reversed
   idempotencyKey      String?       @map("idempotency_key")
