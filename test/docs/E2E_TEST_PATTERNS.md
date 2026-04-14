@@ -1,342 +1,322 @@
 # E2E Test Patterns
 
-> How to write end-to-end tests against the real Hono app with Docker PostgreSQL.
+> How to write robust end-to-end tests against the Dockerized Wallet Service.
+> **E2E tests are the last line of defense. They must be thorough, paranoid, and cover every attack vector.**
 
 ---
 
 ## Overview
 
-E2E tests exercise the full stack: HTTP request -> Hono middleware -> handler -> use case -> Prisma -> PostgreSQL. They run sequentially (`fileParallelism: false`) against a real Docker PostgreSQL instance.
+E2E tests exercise the **full stack in Docker**: HTTP request → Hono middleware → handler → use case → Prisma → PostgreSQL. Both PostgreSQL and the App run in isolated Docker containers — completely separate from the dev environment.
 
 **Config:** `vitest.e2e.config.ts`
 
 ```ts
 {
-  include: ["test/e2e/**/*.e2e.test.ts"],
-  globalSetup: ["test/e2e/setup/global-setup.ts"],
+  include: ["tests/e2e/**/*.e2e.test.ts"],
+  globalSetup: ["tests/e2e/setup/global-setup.ts"],
   testTimeout: 30_000,
   hookTimeout: 30_000,
   pool: "forks",
-  fileParallelism: false,
+  fileParallelism: false,  // sequential — tests share DB
 }
 ```
 
 ---
 
-## Copy-Paste Template: E2E Test
+## Docker Infrastructure (Isolated from Dev)
+
+| | Dev | Test |
+|---|---|---|
+| **Compose file** | `docker-compose.yml` | `docker-compose.test.yml` |
+| **Project name** | `wallet` | `wallet-test` |
+| **PostgreSQL port** | `:5432` / DB `wallet` | `:5433` / DB `wallet_test` |
+| **App port** | `:3000` | `:3333` |
+| **Volume** | `wallet_postgres_data` | `wallet-test_postgres_test_data` |
+
+**`pnpm test:e2e` is fully self-contained:**
+1. Starts PostgreSQL container → waits healthy
+2. Runs `prisma db push` + applies `immutable_ledger.sql` constraints
+3. Seeds test platforms (2: test + attacker)
+4. Builds and starts App container → waits healthy
+5. Runs all e2e tests via `fetch("http://localhost:3333/...")`
+6. Truncates all tables → stops containers
+
+Dev containers are NEVER touched.
+
+---
+
+## Copy-Paste Template
 
 ```ts
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { createTestApp, type TestApp } from "../setup/test-app.js";
 
-describe("POST /v1/wallets/:id/deposit", () => {
+describe("Feature Name E2E", () => {
   let app: TestApp;
+  let idempCounter = 0;
+  const nextKey = () => `feature-${++idempCounter}`;
 
   beforeAll(async () => {
     app = await createTestApp();
   });
 
-  afterAll(async () => {
-    await app.teardown();
-  });
-
   beforeEach(async () => {
-    await app.truncateAll();
-    await app.seedTestPlatform();
+    await app.reset();  // TRUNCATE all + re-seed platforms
+    idempCounter = 0;
   });
 
-  // ── Helper: authenticated request ─────────────────────────────
-  const post = (path: string, body: Record<string, unknown>) =>
-    app.fetch(
-      new Request(`http://localhost${path}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Platform-Id": app.platformId,
-          "X-Api-Key": app.apiKey,
-        },
-        body: JSON.stringify(body),
-      }),
-    );
+  /** Helper: create wallet and return ID */
+  async function createWallet(ownerId: string): Promise<string> {
+    const res = await app.request("/v1/wallets", {
+      method: "POST",
+      headers: { "Idempotency-Key": nextKey() },
+      body: JSON.stringify({ owner_id: ownerId, currency_code: "USD" }),
+    });
+    return (await res.json()).wallet_id;
+  }
 
-  const get = (path: string) =>
-    app.fetch(
-      new Request(`http://localhost${path}`, {
-        method: "GET",
-        headers: {
-          "X-Platform-Id": app.platformId,
-          "X-Api-Key": app.apiKey,
-        },
-      }),
-    );
+  /** Helper: deposit */
+  async function deposit(walletId: string, cents: number): Promise<void> {
+    await app.request(`/v1/wallets/${walletId}/deposit`, {
+      method: "POST",
+      headers: { "Idempotency-Key": nextKey() },
+      body: JSON.stringify({ amount_cents: cents }),
+    });
+  }
 
-  // ── 1. Happy path ──────────────────────────────────────────────
-  describe("Given a valid active wallet", () => {
+  describe("Given an active wallet with 10000 cents", () => {
     let walletId: string;
 
     beforeEach(async () => {
-      // Create wallet via API
-      const res = await post("/v1/wallets", {
-        ownerId: "owner-1",
-        currencyCode: "USD",
-      });
-      const data = await res.json();
-      walletId = data.id;
+      walletId = await createWallet("owner-1");
+      await deposit(walletId, 10000);
     });
 
-    describe("When depositing 5000 cents", () => {
-      it("Then returns 200 with transactionId", async () => {
-        const res = await post(`/v1/wallets/${walletId}/deposit`, {
-          amountCents: 5000,
-          idempotencyKey: "idem-1",
-        });
-
-        expect(res.status).toBe(200);
-        const data = await res.json();
-        expect(data.transactionId).toBeDefined();
-        expect(data.movementId).toBeDefined();
-      });
-
-      it("Then wallet balance increases", async () => {
-        await post(`/v1/wallets/${walletId}/deposit`, {
-          amountCents: 5000,
-          idempotencyKey: "idem-2",
-        });
-
-        const res = await get(`/v1/wallets/${walletId}`);
-        const wallet = await res.json();
-        expect(wallet.cachedBalanceCents).toBe(5000);
-      });
-    });
-  });
-
-  // ── 2. Authentication attacks ──────────────────────────────────
-  describe("Security: Authentication attacks", () => {
-    it("Then rejects request without API key", async () => {
-      const res = await app.fetch(
-        new Request("http://localhost/v1/wallets/w-1/deposit", {
+    describe("When withdrawing 5000 cents", () => {
+      it("Then returns 201 with transaction ID", async () => {
+        const res = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amountCents: 1000, idempotencyKey: "k" }),
-        }),
-      );
-      expect(res.status).toBe(401);
-    });
-
-    it("Then rejects request with invalid API key", async () => {
-      const res = await app.fetch(
-        new Request("http://localhost/v1/wallets/w-1/deposit", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Platform-Id": app.platformId,
-            "X-Api-Key": "invalid-key",
-          },
-          body: JSON.stringify({ amountCents: 1000, idempotencyKey: "k" }),
-        }),
-      );
-      expect(res.status).toBe(401);
+          headers: { "Idempotency-Key": nextKey() },
+          body: JSON.stringify({ amount_cents: 5000 }),
+        });
+        expect(res.status).toBe(201);
+        const body = await res.json();
+        expect(body.transaction_id).toBeDefined();
+      });
     });
   });
-
-  // ── 3. Input validation attacks ────────────────────────────────
-  describe("Security: Input validation attacks", () => {
-    it("Then rejects zero amount", async () => {
-      const res = await post(`/v1/wallets/w-1/deposit`, {
-        amountCents: 0,
-        idempotencyKey: "k",
-      });
-      expect(res.status).toBeGreaterThanOrEqual(400);
-    });
-
-    it("Then rejects negative amount", async () => {
-      const res = await post(`/v1/wallets/w-1/deposit`, {
-        amountCents: -1000,
-        idempotencyKey: "k",
-      });
-      expect(res.status).toBeGreaterThanOrEqual(400);
-    });
-
-    it("Then rejects non-numeric amount", async () => {
-      const res = await post(`/v1/wallets/w-1/deposit`, {
-        amountCents: "abc",
-        idempotencyKey: "k",
-      });
-      expect(res.status).toBeGreaterThanOrEqual(400);
-    });
-  });
-
-  // ... continue with remaining security categories ...
 });
 ```
 
 ---
 
-## RULE: The 11 Security Audit Categories
-
-Every new endpoint MUST have tests for ALL applicable categories:
-
-### 1. Authentication Attacks
-- Missing API key header
-- Invalid API key
-- Missing platform ID header
-- Mismatched platform ID and API key
-
-### 2. Input Validation Attacks
-- Zero amounts
-- Negative amounts
-- Non-numeric amounts
-- String injection in ID fields
-- Extremely large amounts (overflow attempts)
-- Missing required fields
-- Extra unexpected fields (should be ignored, not crash)
-
-### 3. Cross-Tenant Isolation
-- Platform A cannot access Platform B's wallets
-- Platform A cannot deposit into Platform B's wallet
-- Platform A cannot see Platform B's transactions
-- System wallets are not directly accessible via API
-
-### 4. Balance Manipulation
-- Deposit then verify exact balance change
-- Multiple deposits accumulate correctly
-- Withdraw then verify exact balance change
-- Cannot withdraw more than available balance (including holds)
-
-### 5. Idempotency Attacks
-- Same idempotency key returns same result (no duplicate processing)
-- Different idempotency key processes a new request
-- Idempotency key from a different operation type is rejected or treated independently
-
-### 6. Concurrency / Race Conditions
-- Two concurrent deposits on the same wallet (optimistic locking / retry)
-- Two concurrent withdrawals that would overdraft
-- Concurrent deposit + withdrawal
-- Concurrent transfer in + transfer out
-
-### 7. Hold Exploitation
-- Place hold then capture exact amount
-- Place hold then try to capture more than hold amount
-- Place hold, withdraw remaining, then try to capture (insufficient after withdrawal)
-- Place hold, void it, then try to capture voided hold
-- Place hold, let it expire, then try to capture expired hold
-
-### 8. Wallet Lifecycle
-- Deposit into frozen wallet (rejected)
-- Withdraw from frozen wallet (rejected)
-- Transfer from frozen wallet (rejected)
-- Operations on closed wallet (all rejected)
-- Close wallet with non-zero balance (rejected)
-- Close wallet with active holds (rejected)
-
-### 9. Ledger Integrity Verification
-- After deposit: sum of ledger entries for the wallet matches final balance
-- After transfer: sum of debits equals sum of credits (zero-sum)
-- Ledger entries are immutable (no UPDATE/DELETE via API)
-- Transaction references are correct (walletId, counterpartWalletId)
-
-### 10. Edge Cases & Boundary Values
-- Deposit of 1 cent (minimum)
-- Transfer of 1 cent
-- Wallet with maximum BigInt balance (if applicable)
-- Very long reference strings
-- Unicode in reference/metadata fields
-- Rapid sequential operations on the same wallet
-
-### 11. Information Disclosure
-- Error responses do not leak internal IDs or stack traces
-- 404 for non-existent wallet does not reveal whether the wallet exists on another platform
-- System wallet details are not exposed to API consumers
-
----
-
-## How to Use `createTestApp()`
-
-The test app factory starts the Hono app with real dependencies (Prisma + PostgreSQL):
+## `createTestApp()` API
 
 ```ts
 const app = await createTestApp();
 
-// app.fetch()      -- sends a Request to the Hono app
-// app.platformId   -- the seeded test platform ID
-// app.apiKey       -- the seeded test API key
-// app.prisma       -- direct Prisma client for assertions
-// app.teardown()   -- cleanup (disconnect Prisma, etc.)
+app.baseUrl                    // "http://localhost:3333"
+app.prisma                     // Prisma client for direct DB assertions
+app.request(path, init?)       // Authenticated request (test platform API key)
+app.attackerRequest(path, init?) // Authenticated as attacker platform
+app.unauthenticatedRequest(path, init?) // No API key header
+app.reset()                    // TRUNCATE all tables + re-seed both platforms
 ```
+
+**Important:** Always use `Idempotency-Key` header on mutation requests (POST). Use unique keys per test — a counter or `Date.now()` suffix works well.
 
 ---
 
-## Cleanup Between Tests
+## THE 12 SECURITY CATEGORIES (MANDATORY)
 
-Every `beforeEach` must clean the database to ensure test isolation:
+Every new endpoint MUST have e2e tests for ALL applicable categories below. This is not optional — it's how we ensure the system is robust against real-world attacks.
 
-```ts
-beforeEach(async () => {
-  await app.truncateAll();       // DELETE FROM all tables (cascading)
-  await app.seedTestPlatform();  // Re-insert the test platform + API key
-});
-```
+### 1. Authentication Attacks
+Test that unauthenticated and badly-authenticated requests are rejected:
+- Missing API key → 401
+- Malformed key (no dot separator) → 401
+- Valid key ID + wrong secret → 401
+- Empty API key → 401
+- SQL injection in API key → 401
+- Oversized API key → 401/413
 
-This ensures:
-- No leftover wallets, transactions, or holds from previous tests.
-- The test platform exists for authenticated requests.
-- Tests are completely independent and can run in any order.
+### 2. Input Validation Attacks
+Test that malformed input is rejected without crashing:
+- Negative amounts → 400/422
+- Zero amounts → 400/422
+- Float amounts (100.5) → 400/422
+- String amounts ("1000") → 400/422
+- Massive amounts (BigInt overflow) → 400/422 or handled safely
+- Invalid currency codes (4 chars, numbers) → 400/422
+- Missing required fields → 400/422
+- Empty body / malformed JSON → 400/422
+- SQL injection in path parameters → 404/400
+- XSS payloads in string fields → accepted safely or rejected
+- Prototype pollution (`__proto__`, `constructor.prototype`) → ignored safely
+- Oversized string fields → 400/422
+- Negative zero (-0) → 400/422
+
+### 3. Cross-Tenant Isolation
+Test that one platform CANNOT access another platform's resources:
+- Attacker reads victim wallet → 404 (not 403, to prevent enumeration)
+- Attacker deposits/withdraws from victim → 404
+- Attacker transfers victim→attacker → 404
+- Attacker places hold on victim wallet → 404
+- Attacker captures/voids victim's hold → 404
+- Attacker freezes/closes victim wallet → 404
+
+### 4. Balance Manipulation
+Test that financial invariants hold:
+- Overdraft withdrawal (more than balance) → 422 INSUFFICIENT_FUNDS
+- Overdraft transfer → 422 INSUFFICIENT_FUNDS
+- Self-transfer (source = target) → 400 SAME_WALLET
+- Operations on frozen wallet → 422 WALLET_NOT_ACTIVE
+- Operations on closed wallet → 422
+
+### 5. Idempotency
+Test that idempotency keys work correctly and can't be exploited:
+- Same key returns cached response (identical status + body)
+- Same key + different body → 422 IDEMPOTENCY_PAYLOAD_MISMATCH
+- Missing Idempotency-Key on mutations → 400
+- Same key on different endpoints → 422 (hash includes method:path)
+- Same key across platforms → both succeed (scoped per platform)
+
+### 6. Concurrency & Race Conditions
+Test that the system handles concurrent requests safely:
+- **N concurrent deposits**: final balance = sum of successful deposits (some may get 409 VERSION_CONFLICT)
+- **N concurrent withdrawals**: balance NEVER goes negative (some fail with 422/409)
+- **Bidirectional transfers A↔B**: zero 500 errors (no deadlocks thanks to ID-sorted locking)
+- **Concurrent hold placement**: no over-reservation (available balance respected)
+
+**Implementation:** Use `Promise.all()` with unique idempotency keys. Assert on aggregate outcomes (final balance, error counts) not individual results — concurrency is non-deterministic.
+
+### 7. Hold Exploitation
+Test that holds can't be exploited:
+- Hold prevents withdrawal of held amount
+- Double capture → 422 (hold already captured)
+- Capture after void → 422 (hold not active)
+- Hold with past expiry → 400/422
+- Oversized hold (> available balance) → 422 INSUFFICIENT_FUNDS
+- Concurrent holds → no over-reservation
+- Cross-tenant hold capture/void → 404
+
+### 8. Wallet Lifecycle
+Test state machine transitions:
+- Close wallet with balance → 422 WALLET_BALANCE_NOT_ZERO
+- Freeze system wallet → 422 CANNOT_FREEZE_SYSTEM_WALLET
+- Close system wallet → 422 CANNOT_CLOSE_SYSTEM_WALLET
+- Double freeze → 422 WALLET_ALREADY_FROZEN
+- Unfreeze non-frozen → 422 WALLET_NOT_FROZEN
+- Duplicate wallet creation → 409 WALLET_ALREADY_EXISTS
+- Full lifecycle: create → deposit → withdraw → freeze → unfreeze → withdraw all → close
+
+### 9. Ledger Integrity
+Test that the financial ledger is mathematically correct:
+- All movements are zero-sum (SUM of ledger entries per movement_id = 0)
+- Cached balance matches ledger sum per wallet
+- No negative non-system wallet balances
+- All transaction amounts are positive
+- UPDATE on ledger_entries → blocked by immutable trigger
+- DELETE on ledger_entries → blocked by immutable trigger
+- DB constraint blocks negative balance via direct SQL
+
+### 10. Edge Cases & Boundary Values
+Test limits and unusual inputs:
+- Minimum deposit (1 cent) → succeeds
+- Cross-currency transfer → 400/422
+- Non-existent wallet → 404
+- Invalid UUID in path → 404/400
+- Transfer to non-existent wallet → 404
+- Capture non-existent hold → 404
+
+### 11. Information Disclosure
+Test that errors don't leak internal details:
+- Error bodies don't contain "stack", "prisma", "postgres", "node_modules"
+- No `X-Powered-By` header on any response
+- Consistent 404 for existing wallet (wrong platform) vs non-existing wallet (prevents enumeration)
 
 ---
 
 ## Verifying DB State Directly
 
-Use the Prisma client to assert database state after API operations:
+Use `getTestPrisma()` for direct database assertions:
 
 ```ts
-it("Then the wallet record exists in the database", async () => {
-  const res = await post("/v1/wallets", {
-    ownerId: "owner-1",
-    currencyCode: "USD",
-  });
-  const data = await res.json();
+import { getTestPrisma } from "@test/helpers/db.js";
 
-  // Direct DB assertion
-  const dbWallet = await app.prisma.wallet.findUnique({
-    where: { id: data.id },
-  });
-  expect(dbWallet).not.toBeNull();
-  expect(dbWallet!.ownerId).toBe("owner-1");
-  expect(dbWallet!.currencyCode).toBe("USD");
-  expect(dbWallet!.status).toBe("active");
+it("Then ledger entries are zero-sum", async () => {
+  const prisma = getTestPrisma();
+  const results = await prisma.$queryRaw`
+    SELECT movement_id, SUM(amount_cents) AS total
+    FROM ledger_entries
+    GROUP BY movement_id
+  `;
+  for (const row of results) {
+    expect(Number(row.total)).toBe(0);
+  }
 });
+```
 
-it("Then ledger entries sum to the correct balance", async () => {
-  // ... perform deposits/withdrawals ...
+**Note:** Prisma `$queryRaw` returns `Decimal` for `SUM()` of BigInt columns. Use `Number()` for comparisons.
 
-  const entries = await app.prisma.ledgerEntry.findMany({
-    where: { walletId },
+---
+
+## Concurrency Test Pattern
+
+```ts
+describe("Given a wallet with 50000 cents", () => {
+  describe("When 10 concurrent A→B and 10 concurrent B→A transfers execute", () => {
+    it("Then zero 500 errors occur (no deadlocks)", async () => {
+      const results = await Promise.all([
+        ...Array.from({ length: 10 }, (_, i) =>
+          app.request("/v1/transfers", {
+            method: "POST",
+            headers: { "Idempotency-Key": `ab-${i}-${Date.now()}` },
+            body: JSON.stringify({
+              source_wallet_id: walletA,
+              target_wallet_id: walletB,
+              amount_cents: 100,
+            }),
+          }),
+        ),
+        ...Array.from({ length: 10 }, (_, i) =>
+          app.request("/v1/transfers", {
+            method: "POST",
+            headers: { "Idempotency-Key": `ba-${i}-${Date.now()}` },
+            body: JSON.stringify({
+              source_wallet_id: walletB,
+              target_wallet_id: walletA,
+              amount_cents: 100,
+            }),
+          }),
+        ),
+      ]);
+
+      const serverErrors = results.filter((r) => r.status >= 500);
+      expect(serverErrors).toHaveLength(0); // No deadlocks
+
+      // Some may be 409 (VERSION_CONFLICT) — that's expected and OK
+      const conflicts = results.filter((r) => r.status === 409);
+      const successes = results.filter((r) => r.status === 201);
+      expect(successes.length + conflicts.length).toBe(20);
+    });
   });
-  const sum = entries.reduce((acc, e) => acc + e.amountCents, 0n);
-  expect(sum).toBe(expectedBalance);
 });
 ```
 
 ---
 
-## Sequential Execution
+## Checklist Before Submitting E2E Tests
 
-E2E tests run with `fileParallelism: false` and `pool: "forks"`. This means:
-
-- Test files execute one at a time (no parallel file execution).
-- Within a file, tests execute sequentially (default Vitest behavior).
-- This prevents database conflicts between test files.
-- Each file can safely truncate and re-seed without interfering with other files.
-
----
-
-## Checklist Before Submitting an E2E Test
-
-- [ ] All 11 security audit categories are addressed (where applicable).
-- [ ] `beforeEach` does `truncateAll()` + `seedTestPlatform()`.
-- [ ] `afterAll` calls `app.teardown()`.
-- [ ] Authenticated requests include `X-Platform-Id` and `X-Api-Key` headers.
-- [ ] Database state is verified directly via Prisma for critical assertions.
-- [ ] Error responses are checked for correct HTTP status codes.
-- [ ] No hardcoded wallet/transaction IDs (create them via API in the test setup).
-- [ ] File is named `*.e2e.test.ts` to match the e2e config include pattern.
+- [ ] All 12 security categories addressed (where applicable to the endpoint)
+- [ ] `beforeEach` calls `app.reset()` (truncate + re-seed)
+- [ ] Every mutation has unique `Idempotency-Key`
+- [ ] Authenticated requests use `app.request()` (auto-includes API key)
+- [ ] Cross-tenant tests use `app.attackerRequest()`
+- [ ] Unauthenticated tests use `app.unauthenticatedRequest()`
+- [ ] DB state verified via `getTestPrisma()` for financial assertions
+- [ ] Error responses checked for correct status code AND error code
+- [ ] Concurrency tests use `Promise.all()` and assert aggregate outcomes
+- [ ] File named `*.e2e.test.ts` to match vitest.e2e.config.ts
+- [ ] No hardcoded IDs — create data via API in test setup

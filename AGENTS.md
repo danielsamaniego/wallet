@@ -129,6 +129,72 @@ Before implementing domain logic, business rules, or data structures:
 
 ---
 
+## Testing (MANDATORY — Read Before Any Code Change)
+
+> **Every code change MUST include tests. No exceptions.**
+> Think TDD: write (or update) the test FIRST, see it fail, then implement.
+
+### Required reading before writing tests
+
+- `test/docs/TESTING_GUIDE.md` — Master guide, structure, commands
+- `test/docs/BDD_STYLE_GUIDE.md` — Given/When/Then convention
+- `test/docs/DOMAIN_TEST_PATTERNS.md` — Templates for domain entity tests
+- `test/docs/USECASE_TEST_PATTERNS.md` — Templates for use case tests with mocks
+- `test/docs/E2E_TEST_PATTERNS.md` — Templates for e2e tests with Docker
+- `test/docs/MOCK_CATALOG.md` — All available mocks, builders, and matchers
+
+### Non-negotiable rules
+
+| Rule | Detail |
+|------|--------|
+| **Coverage 100%** | `pnpm test:coverage` enforces 100% statements, branches, functions, and lines. If you add code, you add tests. If coverage drops, the CI fails. |
+| **TDD mindset** | Write the test first, see it fail (red), implement the code, see it pass (green), refactor. Every new feature, bugfix, or refactor starts with a test. |
+| **BDD structure** | All tests use `describe("Given X") / describe("When Y") / it("Then Z")`. No exceptions. See `test/docs/BDD_STYLE_GUIDE.md`. |
+| **Exhaustive cases** | Happy path is the minimum. Every test MUST also cover: all error paths (every `throw`), edge cases (0, 1, MAX, negative, null, boundary), and security cases (invalid input, cross-tenant, injection). |
+| **1 test file per source file** | Every `.ts` file with logic has a corresponding `.test.ts`. Domain entities, use cases, handlers, repos, middleware — all have tests. |
+
+### Unit tests (`tests/unit/`)
+
+- **Domain tests**: Zero mocks. Test pure logic via `create()`/`reconstruct()`. Cover every state × action combination.
+- **Use case tests**: Mock all ports with `mock<Interface>()` from `vitest-mock-extended`. Verify orchestration: which repos are called, with what arguments, in what order.
+- **Infrastructure tests**: Mock Prisma/Hono. Test adapters, middleware, handlers in isolation.
+
+### E2E tests (`tests/e2e/`) — MUST be robust
+
+E2E tests run in Docker (PostgreSQL + App containers, isolated from dev). They MUST cover the **12 security categories** for every endpoint:
+
+1. **Authentication** — missing/invalid/malformed API keys, SQL injection in credentials
+2. **Input validation** — negative, zero, float, string, overflow, XSS, prototype pollution, malformed JSON
+3. **Cross-tenant isolation** — attacker platform MUST NOT access victim's resources (wallets, holds, transactions)
+4. **Balance manipulation** — overdraft, self-transfer, operations on frozen/closed wallets
+5. **Idempotency** — replay returns cached response, payload mismatch detected, cross-endpoint key reuse
+6. **Concurrency & race conditions** — concurrent deposits (balance consistency), concurrent withdrawals (no negative balance), bidirectional transfers (no deadlocks), concurrent holds (no over-reservation)
+7. **Hold exploitation** — double capture, capture after void, oversized hold, expired hold
+8. **Wallet lifecycle** — state machine transitions, invalid transitions rejected
+9. **Ledger integrity** — zero-sum movements, cached balance = ledger sum, immutable triggers block UPDATE/DELETE
+10. **Edge cases** — minimum values (1 cent), cross-currency rejection, non-existent resources, invalid UUIDs
+11. **Information disclosure** — no stack traces in errors, no framework headers, consistent 404 (no enumeration)
+
+When adding a new endpoint, create e2e tests covering ALL applicable categories above.
+
+### Test commands
+
+```bash
+pnpm test              # Unit tests (~1s)
+pnpm test:watch        # Unit tests in watch mode
+pnpm test:e2e          # E2E tests — auto-starts Docker containers (~30s)
+pnpm test:coverage     # Unit + E2E combined, enforces 100% coverage
+pnpm test:all          # Unit then E2E sequentially
+```
+
+### Test infrastructure
+
+- **Docker isolation**: `docker-compose.test.yml` uses project `wallet-test`, PostgreSQL on `:5433` (DB `wallet_test`), App on `:3333`. Dev containers (`:5432`/`:3000`) are never touched.
+- **Seed data**: Only 2 test platforms (test + attacker) are seeded. Each test creates its own business data via API and `reset()` truncates between tests.
+- **Mocking**: `vitest-mock-extended` for type-safe interface mocks. Builders (`WalletBuilder`, `HoldBuilder`) use `reconstruct()` to create entities in any state.
+
+---
+
 ## Memory Bank
 
 Refer to these docs:
@@ -142,3 +208,9 @@ Refer to these docs:
 - `docs/architecture/database-migrations.md` — Prisma migrations
 - `docs/activeContext.md` — Current focus
 - `docs/progress.md` — Status and progress
+- `test/docs/TESTING_GUIDE.md` — **Master testing guide (read before writing any test)**
+- `test/docs/E2E_TEST_PATTERNS.md` — E2E patterns with 12 security categories
+- `test/docs/BDD_STYLE_GUIDE.md` — Given/When/Then naming rules
+- `test/docs/DOMAIN_TEST_PATTERNS.md` — Domain entity test templates
+- `test/docs/USECASE_TEST_PATTERNS.md` — Use case test templates with mocks
+- `test/docs/MOCK_CATALOG.md` — All available mocks, builders, matchers
