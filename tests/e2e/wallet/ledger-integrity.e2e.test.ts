@@ -485,14 +485,25 @@ describe("Ledger Integrity E2E", () => {
           UPDATE wallets SET cached_balance_cents = 99999 WHERE id = ${walletA}
         `;
 
-        // Fetch real FK refs from the existing deposit
-        const refs: { tid: string; mid: string }[] = await prisma.$queryRaw`
-          SELECT t.id AS tid, t.movement_id AS mid
-          FROM transactions t
-          WHERE t.wallet_id = ${walletA}
-          LIMIT 1
-        `;
-        const { tid, mid } = refs[0]!;
+        // Create a NEW movement + transaction so the ledger entry is the ONLY
+        // entry in that movement (entry_count=1 → zero-sum trigger skips it).
+        // This isolates the reconciliation trigger from the zero-sum trigger.
+        const now = Date.now();
+        const newMovementId: string = (
+          await prisma.$queryRaw<{ id: string }[]>`
+            INSERT INTO movements (id, type, created_at)
+            VALUES (gen_random_uuid()::text, 'deposit', ${now})
+            RETURNING id
+          `
+        )[0]!.id;
+
+        const newTxId: string = (
+          await prisma.$queryRaw<{ id: string }[]>`
+            INSERT INTO transactions (id, wallet_id, type, amount_cents, status, movement_id, created_at)
+            VALUES (gen_random_uuid()::text, ${walletA}, 'deposit', 500, 'completed', ${newMovementId}, ${now})
+            RETURNING id
+          `
+        )[0]!.id;
 
         // Insert a ledger entry with correct chain (10000 + 500 = 10500)
         // but cached_balance is 99999 — reconciliation must catch this
@@ -501,12 +512,12 @@ describe("Ledger Integrity E2E", () => {
             INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount_cents, balance_after_cents, movement_id, created_at)
             VALUES (
               gen_random_uuid()::text,
-              ${tid},
+              ${newTxId},
               ${walletA},
               'CREDIT',
               500,
               10500,
-              ${mid},
+              ${newMovementId},
               (SELECT MAX(created_at) + 1 FROM ledger_entries WHERE wallet_id = ${walletA})
             )
           `;
@@ -782,6 +793,231 @@ describe("Ledger Integrity E2E", () => {
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
           expect(message).toMatch(/violates|constraint|check/i);
+        }
+      });
+    });
+  });
+
+  // ── Long chain validation: 20 operations, verify entire chain ──────────
+
+  describe("Given a wallet with 20 sequential deposits and withdrawals", () => {
+    describe("When querying all ledger entries for the wallet", () => {
+      it("Then every entry should chain correctly: balance_after(N) = balance_after(N-1) + amount(N)", async () => {
+        const walletA = await createWallet("owner-long-chain");
+
+        // 10 deposits of increasing amounts + 10 withdrawals of 100 each
+        for (let i = 1; i <= 10; i++) {
+          await deposit(walletA, i * 1000);
+        }
+        // total deposited: 1000+2000+...+10000 = 55000
+        for (let i = 0; i < 10; i++) {
+          await withdraw(walletA, 100);
+        }
+        // total withdrawn: 1000, expected balance: 54000
+
+        const prisma = getTestPrisma();
+
+        // Verify chain integrity by reading all entries ordered
+        const entries: { amount_cents: unknown; balance_after_cents: unknown }[] = await prisma.$queryRaw`
+          SELECT amount_cents, balance_after_cents
+          FROM ledger_entries
+          WHERE wallet_id = ${walletA}
+          ORDER BY created_at ASC, id ASC
+        `;
+
+        expect(entries.length).toBeGreaterThanOrEqual(20); // 20 ops on this wallet (system entries are on the system wallet)
+
+        // Chain validation per-wallet: each consecutive entry chains correctly
+        let prevBalance = 0n;
+        for (const entry of entries) {
+          const amount = BigInt(entry.amount_cents as string | number);
+          const balanceAfter = BigInt(entry.balance_after_cents as string | number);
+          expect(balanceAfter).toBe(prevBalance + amount);
+          prevBalance = balanceAfter;
+        }
+      });
+    });
+  });
+
+  // ── Transaction immutability: UPDATE blocked ────────────────────────────
+
+  describe("Given a transaction exists in the database", () => {
+    describe("When attempting to UPDATE a transaction directly", () => {
+      it("Then the database should reject the operation (append-only)", async () => {
+        const walletA = await createWallet("owner-tx-immut");
+        await deposit(walletA, 5000);
+
+        const prisma = getTestPrisma();
+
+        const txs: { id: string }[] = await prisma.$queryRaw`
+          SELECT id FROM transactions WHERE wallet_id = ${walletA} LIMIT 1
+        `;
+        const txId = txs[0]!.id;
+
+        try {
+          await prisma.$executeRaw`
+            UPDATE transactions SET amount_cents = 99999 WHERE id = ${txId}
+          `;
+          expect.fail("UPDATE on transactions should have been blocked");
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          expect(message).toMatch(/append.only|immutable|not allowed/i);
+        }
+      });
+    });
+
+    describe("When attempting to DELETE a transaction directly", () => {
+      it("Then the database should reject the operation (append-only)", async () => {
+        const walletA = await createWallet("owner-tx-immut-del");
+        await deposit(walletA, 5000);
+
+        const prisma = getTestPrisma();
+
+        const txs: { id: string }[] = await prisma.$queryRaw`
+          SELECT id FROM transactions WHERE wallet_id = ${walletA} LIMIT 1
+        `;
+        const txId = txs[0]!.id;
+
+        try {
+          await prisma.$executeRaw`DELETE FROM transactions WHERE id = ${txId}`;
+          expect.fail("DELETE on transactions should have been blocked");
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          expect(message).toMatch(/append.only|immutable|not allowed/i);
+        }
+      });
+    });
+  });
+
+  // ── Movement immutability: UPDATE/DELETE blocked ────────────────────────
+
+  describe("Given a movement exists in the database", () => {
+    describe("When attempting to UPDATE a movement directly", () => {
+      it("Then the database should reject the operation (append-only)", async () => {
+        const walletA = await createWallet("owner-mv-immut");
+        await deposit(walletA, 5000);
+
+        const prisma = getTestPrisma();
+
+        const mvs: { id: string }[] = await prisma.$queryRaw`
+          SELECT id FROM movements LIMIT 1
+        `;
+        const mvId = mvs[0]!.id;
+
+        try {
+          await prisma.$executeRaw`
+            UPDATE movements SET type = 'withdrawal' WHERE id = ${mvId}
+          `;
+          expect.fail("UPDATE on movements should have been blocked");
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          expect(message).toMatch(/append.only|immutable|not allowed/i);
+        }
+      });
+    });
+  });
+
+  // ── platform_id field lock ──────────────────────────────────────────────
+
+  describe("Given an existing wallet", () => {
+    describe("When attempting to change platform_id directly in the database", () => {
+      it("Then the database should reject the operation with FIELD_LOCK", async () => {
+        const walletId = await createWallet("owner-field-lock-platform");
+        const prisma = getTestPrisma();
+
+        try {
+          await prisma.$executeRaw`
+            UPDATE wallets SET platform_id = 'fake-platform-id' WHERE id = ${walletId}
+          `;
+          expect.fail("UPDATE platform_id should have been blocked by field lock trigger");
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          expect(message).toMatch(/FIELD_LOCK/i);
+        }
+      });
+    });
+  });
+
+  // ── Hold status: expired hold cannot transition ─────────────────────────
+
+  describe("Given an expired hold", () => {
+    describe("When attempting to set status to 'active' directly in the database", () => {
+      it("Then the database should reject the operation with INVALID_TRANSITION", async () => {
+        const walletA = await createWallet("owner-sm-hold-expired");
+        await deposit(walletA, 50000);
+
+        const prisma = getTestPrisma();
+
+        // Create a hold, then expire it via direct SQL (simulating cron job)
+        const holdRes = await app.request("/v1/holds", {
+          method: "POST",
+          headers: { "Idempotency-Key": `hold-expire-test-${Date.now()}` },
+          body: JSON.stringify({ wallet_id: walletA, amount_cents: 5000 }),
+        });
+        expect(holdRes.status).toBe(201);
+        const { hold_id } = await holdRes.json();
+
+        // Expire it directly (simulate what the cron job does)
+        await prisma.$executeRaw`
+          UPDATE holds SET status = 'expired', updated_at = ${BigInt(Date.now())}
+          WHERE id = ${hold_id}
+        `;
+
+        // Try to reactivate
+        try {
+          await prisma.$executeRaw`
+            UPDATE holds SET status = 'active' WHERE id = ${hold_id}
+          `;
+          expect.fail("Reactivating an expired hold should have been blocked");
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          expect(message).toMatch(/INVALID_TRANSITION/i);
+        }
+      });
+    });
+  });
+
+  // ── Zero-sum: INSERT two entries that don't sum to zero ─────────────────
+
+  describe("Given a movement with one existing ledger entry", () => {
+    describe("When inserting a second entry that makes the movement sum non-zero", () => {
+      it("Then the database should reject with ZERO_SUM_VIOLATION", async () => {
+        const walletA = await createWallet("owner-zs-explicit");
+        await deposit(walletA, 10000);
+
+        const prisma = getTestPrisma();
+
+        // Get the system wallet's last entry for this deposit (the DEBIT side)
+        // Then try to add another entry to that movement that breaks zero-sum
+        const movements: { mid: string; tid: string }[] = await prisma.$queryRaw`
+          SELECT m.id AS mid, t.id AS tid
+          FROM movements m
+          JOIN transactions t ON t.movement_id = m.id
+          WHERE t.wallet_id = ${walletA}
+          LIMIT 1
+        `;
+        const { mid, tid } = movements[0]!;
+
+        // The movement already has 2 entries (CREDIT on user, DEBIT on system).
+        // Adding a 3rd that breaks zero-sum should be caught.
+        try {
+          await prisma.$executeRaw`
+            INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount_cents, balance_after_cents, movement_id, created_at)
+            VALUES (
+              gen_random_uuid()::text,
+              ${tid},
+              ${walletA},
+              'CREDIT',
+              999,
+              10999,
+              ${mid},
+              (SELECT MAX(created_at) + 1 FROM ledger_entries WHERE wallet_id = ${walletA})
+            )
+          `;
+          expect.fail("Extra unbalanced entry should have been blocked by zero-sum trigger");
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          expect(message).toMatch(/ZERO_SUM_VIOLATION|CHAIN_BREAK/i);
         }
       });
     });

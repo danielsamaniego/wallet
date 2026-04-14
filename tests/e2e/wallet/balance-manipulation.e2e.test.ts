@@ -149,4 +149,107 @@ describe("Balance Manipulation E2E", () => {
       });
     });
   });
+
+  // ── Transfer TO a frozen wallet ─────────────────────────────────────────
+
+  describe("Given a funded source wallet and a frozen target wallet", () => {
+    describe("When attempting to transfer to the frozen wallet", () => {
+      it("Then it should reject with 422 WALLET_NOT_ACTIVE", async () => {
+        // Reset to unfrozen state — create fresh wallets
+        const freshSource = walletId; // already has 10000
+
+        // Create and freeze a new target
+        const freezeTargetRes = await app.request("/v1/wallets", {
+          method: "POST",
+          headers: { "Idempotency-Key": "bm-frozen-target-create" },
+          body: JSON.stringify({ owner_id: "frozen-target", currency_code: "USD" }),
+        });
+        const { wallet_id: frozenTarget } = await freezeTargetRes.json();
+        await app.request(`/v1/wallets/${frozenTarget}/freeze`, { method: "POST" });
+
+        const res = await app.request("/v1/transfers", {
+          method: "POST",
+          headers: { "Idempotency-Key": "bm-xfr-to-frozen-1" },
+          body: JSON.stringify({
+            source_wallet_id: freshSource,
+            target_wallet_id: frozenTarget,
+            amount_cents: 100,
+          }),
+        });
+
+        expect(res.status).toBe(422);
+      });
+    });
+  });
+
+  // ── Sequential withdrawals until exact zero ─────────────────────────────
+
+  describe("Given a wallet with 10000 cents", () => {
+    describe("When withdrawing 3333, 3333, 3334 cents sequentially (totaling exactly 10000)", () => {
+      it("Then all three withdrawals should succeed and final balance should be 0", async () => {
+        const res1 = await app.request(`/v1/wallets/${walletId}/withdraw`, {
+          method: "POST",
+          headers: { "Idempotency-Key": "bm-seq-wd-1" },
+          body: JSON.stringify({ amount_cents: 3333 }),
+        });
+        expect(res1.status).toBe(201);
+
+        const res2 = await app.request(`/v1/wallets/${walletId}/withdraw`, {
+          method: "POST",
+          headers: { "Idempotency-Key": "bm-seq-wd-2" },
+          body: JSON.stringify({ amount_cents: 3333 }),
+        });
+        expect(res2.status).toBe(201);
+
+        const res3 = await app.request(`/v1/wallets/${walletId}/withdraw`, {
+          method: "POST",
+          headers: { "Idempotency-Key": "bm-seq-wd-3" },
+          body: JSON.stringify({ amount_cents: 3334 }),
+        });
+        expect(res3.status).toBe(201);
+
+        const walletRes = await app.request(`/v1/wallets/${walletId}`);
+        expect(Number((await walletRes.json()).balance_cents)).toBe(0);
+      });
+    });
+  });
+
+  // ── Deposit → transfer → withdraw chain ─────────────────────────────────
+
+  describe("Given wallet A deposits 50000 and transfers 20000 to wallet B", () => {
+    describe("When wallet B withdraws 15000", () => {
+      it("Then wallet A should have 30000 and wallet B should have 5000", async () => {
+        // walletId already has 10000 from beforeEach deposit
+        await app.request(`/v1/wallets/${walletId}/deposit`, {
+          method: "POST",
+          headers: { "Idempotency-Key": "bm-chain-dep-extra" },
+          body: JSON.stringify({ amount_cents: 40000 }),
+        });
+        // walletId now has 50000
+
+        await app.request("/v1/transfers", {
+          method: "POST",
+          headers: { "Idempotency-Key": "bm-chain-xfr" },
+          body: JSON.stringify({
+            source_wallet_id: walletId,
+            target_wallet_id: secondWalletId,
+            amount_cents: 20000,
+          }),
+        });
+
+        const wdRes = await app.request(`/v1/wallets/${secondWalletId}/withdraw`, {
+          method: "POST",
+          headers: { "Idempotency-Key": "bm-chain-wd" },
+          body: JSON.stringify({ amount_cents: 15000 }),
+        });
+        expect(wdRes.status).toBe(201);
+
+        const aRes = await app.request(`/v1/wallets/${walletId}`);
+        expect(Number((await aRes.json()).balance_cents)).toBe(30000);
+
+        const bRes = await app.request(`/v1/wallets/${secondWalletId}`);
+        expect(Number((await bRes.json()).balance_cents)).toBe(5000);
+      });
+    });
+  });
 });

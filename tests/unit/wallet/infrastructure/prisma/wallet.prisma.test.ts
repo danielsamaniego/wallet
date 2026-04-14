@@ -583,6 +583,39 @@ describe("PrismaHoldRepo", () => {
     });
   });
 
+  describe("transitionStatus", () => {
+    it("Given the hold matches fromStatus, When transitionStatus is called, Then updates successfully", async () => {
+      // Given
+      const { repo, hold: holdModel } = buildRepo();
+      holdModel.updateMany.mockResolvedValue({ count: 1 });
+      const now = 1700000000000;
+
+      // When
+      await repo.transitionStatus(ctx, "hold-1", "active", "captured", now);
+
+      // Then
+      expect(holdModel.updateMany).toHaveBeenCalledWith({
+        where: { id: "hold-1", status: "active" },
+        data: { status: "captured", updatedAt: BigInt(now) },
+      });
+    });
+
+    it("Given the hold was already changed, When transitionStatus is called, Then throws HOLD_STATUS_CHANGED", async () => {
+      // Given
+      const { repo, hold: holdModel } = buildRepo();
+      holdModel.updateMany.mockResolvedValue({ count: 0 });
+
+      // When/Then
+      await expect(
+        repo.transitionStatus(ctx, "hold-1", "active", "voided", 1700000000000),
+      ).rejects.toThrow(AppError);
+
+      await expect(
+        repo.transitionStatus(ctx, "hold-1", "active", "voided", 1700000000000),
+      ).rejects.toThrow(/status changed concurrently/i);
+    });
+  });
+
   describe("client — uses opCtx when present", () => {
     it("Given a transactional context, When findById is called, Then uses the transaction client", async () => {
       // Given
