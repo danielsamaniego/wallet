@@ -126,6 +126,7 @@ Before implementing domain logic, business rules, or data structures:
 3. **Architecture**: Follow `docs/architecture/backend-architecture.md` and `docs/architecture/systemPatterns.md`. Domain and app depend only on interfaces.
 4. **Migrations**: Use Prisma Migrate; see `docs/architecture/database-migrations.md`. Locally: `pnpm db:update`. Production: `prisma migrate deploy` then `psql $DATABASE_URL -f prisma/immutable_ledger.sql`.
 5. **New endpoint**: Create `schemas.ts` (request + response schemas) → create `handler.ts` (with `describeRoute()` + validators) → register in the appropriate routes file (e.g., `wallets.routes.ts`). The OpenAPI spec at `/openapi` and Scalar UI at `/docs` update automatically.
+6. **Before every commit**: Run `pnpm test` and `pnpm test:e2e`. Both suites must pass at 100% with zero failures. Never commit with broken tests.
 
 ---
 
@@ -147,6 +148,7 @@ Before implementing domain logic, business rules, or data structures:
 
 | Rule | Detail |
 |------|--------|
+| **Run tests before every commit** | Before committing ANY change, run `pnpm test` (unit) and `pnpm test:e2e` (integration/e2e). **Both must pass at 100% with zero failures.** A commit with failing tests — unit or integration — is never acceptable. If a test breaks, fix it before committing. No exceptions, no "I'll fix it later". |
 | **Coverage 100%** | `pnpm test:coverage` enforces 100% statements, branches, functions, and lines. If you add code, you add tests. If coverage drops, the CI fails. |
 | **TDD mindset** | Write the test first, see it fail (red), implement the code, see it pass (green), refactor. Every new feature, bugfix, or refactor starts with a test. |
 | **BDD structure** | All tests use `describe("Given X") / describe("When Y") / it("Then Z")`. No exceptions. See `test/docs/BDD_STYLE_GUIDE.md`. |

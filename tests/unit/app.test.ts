@@ -134,15 +134,30 @@ describe("createApp", () => {
   // ── health check ───────────────────────────────────────────────────
 
   describe("health check", () => {
-    it("Given the app is running, When GET /health is called, Then returns ok", async () => {
-      const deps = buildDeps();
+    it("Given the DB is reachable, When GET /health is called, Then returns 200 ok with db connected", async () => {
+      const deps = buildDeps({
+        prisma: { $queryRaw: vi.fn().mockResolvedValue([{ "?column?": 1 }]) } as any,
+      });
       const app = createApp(deps);
 
       const res = await app.request("/health");
 
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body).toEqual({ status: "ok", version: "1.0.1" });
+      expect(body).toEqual({ status: "ok", version: "1.0.1", db: "connected" });
+    });
+
+    it("Given the DB is unreachable, When GET /health is called, Then returns 503 degraded with db disconnected", async () => {
+      const deps = buildDeps({
+        prisma: { $queryRaw: vi.fn().mockRejectedValue(new Error("connection refused")) } as any,
+      });
+      const app = createApp(deps);
+
+      const res = await app.request("/health");
+
+      expect(res.status).toBe(503);
+      const body = await res.json();
+      expect(body).toEqual({ status: "degraded", version: "1.0.1", db: "disconnected" });
     });
   });
 

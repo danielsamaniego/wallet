@@ -58,8 +58,20 @@ export function createApp(deps: Dependencies) {
   app.use("*", secureHeaders());
   app.use("*", requestResponseLog(deps.logger));
 
-  // Health check
-  app.get("/health", (c) => c.json({ status: "ok", version: "1.0.1" }));
+  // Health check — verifies DB connectivity before reporting healthy.
+  app.get("/health", async (c) => {
+    let db: "connected" | "disconnected" = "disconnected";
+    try {
+      await deps.prisma.$queryRaw`SELECT 1`;
+      db = "connected";
+    } catch {
+      /* DB unreachable */
+    }
+
+    const status = db === "connected" ? "ok" : "degraded";
+    const httpCode = db === "connected" ? 200 : 503;
+    return c.json({ status, version: "1.0.1", db }, httpCode);
+  });
 
   // Route groups
   const v1 = app.basePath("/v1");
