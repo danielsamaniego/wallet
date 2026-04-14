@@ -28,9 +28,9 @@ const path = require("path");
 function getForbiddenImports(filePath) {
   const normalized = filePath.replace(/\\/g, "/");
 
-  // domain layer — purest, no infra or app-infra dependencies
+  // domain layer — purest, cannot import application, infrastructure, or middleware
   if (normalized.includes("/domain/")) {
-    return ["infrastructure", "middleware"];
+    return ["application", "infrastructure", "middleware"];
   }
 
   // application layer — no infra dependencies
@@ -38,9 +38,9 @@ function getForbiddenImports(filePath) {
     return ["infrastructure", "middleware"];
   }
 
-  // utils/kernel — domain-safe, no infra
+  // utils/kernel — domain-safe, no app or infra
   if (normalized.includes("/utils/kernel/")) {
-    return ["infrastructure", "middleware"];
+    return ["application", "infrastructure", "middleware"];
   }
 
   // utils/application — no infra
@@ -65,7 +65,11 @@ function checkFile(filePath) {
     const line = lines[lineNum];
     const trimmed = line.trim();
 
-    if (trimmed.startsWith("//") || trimmed.startsWith("*")) continue;
+    if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
+
+    // Allow "import type" — type-only imports are erased at compile time
+    // and don't create a runtime dependency.
+    if (/^import\s+type\b/.test(trimmed)) continue;
 
     let match;
     importRegex.lastIndex = 0;
@@ -74,7 +78,7 @@ function checkFile(filePath) {
       const importPath = match[1];
       if (!importPath) continue;
 
-      // Only check relative imports
+      // Only check relative imports and alias imports
       if (!importPath.startsWith(".") && !importPath.startsWith("@/")) continue;
 
       for (const layer of forbidden) {

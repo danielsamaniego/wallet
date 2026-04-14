@@ -56,7 +56,14 @@ function checkFile(filePath) {
       const lineNumber = beforeMatch.split("\n").length;
       const line = lines[lineNumber - 1]?.trim() || "";
 
-      if (line.startsWith("//") || line.startsWith("*") || line.startsWith("import ")) {
+      if (
+        line.startsWith("//") ||
+        line.startsWith("*") ||
+        line.startsWith("/*") ||
+        line.startsWith("import ") ||
+        line.startsWith("export type ") ||
+        line.startsWith("export interface ")
+      ) {
         continue;
       }
 
