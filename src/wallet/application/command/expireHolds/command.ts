@@ -6,5 +6,7 @@ export interface ExpireHoldsResult {
 
 export class ExpireHoldsCommand extends ICommand<ExpireHoldsResult> {
   static readonly TYPE = "ExpireHolds";
-  constructor() { super(ExpireHoldsCommand.TYPE); }
+  constructor() {
+    super(ExpireHoldsCommand.TYPE);
+  }
 }

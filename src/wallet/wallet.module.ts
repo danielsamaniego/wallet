@@ -61,8 +61,25 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
 
   // Use cases
   const createWallet = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
-  const deposit = new DepositUseCase(txManager, walletRepo, transactionRepo, ledgerEntryRepo, movementRepo, idGen, logger);
-  const withdraw = new WithdrawUseCase(txManager, walletRepo, holdRepo, transactionRepo, ledgerEntryRepo, movementRepo, idGen, logger);
+  const deposit = new DepositUseCase(
+    txManager,
+    walletRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    movementRepo,
+    idGen,
+    logger,
+  );
+  const withdraw = new WithdrawUseCase(
+    txManager,
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    movementRepo,
+    idGen,
+    logger,
+  );
   const freezeWallet = new FreezeWalletUseCase(txManager, walletRepo, logger);
   const unfreezeWallet = new UnfreezeWalletUseCase(txManager, walletRepo, logger);
   const closeWallet = new CloseWalletUseCase(txManager, walletRepo, holdRepo, logger);
@@ -71,9 +88,27 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
   const listHolds = new ListHoldsUseCase(holdReadStore, logger);
   const getTransactions = new GetTransactionsUseCase(transactionReadStore, logger);
   const getLedgerEntries = new GetLedgerEntriesUseCase(ledgerEntryReadStore, logger);
-  const transfer = new TransferUseCase(txManager, walletRepo, holdRepo, transactionRepo, ledgerEntryRepo, movementRepo, idGen, logger);
+  const transfer = new TransferUseCase(
+    txManager,
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    movementRepo,
+    idGen,
+    logger,
+  );
   const placeHold = new PlaceHoldUseCase(txManager, walletRepo, holdRepo, idGen, logger);
-  const captureHold = new CaptureHoldUseCase(txManager, walletRepo, holdRepo, transactionRepo, ledgerEntryRepo, movementRepo, idGen, logger);
+  const captureHold = new CaptureHoldUseCase(
+    txManager,
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    movementRepo,
+    idGen,
+    logger,
+  );
   const voidHold = new VoidHoldUseCase(txManager, walletRepo, holdRepo, logger);
   const expireHolds = new ExpireHoldsUseCase(holdRepo, logger);
 

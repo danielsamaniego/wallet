@@ -1,4 +1,9 @@
-import type { FilterCondition, FilterOperator, JsonFilterCondition, SortField } from "../kernel/listing.js";
+import type {
+  FilterCondition,
+  FilterOperator,
+  JsonFilterCondition,
+  SortField,
+} from "../kernel/listing.js";
 import { decodeCursor, ensureTiebreaker } from "../kernel/listing.js";
 
 export interface PrismaListingClause {

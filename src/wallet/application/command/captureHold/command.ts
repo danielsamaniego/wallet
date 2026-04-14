@@ -11,5 +11,7 @@ export class CaptureHoldCommand extends ICommand<CaptureHoldResult> {
     public readonly holdId: string,
     public readonly platformId: string,
     public readonly idempotencyKey: string,
-  ) { super(CaptureHoldCommand.TYPE); }
+  ) {
+    super(CaptureHoldCommand.TYPE);
+  }
 }

@@ -42,9 +42,7 @@ export function createApp(deps: Dependencies) {
     }
 
     /* v8 ignore next 3 */
-    const message = err instanceof Error
-      ? err.message
-      : "unknown error";
+    const message = err instanceof Error ? err.message : "unknown error";
     deps.logger.error(ctx, "Unhandled exception", { error: message });
     return errorResponse(c, "INTERNAL_ERROR", "an unexpected error occurred", 500);
   });
@@ -78,7 +76,8 @@ export function createApp(deps: Dependencies) {
         info: {
           title: "Wallet API",
           version: "1.0.0",
-          description: "Digital wallet microservice — deposits, withdrawals, transfers, holds, and ledger.",
+          description:
+            "Digital wallet microservice — deposits, withdrawals, transfers, holds, and ledger.",
         },
         servers: [{ url: "/", description: "Current" }],
       },

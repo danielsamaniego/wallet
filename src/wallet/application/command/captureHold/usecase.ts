@@ -146,7 +146,7 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
         systemWallet.id,
         hold.amountCents,
         now,
-      ); 
+      );
       await this.transactionRepo.save(txCtx, tx);
       await this.ledgerEntryRepo.saveMany(txCtx, [debitEntry, creditEntry]);
     });

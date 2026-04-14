@@ -10,7 +10,9 @@ import type { CreateWalletCommand, CreateWalletResult } from "./command.js";
 
 const mainLogTag = "CreateWalletUseCase";
 
-export class CreateWalletUseCase implements ICommandHandler<CreateWalletCommand, CreateWalletResult> {
+export class CreateWalletUseCase
+  implements ICommandHandler<CreateWalletCommand, CreateWalletResult>
+{
   constructor(
     private readonly txManager: ITransactionManager,
     private readonly walletRepo: IWalletRepository,

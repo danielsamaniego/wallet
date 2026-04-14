@@ -93,10 +93,7 @@ export function ensureTiebreaker(sort: readonly SortField[]): SortField[] {
   return fields;
 }
 
-export function encodeCursor(
-  sort: readonly SortField[],
-  lastRow: Record<string, unknown>,
-): string {
+export function encodeCursor(sort: readonly SortField[], lastRow: Record<string, unknown>): string {
   const withTiebreaker = ensureTiebreaker(sort);
   const payload: CursorPayload = {
     v: withTiebreaker.map((s) => {
@@ -105,15 +102,10 @@ export function encodeCursor(
     }),
     s: sortSignature(withTiebreaker),
   };
-  return Buffer.from(JSON.stringify(payload))
-    .toString("base64url")
-    .replace(/=+$/, "");
+  return Buffer.from(JSON.stringify(payload)).toString("base64url").replace(/=+$/, "");
 }
 
-export function decodeCursor(
-  cursor: string,
-  expectedSort: readonly SortField[],
-): unknown[] {
+export function decodeCursor(cursor: string, expectedSort: readonly SortField[]): unknown[] {
   const withTiebreaker = ensureTiebreaker(expectedSort);
   try {
     const json = Buffer.from(cursor, "base64url").toString("utf-8");

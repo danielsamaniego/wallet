@@ -14,5 +14,7 @@ export class DepositCommand extends ICommand<DepositResult> {
     public readonly idempotencyKey: string,
     public readonly reference?: string,
     public readonly metadata?: Record<string, unknown>,
-  ) { super(DepositCommand.TYPE); }
+  ) {
+    super(DepositCommand.TYPE);
+  }
 }

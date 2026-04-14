@@ -1,0 +1,43 @@
+# Wallet Service — Full local development (PostgreSQL + App with hot reload)
+# Usage: pnpm dev:docker
+
+name: wallet-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+      POSTGRES_DB: wallet
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet -d wallet"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+    environment:
+      DATABASE_URL: postgresql://wallet:wallet@postgres:5432/wallet
+      DIRECT_URL: postgresql://wallet:wallet@postgres:5432/wallet
+      HTTP_PORT: "3000"
+      LOG_LEVEL: debug
+      CRON_SECRET: ""
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_dev_data:

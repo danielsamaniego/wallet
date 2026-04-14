@@ -10,5 +10,7 @@ export class CreateWalletCommand extends ICommand<CreateWalletResult> {
     public readonly ownerId: string,
     public readonly platformId: string,
     public readonly currencyCode: string,
-  ) { super(CreateWalletCommand.TYPE); }
+  ) {
+    super(CreateWalletCommand.TYPE);
+  }
 }

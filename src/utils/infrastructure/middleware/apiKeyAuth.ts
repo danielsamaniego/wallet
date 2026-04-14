@@ -9,9 +9,7 @@ const API_KEY_HEADER = "x-api-key";
  * Validates API key from X-API-Key header and injects platform_id into context.
  * Receives PrismaClient and resolves validation internally.
  */
-export function apiKeyAuth(
-  prisma: PrismaClient,
-): MiddlewareHandler<{ Variables: HonoVariables }> {
+export function apiKeyAuth(prisma: PrismaClient): MiddlewareHandler<{ Variables: HonoVariables }> {
   return async (c, next) => {
     const apiKey = c.req.header(API_KEY_HEADER);
     if (!apiKey) {

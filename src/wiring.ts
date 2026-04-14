@@ -9,7 +9,14 @@ import { SafeLogger } from "./utils/infrastructure/observability/safe.logger.js"
 import { SensitiveKeysFilter } from "./utils/infrastructure/observability/sensitive.filter.js";
 import type { IIDGenerator } from "./utils/application/id.generator.js";
 import type { ILogger } from "./utils/kernel/observability/logger.port.js";
-import type { ICommandBus, IQueryBus, ICommandHandler, IQueryHandler, ICommand, IQuery } from "./utils/application/cqrs.js";
+import type {
+  ICommandBus,
+  IQueryBus,
+  ICommandHandler,
+  IQueryHandler,
+  ICommand,
+  IQuery,
+} from "./utils/application/cqrs.js";
 import type { ITransactionManager } from "./utils/application/transaction.manager.js";
 import { CommandBus, QueryBus } from "./utils/infrastructure/cqrs.js";
 import { PrismaTransactionManager } from "./utils/infrastructure/prisma.transaction.manager.js";

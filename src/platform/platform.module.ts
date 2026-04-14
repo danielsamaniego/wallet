@@ -14,8 +14,6 @@ export function wire({ prisma, logger }: SharedInfra): ModuleHandlers {
   const listPlatforms = new ListPlatformsUseCase(platformReadStore, logger);
 
   return {
-    queries: [
-      { type: ListPlatformsQuery.TYPE, handler: listPlatforms },
-    ],
+    queries: [{ type: ListPlatformsQuery.TYPE, handler: listPlatforms }],
   };
 }

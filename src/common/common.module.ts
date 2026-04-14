@@ -10,8 +10,6 @@ export function wire({ idempotencyStore, logger }: SharedInfra): ModuleHandlers 
   const cleanupIdempotency = new CleanupIdempotencyUseCase(idempotencyStore, logger);
 
   return {
-    commands: [
-      { type: CleanupIdempotencyCommand.TYPE, handler: cleanupIdempotency },
-    ],
+    commands: [{ type: CleanupIdempotencyCommand.TYPE, handler: cleanupIdempotency }],
   };
 }

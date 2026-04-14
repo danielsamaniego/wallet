@@ -20,17 +20,11 @@ export abstract class IQuery<TResult = void> {
 // Handler contracts
 // ────────────────────────────────────────────
 
-export interface ICommandHandler<
-  TCommand extends ICommand<TResult>,
-  TResult,
-> {
+export interface ICommandHandler<TCommand extends ICommand<TResult>, TResult> {
   handle(ctx: AppContext, cmd: TCommand): Promise<TResult>;
 }
 
-export interface IQueryHandler<
-  TQuery extends IQuery<TResult>,
-  TResult,
-> {
+export interface IQueryHandler<TQuery extends IQuery<TResult>, TResult> {
   handle(ctx: AppContext, query: TQuery): Promise<TResult>;
 }
 

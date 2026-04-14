@@ -49,9 +49,7 @@ const listingConfig: ListingConfig = {
       operators: ["eq"],
     },
   ],
-  jsonFilterableFields: [
-    { apiName: "metadata", prismaName: "metadata", maxDepth: 3 },
-  ],
+  jsonFilterableFields: [{ apiName: "metadata", prismaName: "metadata", maxDepth: 3 }],
   sortableFields: [
     { apiName: "created_at", prismaName: "createdAt" },
     { apiName: "amount_cents", prismaName: "amountCents" },

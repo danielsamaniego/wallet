@@ -1,6 +1,12 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
-import { ErrorResponseSchema, validationHook } from "../../../../../../utils/infrastructure/hono.error.js";
-import { buildAppContext, handlerFactory } from "../../../../../../utils/infrastructure/hono.context.js";
+import {
+  ErrorResponseSchema,
+  validationHook,
+} from "../../../../../../utils/infrastructure/hono.error.js";
+import {
+  buildAppContext,
+  handlerFactory,
+} from "../../../../../../utils/infrastructure/hono.context.js";
 import type { IQueryBus } from "../../../../../../utils/application/cqrs.js";
 import { GetWalletQuery } from "../../../../../application/query/getWallet/query.js";
 import { ParamSchema, ResponseSchema } from "./schemas.js";
@@ -11,8 +17,14 @@ export function getWalletRoute(queryBus: IQueryBus) {
       tags: ["Wallets"],
       summary: "Get wallet details",
       responses: {
-        200: { description: "Wallet details", content: { "application/json": { schema: resolver(ResponseSchema) } } },
-        404: { description: "Wallet not found", content: { "application/json": { schema: resolver(ErrorResponseSchema) } } },
+        200: {
+          description: "Wallet details",
+          content: { "application/json": { schema: resolver(ResponseSchema) } },
+        },
+        404: {
+          description: "Wallet not found",
+          content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
+        },
       },
     }),
     zValidator("param", ParamSchema, validationHook),
@@ -20,10 +32,7 @@ export function getWalletRoute(queryBus: IQueryBus) {
       const { walletId } = c.req.valid("param");
       const ctx = buildAppContext(c);
 
-      const dto = await queryBus.dispatch(ctx, new GetWalletQuery(
-        walletId,
-        ctx.platformId!,
-      ));
+      const dto = await queryBus.dispatch(ctx, new GetWalletQuery(walletId, ctx.platformId!));
 
       return c.json(dto, 200);
     },

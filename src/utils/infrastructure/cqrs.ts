@@ -18,10 +18,7 @@ export class CommandBus implements ICommandBus {
   private readonly handlers = new Map<string, ICommandHandler<any, any>>();
   private readonly middlewares: BusMiddleware[] = [];
 
-  register<T>(
-    type: string,
-    handler: ICommandHandler<ICommand<T>, T>,
-  ): void {
+  register<T>(type: string, handler: ICommandHandler<ICommand<T>, T>): void {
     this.handlers.set(type, handler);
   }
 
@@ -56,10 +53,7 @@ export class QueryBus implements IQueryBus {
   private readonly handlers = new Map<string, IQueryHandler<any, any>>();
   private readonly middlewares: BusMiddleware[] = [];
 
-  register<T>(
-    type: string,
-    handler: IQueryHandler<IQuery<T>, T>,
-  ): void {
+  register<T>(type: string, handler: IQueryHandler<IQuery<T>, T>): void {
     this.handlers.set(type, handler);
   }
 

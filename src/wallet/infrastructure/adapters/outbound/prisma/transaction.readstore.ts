@@ -5,7 +5,10 @@ import type { AppContext } from "../../../../../utils/kernel/context.js";
 import { encodeCursor } from "../../../../../utils/kernel/listing.js";
 import type { ListingQuery } from "../../../../../utils/kernel/listing.js";
 import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
-import type { PaginatedTransactions, TransactionDTO } from "../../../../application/query/getTransactions/query.js";
+import type {
+  PaginatedTransactions,
+  TransactionDTO,
+} from "../../../../application/query/getTransactions/query.js";
 import type { ITransactionReadStore } from "../../../../application/ports/transaction.readstore.js";
 
 export class PrismaTransactionReadStore implements ITransactionReadStore {
@@ -51,10 +54,7 @@ export class PrismaTransactionReadStore implements ITransactionReadStore {
     let nextCursor: string | null = null;
     if (hasMore && items.length > 0) {
       const lastRow = items[items.length - 1]!;
-      nextCursor = encodeCursor(
-        listing.sort,
-        lastRow as unknown as Record<string, unknown>,
-      );
+      nextCursor = encodeCursor(listing.sort, lastRow as unknown as Record<string, unknown>);
     }
 
     this.logger.debug(ctx, "TransactionReadStore | getByWallet result", {

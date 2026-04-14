@@ -5,7 +5,10 @@ import type { AppContext } from "../../../../../utils/kernel/context.js";
 import { encodeCursor } from "../../../../../utils/kernel/listing.js";
 import type { ListingQuery } from "../../../../../utils/kernel/listing.js";
 import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
-import type { PaginatedPlatforms, PlatformDTO } from "../../../../application/query/listPlatforms/query.js";
+import type {
+  PaginatedPlatforms,
+  PlatformDTO,
+} from "../../../../application/query/listPlatforms/query.js";
 import type { IPlatformReadStore } from "../../../../application/ports/platform.readstore.js";
 
 export class PrismaPlatformReadStore implements IPlatformReadStore {
@@ -44,10 +47,7 @@ export class PrismaPlatformReadStore implements IPlatformReadStore {
     let nextCursor: string | null = null;
     if (hasMore && items.length > 0) {
       const lastRow = items[items.length - 1]!;
-      nextCursor = encodeCursor(
-        listing.sort,
-        lastRow as unknown as Record<string, unknown>,
-      );
+      nextCursor = encodeCursor(listing.sort, lastRow as unknown as Record<string, unknown>);
     }
 
     this.logger.debug(ctx, "PlatformReadStore | list result", {

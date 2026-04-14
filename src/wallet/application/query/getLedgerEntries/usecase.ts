@@ -7,7 +7,9 @@ import type { ILedgerEntryReadStore } from "../../ports/ledgerEntry.readstore.js
 
 const mainLogTag = "GetLedgerEntriesUseCase";
 
-export class GetLedgerEntriesUseCase implements IQueryHandler<GetLedgerEntriesQuery, PaginatedLedgerEntries> {
+export class GetLedgerEntriesUseCase
+  implements IQueryHandler<GetLedgerEntriesQuery, PaginatedLedgerEntries>
+{
   constructor(
     private readonly readStore: ILedgerEntryReadStore,
     private readonly logger: ILogger,

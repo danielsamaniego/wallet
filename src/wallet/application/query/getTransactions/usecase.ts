@@ -7,7 +7,9 @@ import type { ITransactionReadStore } from "../../ports/transaction.readstore.js
 
 const mainLogTag = "GetTransactionsUseCase";
 
-export class GetTransactionsUseCase implements IQueryHandler<GetTransactionsQuery, PaginatedTransactions> {
+export class GetTransactionsUseCase
+  implements IQueryHandler<GetTransactionsQuery, PaginatedTransactions>
+{
   constructor(
     private readonly readStore: ITransactionReadStore,
     private readonly logger: ILogger,

@@ -5,5 +5,7 @@ export class VoidHoldCommand extends ICommand<void> {
   constructor(
     public readonly holdId: string,
     public readonly platformId: string,
-  ) { super(VoidHoldCommand.TYPE); }
+  ) {
+    super(VoidHoldCommand.TYPE);
+  }
 }

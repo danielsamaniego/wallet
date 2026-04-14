@@ -71,10 +71,7 @@ export class PrismaHoldReadStore implements IHoldReadStore {
     let nextCursor: string | null = null;
     if (hasMore && items.length > 0) {
       const lastRow = items[items.length - 1]!;
-      nextCursor = encodeCursor(
-        listing.sort,
-        lastRow as unknown as Record<string, unknown>,
-      );
+      nextCursor = encodeCursor(listing.sort, lastRow as unknown as Record<string, unknown>);
     }
 
     this.logger.debug(ctx, "HoldReadStore | getByWallet result", {

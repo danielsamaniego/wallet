@@ -46,9 +46,7 @@ export function createListingQuerySchema(config: ListingConfig) {
   const knownKeys = new Set(["limit", "cursor", "sort", ...Object.keys(filterShape)]);
 
   // Build JSON-filterable prefixes (e.g. "metadata" → config)
-  const jsonPrefixes = new Map(
-    (config.jsonFilterableFields ?? []).map((f) => [f.apiName, f]),
-  );
+  const jsonPrefixes = new Map((config.jsonFilterableFields ?? []).map((f) => [f.apiName, f]));
 
   return z
     .object({
@@ -61,12 +59,19 @@ export function createListingQuerySchema(config: ListingConfig) {
     .transform((raw, ctx) => {
       // Reject unknown filter[...] keys
       for (const key of Object.keys(raw)) {
-        if (key.startsWith("filter[") && !knownKeys.has(key) && !isJsonFilterKey(key, jsonPrefixes)) {
+        if (
+          key.startsWith("filter[") &&
+          !knownKeys.has(key) &&
+          !isJsonFilterKey(key, jsonPrefixes)
+        ) {
           const allowed = [
             ...config.filterableFields.map((f) => f.apiName),
             ...(config.jsonFilterableFields ?? []).map((f) => `${f.apiName}.*`),
           ].join(", ");
-          ctx.addIssue({ code: "custom", message: `unknown filter parameter: ${key}. Allowed fields: ${allowed}` });
+          ctx.addIssue({
+            code: "custom",
+            message: `unknown filter parameter: ${key}. Allowed fields: ${allowed}`,
+          });
           return z.NEVER;
         }
       }
@@ -96,7 +101,7 @@ export function createListingQuerySchema(config: ListingConfig) {
       if (raw.cursor) {
         try {
           decodeCursor(raw.cursor, sortResult.data);
-        /* v8 ignore start -- decodeCursor always throws Error instances */
+          /* v8 ignore start -- decodeCursor always throws Error instances */
         } catch (e) {
           ctx.addIssue({
             code: "custom",
@@ -206,10 +211,7 @@ function coerceFilterValue(
   return coerceSingle(raw, fieldConfig);
 }
 
-function coerceSingle(
-  raw: string,
-  fieldConfig: FilterableFieldConfig,
-): Result<unknown> {
+function coerceSingle(raw: string, fieldConfig: FilterableFieldConfig): Result<unknown> {
   switch (fieldConfig.type) {
     case "string":
       return { ok: true, data: raw };
@@ -259,10 +261,7 @@ function coerceSingle(
 const JSON_FILTER_RE = /^filter\[([a-zA-Z_][a-zA-Z0-9_]*)\.(.+)]$/;
 const PATH_SEGMENT_RE = /^[a-zA-Z0-9_]+$/;
 
-function isJsonFilterKey(
-  key: string,
-  prefixes: Map<string, JsonFilterableFieldConfig>,
-): boolean {
+function isJsonFilterKey(key: string, prefixes: Map<string, JsonFilterableFieldConfig>): boolean {
   const match = JSON_FILTER_RE.exec(key);
   return match !== null && prefixes.has(match[1]!);
 }

@@ -1,6 +1,12 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
-import { ErrorResponseSchema, validationHook } from "../../../../../../utils/infrastructure/hono.error.js";
-import { buildAppContext, handlerFactory } from "../../../../../../utils/infrastructure/hono.context.js";
+import {
+  ErrorResponseSchema,
+  validationHook,
+} from "../../../../../../utils/infrastructure/hono.error.js";
+import {
+  buildAppContext,
+  handlerFactory,
+} from "../../../../../../utils/infrastructure/hono.context.js";
 import type { ICommandBus } from "../../../../../../utils/application/cqrs.js";
 import { VoidHoldCommand } from "../../../../../application/command/voidHold/command.js";
 import { ParamSchema, ResponseSchema } from "./schemas.js";
@@ -11,9 +17,18 @@ export function voidHoldRoute(commandBus: ICommandBus) {
       tags: ["Holds"],
       summary: "Void an authorization hold",
       responses: {
-        200: { description: "Hold voided", content: { "application/json": { schema: resolver(ResponseSchema) } } },
-        404: { description: "Hold not found", content: { "application/json": { schema: resolver(ErrorResponseSchema) } } },
-        422: { description: "Hold not active", content: { "application/json": { schema: resolver(ErrorResponseSchema) } } },
+        200: {
+          description: "Hold voided",
+          content: { "application/json": { schema: resolver(ResponseSchema) } },
+        },
+        404: {
+          description: "Hold not found",
+          content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
+        },
+        422: {
+          description: "Hold not active",
+          content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
+        },
       },
     }),
     zValidator("param", ParamSchema, validationHook),

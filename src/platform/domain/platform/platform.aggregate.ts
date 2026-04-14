@@ -105,10 +105,16 @@ export class Platform {
 
   suspend(now: number): void {
     if (this._status === "revoked") {
-      throw AppError.domainRule("PLATFORM_REVOKED", `platform ${this._id} is revoked and cannot be suspended`);
+      throw AppError.domainRule(
+        "PLATFORM_REVOKED",
+        `platform ${this._id} is revoked and cannot be suspended`,
+      );
     }
     if (this._status === "suspended") {
-      throw AppError.domainRule("PLATFORM_ALREADY_SUSPENDED", `platform ${this._id} is already suspended`);
+      throw AppError.domainRule(
+        "PLATFORM_ALREADY_SUSPENDED",
+        `platform ${this._id} is already suspended`,
+      );
     }
     this._status = "suspended";
     this._updatedAt = now;
@@ -116,10 +122,16 @@ export class Platform {
 
   activate(now: number): void {
     if (this._status === "revoked") {
-      throw AppError.domainRule("PLATFORM_REVOKED", `platform ${this._id} is revoked and cannot be activated`);
+      throw AppError.domainRule(
+        "PLATFORM_REVOKED",
+        `platform ${this._id} is revoked and cannot be activated`,
+      );
     }
     if (this._status === "active") {
-      throw AppError.domainRule("PLATFORM_ALREADY_ACTIVE", `platform ${this._id} is already active`);
+      throw AppError.domainRule(
+        "PLATFORM_ALREADY_ACTIVE",
+        `platform ${this._id} is already active`,
+      );
     }
     this._status = "active";
     this._updatedAt = now;
@@ -127,7 +139,10 @@ export class Platform {
 
   revoke(now: number): void {
     if (this._status === "revoked") {
-      throw AppError.domainRule("PLATFORM_ALREADY_REVOKED", `platform ${this._id} is already revoked`);
+      throw AppError.domainRule(
+        "PLATFORM_ALREADY_REVOKED",
+        `platform ${this._id} is already revoked`,
+      );
     }
     this._status = "revoked";
     this._updatedAt = now;

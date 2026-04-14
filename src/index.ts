@@ -17,7 +17,11 @@ async function verifyDatabaseSafetyNets(prisma: PrismaClient): Promise<void> {
     SELECT tgname FROM pg_trigger
     WHERE tgname IN ('ledger_entries_immutable', 'transactions_immutable', 'movements_immutable')`;
 
-  const expectedTriggers = ["ledger_entries_immutable", "transactions_immutable", "movements_immutable"];
+  const expectedTriggers = [
+    "ledger_entries_immutable",
+    "transactions_immutable",
+    "movements_immutable",
+  ];
   const foundTriggers = triggers.map((t) => t.tgname);
   const missingTriggers = expectedTriggers.filter((name) => !foundTriggers.includes(name));
 

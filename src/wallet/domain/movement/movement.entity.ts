@@ -20,7 +20,7 @@ export class Movement {
     });
     return m;
   }
- 
+
   static reconstruct(params: { id: string; type: MovementType; createdAt: number }): Movement {
     const m = new Movement();
     Object.assign(m, {

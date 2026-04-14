@@ -14,7 +14,10 @@ export class CleanupIdempotencyUseCase
     private readonly logger: ILogger,
   ) {}
 
-  async handle(ctx: AppContext, _cmd: CleanupIdempotencyCommand): Promise<CleanupIdempotencyResult> {
+  async handle(
+    ctx: AppContext,
+    _cmd: CleanupIdempotencyCommand,
+  ): Promise<CleanupIdempotencyResult> {
     const deletedCount = await this.idempotencyStore.deleteExpired(ctx);
 
     if (deletedCount > 0) {

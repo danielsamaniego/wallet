@@ -12,5 +12,7 @@ export class PlaceHoldCommand extends ICommand<PlaceHoldResult> {
     public readonly amountCents: bigint,
     public readonly reference?: string,
     public readonly expiresAt?: number,
-  ) { super(PlaceHoldCommand.TYPE); }
+  ) {
+    super(PlaceHoldCommand.TYPE);
+  }
 }

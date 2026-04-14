@@ -5,5 +5,7 @@ export class FreezeWalletCommand extends ICommand<void> {
   constructor(
     public readonly walletId: string,
     public readonly platformId: string,
-  ) { super(FreezeWalletCommand.TYPE); }
+  ) {
+    super(FreezeWalletCommand.TYPE);
+  }
 }

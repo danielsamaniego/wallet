@@ -6,5 +6,7 @@ export interface CleanupIdempotencyResult {
 
 export class CleanupIdempotencyCommand extends ICommand<CleanupIdempotencyResult> {
   static readonly TYPE = "CleanupIdempotency";
-  constructor() { super(CleanupIdempotencyCommand.TYPE); }
+  constructor() {
+    super(CleanupIdempotencyCommand.TYPE);
+  }
 }
