@@ -1,9 +1,9 @@
 import type { MiddlewareHandler } from "hono";
-import type { HonoVariables } from "../hono.context.js";
-import type { AppContext } from "../../kernel/context.js";
 import type { IIDGenerator } from "../../application/id.generator.js";
+import type { AppContext } from "../../kernel/context.js";
 import { CanonicalAccumulator } from "../../kernel/observability/canonical.js";
 import type { ILogger } from "../../kernel/observability/logger.port.js";
+import type { HonoVariables } from "../hono.context.js";
 
 const canonicalDispatchMsg = "Canonical log | request completed";
 const TRACKING_HEADER = "x-tracking-id";

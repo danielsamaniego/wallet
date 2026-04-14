@@ -102,6 +102,19 @@ describe("PrismaPlatformReadStore", () => {
       expect(result.platforms).toEqual([]);
       expect(result.next_cursor).toBeNull();
     });
+
+    it("Given hasMore is true but items is empty (edge case), When list is called, Then nextCursor remains null", async () => {
+      // Given — findMany returns 1 row but limit is 0, so hasMore=true and items=[]
+      const { store, platform } = buildReadStore();
+      platform.findMany.mockResolvedValue([buildPlatformRow()]);
+
+      // When
+      const result = await store.list(ctx, defaultListing({ limit: 0 }));
+
+      // Then
+      expect(result.platforms).toEqual([]);
+      expect(result.next_cursor).toBeNull();
+    });
   });
 });
 

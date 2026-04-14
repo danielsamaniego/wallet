@@ -2,12 +2,12 @@ import type { PrismaClient } from "@prisma/client";
 import { buildPrismaListing } from "../../../../../utils/infrastructure/listing.prisma.js";
 import { toNumber, toSafeNumber } from "../../../../../utils/kernel/bigint.js";
 import type { AppContext } from "../../../../../utils/kernel/context.js";
-import { encodeCursor } from "../../../../../utils/kernel/listing.js";
 import type { ListingQuery } from "../../../../../utils/kernel/listing.js";
+import { encodeCursor } from "../../../../../utils/kernel/listing.js";
 import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
+import type { IHoldReadStore } from "../../../../application/ports/hold.readstore.js";
 import type { HoldDTO } from "../../../../application/query/getHold/query.js";
 import type { PaginatedHolds } from "../../../../application/query/listHolds/query.js";
-import type { IHoldReadStore } from "../../../../application/ports/hold.readstore.js";
 
 export class PrismaHoldReadStore implements IHoldReadStore {
   constructor(
@@ -69,9 +69,11 @@ export class PrismaHoldReadStore implements IHoldReadStore {
     const items = hasMore ? rows.slice(0, listing.limit) : rows;
 
     let nextCursor: string | null = null;
-    if (hasMore && items.length > 0) {
-      const lastRow = items[items.length - 1]!;
-      nextCursor = encodeCursor(listing.sort, lastRow as unknown as Record<string, unknown>);
+    if (hasMore) {
+      const lastRow = items.at(-1);
+      if (lastRow) {
+        nextCursor = encodeCursor(listing.sort, lastRow as unknown as Record<string, unknown>);
+      }
     }
 
     this.logger.debug(ctx, "HoldReadStore | getByWallet result", {

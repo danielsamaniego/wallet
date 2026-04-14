@@ -1,8 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
 import type { AppContext } from "../../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
-import type { IPlatformRepository } from "../../../../domain/ports/platform.repository.js";
 import { Platform, type PlatformStatus } from "../../../../domain/platform/platform.aggregate.js";
+import type { IPlatformRepository } from "../../../../domain/ports/platform.repository.js";
 
 type PrismaTransactionClient = Omit<
   PrismaClient,

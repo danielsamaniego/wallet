@@ -1,13 +1,13 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
+import type { IQueryBus } from "../../../../../../utils/application/cqrs.js";
+import {
+  buildAuthenticatedAppContext,
+  handlerFactory,
+} from "../../../../../../utils/infrastructure/hono.context.js";
 import {
   ErrorResponseSchema,
   validationHook,
 } from "../../../../../../utils/infrastructure/hono.error.js";
-import {
-  buildAppContext,
-  handlerFactory,
-} from "../../../../../../utils/infrastructure/hono.context.js";
-import type { IQueryBus } from "../../../../../../utils/application/cqrs.js";
 import { GetHoldQuery } from "../../../../../application/query/getHold/query.js";
 import { ParamSchema, ResponseSchema } from "./schemas.js";
 
@@ -30,9 +30,9 @@ export function getHoldRoute(queryBus: IQueryBus) {
     zValidator("param", ParamSchema, validationHook),
     async (c) => {
       const { holdId } = c.req.valid("param");
-      const ctx = buildAppContext(c);
+      const ctx = buildAuthenticatedAppContext(c);
 
-      const dto = await queryBus.dispatch(ctx, new GetHoldQuery(holdId, ctx.platformId!));
+      const dto = await queryBus.dispatch(ctx, new GetHoldQuery(holdId, ctx.platformId));
 
       return c.json(dto, 200);
     },

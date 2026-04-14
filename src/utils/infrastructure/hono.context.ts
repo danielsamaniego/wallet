@@ -29,3 +29,23 @@ export function buildAppContext(c: Context<{ Variables: HonoVariables }>): AppCo
     platformId: c.get("platformId"),
   };
 }
+
+/**
+ * Like buildAppContext, but for routes behind apiKeyAuth middleware where
+ * platformId is guaranteed to be set. Returns a narrowed type so callers
+ * don't need non-null assertions.
+ */
+export function buildAuthenticatedAppContext(
+  c: Context<{ Variables: HonoVariables }>,
+): AppContext & { platformId: string } {
+  const platformId = c.get("platformId");
+  if (!platformId) {
+    throw new Error("buildAuthenticatedAppContext: missing platformId");
+  }
+  return {
+    trackingId: c.get("trackingId"),
+    startTs: c.get("startTs"),
+    canonical: c.get("canonical"),
+    platformId,
+  };
+}

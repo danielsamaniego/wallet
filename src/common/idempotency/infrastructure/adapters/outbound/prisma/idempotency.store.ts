@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import type { AppContext } from "../../../../../../utils/kernel/context.js";
 import type {
   IdempotencyRecord,
@@ -82,7 +82,7 @@ export class PrismaIdempotencyStore implements IIdempotencyStore {
       where: { idempotencyKey_platformId: { idempotencyKey, platformId } },
       data: {
         responseStatus,
-        responseBody: responseBody as any,
+        responseBody: responseBody as Prisma.InputJsonValue,
       },
     });
   }

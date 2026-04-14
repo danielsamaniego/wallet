@@ -1,8 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
+import type { ITransactionManager } from "../application/transaction.manager.js";
 import { AppError } from "../kernel/appError.js";
 import type { AppContext } from "../kernel/context.js";
 import type { ILogger } from "../kernel/observability/logger.port.js";
-import type { ITransactionManager } from "../application/transaction.manager.js";
 
 const mainLogTag = "PrismaTransactionManager";
 

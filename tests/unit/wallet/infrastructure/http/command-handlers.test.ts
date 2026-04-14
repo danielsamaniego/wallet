@@ -272,4 +272,116 @@ describe("Wallet command HTTP handlers", () => {
       expect(body).toEqual({ transaction_id: "txn-wd", movement_id: "mov-wd" });
     });
   });
+
+  // ── Missing idempotency-key header (?? "" branch) ─────────────
+  describe("Handlers without idempotency-key header", () => {
+    it("Given captureHold called without idempotency-key header, When POST is called, Then dispatches command with empty string idempotency key", async () => {
+      const commandBus: ICommandBus = {
+        dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-1", movementId: "mov-1" }),
+      };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      app.post("/holds/:holdId/capture", ...captureHoldRoute(commandBus));
+
+      const res = await app.request("/holds/hold-1/capture", { method: "POST" });
+
+      expect(res.status).toBe(201);
+      expect(commandBus.dispatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ idempotencyKey: "" }),
+      );
+    });
+
+    it("Given deposit called without idempotency-key header, When POST is called, Then dispatches command with empty string idempotency key", async () => {
+      const commandBus: ICommandBus = {
+        dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-1", movementId: "mov-1" }),
+      };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      app.post("/wallets/:walletId/deposit", ...depositRoute(commandBus));
+
+      const res = await app.request("/wallets/wallet-1/deposit", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ amount_cents: 5000 }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(commandBus.dispatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ idempotencyKey: "" }),
+      );
+    });
+
+    it("Given transfer called without idempotency-key header, When POST is called, Then dispatches command with empty string idempotency key", async () => {
+      const commandBus: ICommandBus = {
+        dispatch: vi.fn().mockResolvedValue({
+          sourceTransactionId: "txn-out",
+          targetTransactionId: "txn-in",
+          movementId: "mov-xfer",
+        }),
+      };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      app.post("/transfers", ...transferRoute(commandBus));
+
+      const res = await app.request("/transfers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          source_wallet_id: "wallet-1",
+          target_wallet_id: "wallet-2",
+          amount_cents: 1000,
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(commandBus.dispatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ idempotencyKey: "" }),
+      );
+    });
+
+    it("Given withdraw called without idempotency-key header, When POST is called, Then dispatches command with empty string idempotency key", async () => {
+      const commandBus: ICommandBus = {
+        dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-wd", movementId: "mov-wd" }),
+      };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      app.post("/wallets/:walletId/withdraw", ...withdrawRoute(commandBus));
+
+      const res = await app.request("/wallets/wallet-1/withdraw", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ amount_cents: 3000 }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(commandBus.dispatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ idempotencyKey: "" }),
+      );
+    });
+  });
+
+  // ── Missing platformId (buildAuthenticatedAppContext throws) ───
+  describe("Handler without platformId in context", () => {
+    /** Injects tracking context but omits platformId (simulating missing apiKeyAuth). */
+    function withContextNoPlatform(app: Hono<{ Variables: HonoVariables }>) {
+      app.use("*", async (c, next) => {
+        c.set("trackingId", "test-tracking");
+        c.set("startTs", Date.now());
+        c.set("canonical", new CanonicalAccumulator());
+        // platformId deliberately NOT set
+        await next();
+      });
+      return app;
+    }
+
+    it("Given platformId is not set in context, When captureHold POST is called, Then returns 500 error", async () => {
+      const commandBus: ICommandBus = { dispatch: vi.fn() };
+      const app = withContextNoPlatform(new Hono<{ Variables: HonoVariables }>());
+      app.post("/holds/:holdId/capture", ...captureHoldRoute(commandBus));
+
+      const res = await app.request("/holds/hold-1/capture", { method: "POST" });
+
+      expect(res.status).toBe(500);
+    });
+  });
 });

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type {
-  FilterCondition,
   FilterableFieldConfig,
+  FilterCondition,
   FilterOperator,
   JsonFilterableFieldConfig,
   JsonFilterCondition,
@@ -261,9 +261,16 @@ function coerceSingle(raw: string, fieldConfig: FilterableFieldConfig): Result<u
 const JSON_FILTER_RE = /^filter\[([a-zA-Z_][a-zA-Z0-9_]*)\.(.+)]$/;
 const PATH_SEGMENT_RE = /^[a-zA-Z0-9_]+$/;
 
-function isJsonFilterKey(key: string, prefixes: Map<string, JsonFilterableFieldConfig>): boolean {
+/** Extracts typed prefix+path from a JSON filter key, or null if no match. */
+function parseJsonFilterKey(key: string): { prefix: string; pathStr: string } | null {
   const match = JSON_FILTER_RE.exec(key);
-  return match !== null && prefixes.has(match[1]!);
+  if (!match?.[1] || !match[2]) return null;
+  return { prefix: match[1], pathStr: match[2] };
+}
+
+function isJsonFilterKey(key: string, prefixes: Map<string, JsonFilterableFieldConfig>): boolean {
+  const parsed = parseJsonFilterKey(key);
+  return parsed !== null && prefixes.has(parsed.prefix);
 }
 
 function parseJsonFilters(
@@ -275,15 +282,14 @@ function parseJsonFilters(
   const conditions: JsonFilterCondition[] = [];
 
   for (const key of Object.keys(raw)) {
-    const match = JSON_FILTER_RE.exec(key);
-    if (!match) continue;
+    const parsed = parseJsonFilterKey(key);
+    if (!parsed) continue;
 
-    const prefix = match[1]!;
+    const { prefix, pathStr } = parsed;
     const fieldConfig = prefixes.get(prefix);
     /* v8 ignore next -- defensive guard; unreachable via public transform (unknown keys rejected earlier) */
     if (!fieldConfig) continue;
 
-    const pathStr = match[2]!;
     const segments = pathStr.split(".");
 
     if (segments.length > fieldConfig.maxDepth) {

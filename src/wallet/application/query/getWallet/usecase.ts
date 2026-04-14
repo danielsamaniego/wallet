@@ -1,9 +1,9 @@
-import { AppError } from "../../../../utils/kernel/appError.js";
 import type { IQueryHandler } from "../../../../utils/application/cqrs.js";
+import { AppError } from "../../../../utils/kernel/appError.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
-import type { GetWalletQuery, WalletDTO } from "./query.js";
 import type { IWalletReadStore } from "../../ports/wallet.readstore.js";
+import type { GetWalletQuery, WalletDTO } from "./query.js";
 
 const mainLogTag = "GetWalletUseCase";
 

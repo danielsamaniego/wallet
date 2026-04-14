@@ -1,6 +1,6 @@
+import type { IIDGenerator } from "../application/id.generator.js";
 import type { CanonicalAccumulator } from "./observability/canonical.js";
 import { CanonicalAccumulator as CanonicalAccumulatorImpl } from "./observability/canonical.js";
-import type { IIDGenerator } from "../application/id.generator.js";
 
 /**
  * AppContext carries request-scoped data through app and domain layers.

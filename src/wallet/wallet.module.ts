@@ -1,5 +1,38 @@
 import type { ModuleHandlers, SharedInfra } from "../wiring.js";
-
+// Commands & Queries (for bus registration)
+import { CaptureHoldCommand } from "./application/command/captureHold/command.js";
+// Use cases
+import { CaptureHoldUseCase } from "./application/command/captureHold/usecase.js";
+import { CloseWalletCommand } from "./application/command/closeWallet/command.js";
+import { CloseWalletUseCase } from "./application/command/closeWallet/usecase.js";
+import { CreateWalletCommand } from "./application/command/createWallet/command.js";
+import { CreateWalletUseCase } from "./application/command/createWallet/usecase.js";
+import { DepositCommand } from "./application/command/deposit/command.js";
+import { DepositUseCase } from "./application/command/deposit/usecase.js";
+import { ExpireHoldsCommand } from "./application/command/expireHolds/command.js";
+import { ExpireHoldsUseCase } from "./application/command/expireHolds/usecase.js";
+import { FreezeWalletCommand } from "./application/command/freezeWallet/command.js";
+import { FreezeWalletUseCase } from "./application/command/freezeWallet/usecase.js";
+import { PlaceHoldCommand } from "./application/command/placeHold/command.js";
+import { PlaceHoldUseCase } from "./application/command/placeHold/usecase.js";
+import { TransferCommand } from "./application/command/transfer/command.js";
+import { TransferUseCase } from "./application/command/transfer/usecase.js";
+import { UnfreezeWalletCommand } from "./application/command/unfreezeWallet/command.js";
+import { UnfreezeWalletUseCase } from "./application/command/unfreezeWallet/usecase.js";
+import { VoidHoldCommand } from "./application/command/voidHold/command.js";
+import { VoidHoldUseCase } from "./application/command/voidHold/usecase.js";
+import { WithdrawCommand } from "./application/command/withdraw/command.js";
+import { WithdrawUseCase } from "./application/command/withdraw/usecase.js";
+import { GetHoldQuery } from "./application/query/getHold/query.js";
+import { GetHoldUseCase } from "./application/query/getHold/usecase.js";
+import { GetLedgerEntriesQuery } from "./application/query/getLedgerEntries/query.js";
+import { GetLedgerEntriesUseCase } from "./application/query/getLedgerEntries/usecase.js";
+import { GetTransactionsQuery } from "./application/query/getTransactions/query.js";
+import { GetTransactionsUseCase } from "./application/query/getTransactions/usecase.js";
+import { GetWalletQuery } from "./application/query/getWallet/query.js";
+import { GetWalletUseCase } from "./application/query/getWallet/usecase.js";
+import { ListHoldsQuery } from "./application/query/listHolds/query.js";
+import { ListHoldsUseCase } from "./application/query/listHolds/usecase.js";
 // Repos
 import { PrismaHoldReadStore } from "./infrastructure/adapters/outbound/prisma/hold.readstore.js";
 import { PrismaHoldRepo } from "./infrastructure/adapters/outbound/prisma/hold.repo.js";
@@ -10,42 +43,6 @@ import { PrismaTransactionReadStore } from "./infrastructure/adapters/outbound/p
 import { PrismaTransactionRepo } from "./infrastructure/adapters/outbound/prisma/transaction.repo.js";
 import { PrismaWalletReadStore } from "./infrastructure/adapters/outbound/prisma/wallet.readstore.js";
 import { PrismaWalletRepo } from "./infrastructure/adapters/outbound/prisma/wallet.repo.js";
-
-// Use cases
-import { CaptureHoldUseCase } from "./application/command/captureHold/usecase.js";
-import { CloseWalletUseCase } from "./application/command/closeWallet/usecase.js";
-import { CreateWalletUseCase } from "./application/command/createWallet/usecase.js";
-import { DepositUseCase } from "./application/command/deposit/usecase.js";
-import { ExpireHoldsUseCase } from "./application/command/expireHolds/usecase.js";
-import { FreezeWalletUseCase } from "./application/command/freezeWallet/usecase.js";
-import { PlaceHoldUseCase } from "./application/command/placeHold/usecase.js";
-import { TransferUseCase } from "./application/command/transfer/usecase.js";
-import { UnfreezeWalletUseCase } from "./application/command/unfreezeWallet/usecase.js";
-import { VoidHoldUseCase } from "./application/command/voidHold/usecase.js";
-import { WithdrawUseCase } from "./application/command/withdraw/usecase.js";
-import { GetHoldUseCase } from "./application/query/getHold/usecase.js";
-import { GetLedgerEntriesUseCase } from "./application/query/getLedgerEntries/usecase.js";
-import { GetTransactionsUseCase } from "./application/query/getTransactions/usecase.js";
-import { GetWalletUseCase } from "./application/query/getWallet/usecase.js";
-import { ListHoldsUseCase } from "./application/query/listHolds/usecase.js";
-
-// Commands & Queries (for bus registration)
-import { CaptureHoldCommand } from "./application/command/captureHold/command.js";
-import { CloseWalletCommand } from "./application/command/closeWallet/command.js";
-import { CreateWalletCommand } from "./application/command/createWallet/command.js";
-import { DepositCommand } from "./application/command/deposit/command.js";
-import { ExpireHoldsCommand } from "./application/command/expireHolds/command.js";
-import { FreezeWalletCommand } from "./application/command/freezeWallet/command.js";
-import { PlaceHoldCommand } from "./application/command/placeHold/command.js";
-import { TransferCommand } from "./application/command/transfer/command.js";
-import { UnfreezeWalletCommand } from "./application/command/unfreezeWallet/command.js";
-import { VoidHoldCommand } from "./application/command/voidHold/command.js";
-import { WithdrawCommand } from "./application/command/withdraw/command.js";
-import { GetHoldQuery } from "./application/query/getHold/query.js";
-import { GetLedgerEntriesQuery } from "./application/query/getLedgerEntries/query.js";
-import { GetTransactionsQuery } from "./application/query/getTransactions/query.js";
-import { GetWalletQuery } from "./application/query/getWallet/query.js";
-import { ListHoldsQuery } from "./application/query/listHolds/query.js";
 
 export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleHandlers {
   // Repos

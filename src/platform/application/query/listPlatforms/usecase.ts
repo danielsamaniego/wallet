@@ -1,8 +1,8 @@
 import type { IQueryHandler } from "../../../../utils/application/cqrs.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
-import type { ListPlatformsQuery, PaginatedPlatforms } from "./query.js";
 import type { IPlatformReadStore } from "../../ports/platform.readstore.js";
+import type { ListPlatformsQuery, PaginatedPlatforms } from "./query.js";
 
 const mainLogTag = "ListPlatformsUseCase";
 

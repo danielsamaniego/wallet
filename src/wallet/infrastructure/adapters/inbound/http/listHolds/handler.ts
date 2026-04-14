@@ -1,13 +1,13 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
+import type { IQueryBus } from "../../../../../../utils/application/cqrs.js";
+import {
+  buildAuthenticatedAppContext,
+  handlerFactory,
+} from "../../../../../../utils/infrastructure/hono.context.js";
 import {
   ErrorResponseSchema,
   validationHook,
 } from "../../../../../../utils/infrastructure/hono.error.js";
-import {
-  buildAppContext,
-  handlerFactory,
-} from "../../../../../../utils/infrastructure/hono.context.js";
-import type { IQueryBus } from "../../../../../../utils/application/cqrs.js";
 import { ListHoldsQuery } from "../../../../../application/query/listHolds/query.js";
 import { ParamSchema, QueryParamsSchema, ResponseSchema } from "./schemas.js";
 
@@ -37,11 +37,11 @@ export function listHoldsRoute(queryBus: IQueryBus) {
     async (c) => {
       const { walletId } = c.req.valid("param");
       const listing = c.req.valid("query");
-      const ctx = buildAppContext(c);
+      const ctx = buildAuthenticatedAppContext(c);
 
       const result = await queryBus.dispatch(
         ctx,
-        new ListHoldsQuery(walletId, ctx.platformId!, listing),
+        new ListHoldsQuery(walletId, ctx.platformId, listing),
       );
 
       return c.json(result, 200);

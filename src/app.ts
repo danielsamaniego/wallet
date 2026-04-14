@@ -1,22 +1,21 @@
+import { Scalar } from "@scalar/hono-api-reference";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { openAPIRouteHandler } from "hono-openapi";
-import { Scalar } from "@scalar/hono-api-reference";
-
-import { holdRoutes } from "./wallet/infrastructure/adapters/inbound/http/holds.routes.js";
-import { transferRoutes } from "./wallet/infrastructure/adapters/inbound/http/transfers.routes.js";
-import { walletRoutes } from "./wallet/infrastructure/adapters/inbound/http/wallets.routes.js";
+import { CleanupIdempotencyCommand } from "./common/idempotency/application/command/cleanupIdempotency/command.js";
 import { platformRoutes } from "./platform/infrastructure/adapters/inbound/http/platforms.routes.js";
-import { requestResponseLog } from "./utils/infrastructure/middleware/requestResponseLog.js";
-import { trackingCanonical } from "./utils/infrastructure/middleware/trackingCanonical.js";
-import { errorResponse, httpStatus } from "./utils/infrastructure/hono.error.js";
 import type { HonoVariables } from "./utils/infrastructure/hono.context.js";
 import { buildAppContext } from "./utils/infrastructure/hono.context.js";
+import { errorResponse, httpStatus } from "./utils/infrastructure/hono.error.js";
+import { requestResponseLog } from "./utils/infrastructure/middleware/requestResponseLog.js";
+import { trackingCanonical } from "./utils/infrastructure/middleware/trackingCanonical.js";
 import { AppError } from "./utils/kernel/appError.js";
 import { createAppContext } from "./utils/kernel/context.js";
 import { ExpireHoldsCommand } from "./wallet/application/command/expireHolds/command.js";
-import { CleanupIdempotencyCommand } from "./common/idempotency/application/command/cleanupIdempotency/command.js";
+import { holdRoutes } from "./wallet/infrastructure/adapters/inbound/http/holds.routes.js";
+import { transferRoutes } from "./wallet/infrastructure/adapters/inbound/http/transfers.routes.js";
+import { walletRoutes } from "./wallet/infrastructure/adapters/inbound/http/wallets.routes.js";
 import type { Dependencies } from "./wiring.js";
 
 /**

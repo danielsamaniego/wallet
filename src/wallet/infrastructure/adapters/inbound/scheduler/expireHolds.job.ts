@@ -1,5 +1,5 @@
-import { ExpireHoldsCommand } from "../../../../application/command/expireHolds/command.js";
 import type { ScheduledJob } from "../../../../../utils/infrastructure/scheduler.js";
+import { ExpireHoldsCommand } from "../../../../application/command/expireHolds/command.js";
 
 export const expireHoldsJob: ScheduledJob = {
   name: "ExpireHolds",

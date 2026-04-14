@@ -2,14 +2,14 @@ import type { PrismaClient } from "@prisma/client";
 import { buildPrismaListing } from "../../../../../utils/infrastructure/listing.prisma.js";
 import { toNumber } from "../../../../../utils/kernel/bigint.js";
 import type { AppContext } from "../../../../../utils/kernel/context.js";
-import { encodeCursor } from "../../../../../utils/kernel/listing.js";
 import type { ListingQuery } from "../../../../../utils/kernel/listing.js";
+import { encodeCursor } from "../../../../../utils/kernel/listing.js";
 import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
+import type { IPlatformReadStore } from "../../../../application/ports/platform.readstore.js";
 import type {
   PaginatedPlatforms,
   PlatformDTO,
 } from "../../../../application/query/listPlatforms/query.js";
-import type { IPlatformReadStore } from "../../../../application/ports/platform.readstore.js";
 
 export class PrismaPlatformReadStore implements IPlatformReadStore {
   constructor(
@@ -45,9 +45,11 @@ export class PrismaPlatformReadStore implements IPlatformReadStore {
     const items = hasMore ? rows.slice(0, listing.limit) : rows;
 
     let nextCursor: string | null = null;
-    if (hasMore && items.length > 0) {
-      const lastRow = items[items.length - 1]!;
-      nextCursor = encodeCursor(listing.sort, lastRow as unknown as Record<string, unknown>);
+    if (hasMore) {
+      const lastRow = items.at(-1);
+      if (lastRow) {
+        nextCursor = encodeCursor(listing.sort, lastRow as unknown as Record<string, unknown>);
+      }
     }
 
     this.logger.debug(ctx, "PlatformReadStore | list result", {

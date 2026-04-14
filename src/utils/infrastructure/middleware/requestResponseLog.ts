@@ -1,8 +1,7 @@
 import type { MiddlewareHandler } from "hono";
-
+import type { ILogger } from "../../kernel/observability/logger.port.js";
 import type { HonoVariables } from "../hono.context.js";
 import { buildAppContext } from "../hono.context.js";
-import type { ILogger } from "../../kernel/observability/logger.port.js";
 
 const mainLogTag = "RequestResponseLog";
 

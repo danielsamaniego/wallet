@@ -1,13 +1,13 @@
-import type { AppContext } from "../kernel/context.js";
 import type {
+  BusMiddleware,
   ICommand,
+  ICommandBus,
   ICommandHandler,
   IQuery,
-  IQueryHandler,
-  ICommandBus,
   IQueryBus,
-  BusMiddleware,
+  IQueryHandler,
 } from "../application/cqrs.js";
+import type { AppContext } from "../kernel/context.js";
 
 // ────────────────────────────────────────────
 // CommandBus — dispatches commands to their
@@ -15,7 +15,7 @@ import type {
 // ────────────────────────────────────────────
 
 export class CommandBus implements ICommandBus {
-  private readonly handlers = new Map<string, ICommandHandler<any, any>>();
+  private readonly handlers = new Map<string, ICommandHandler<ICommand<unknown>, unknown>>();
   private readonly middlewares: BusMiddleware[] = [];
 
   register<T>(type: string, handler: ICommandHandler<ICommand<T>, T>): void {
@@ -50,7 +50,7 @@ export class CommandBus implements ICommandBus {
 // ────────────────────────────────────────────
 
 export class QueryBus implements IQueryBus {
-  private readonly handlers = new Map<string, IQueryHandler<any, any>>();
+  private readonly handlers = new Map<string, IQueryHandler<IQuery<unknown>, unknown>>();
   private readonly middlewares: BusMiddleware[] = [];
 
   register<T>(type: string, handler: IQueryHandler<IQuery<T>, T>): void {

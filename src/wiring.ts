@@ -1,25 +1,25 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import type { Config } from "./config.js";
 import type { IIdempotencyStore } from "./common/idempotency/application/ports/idempotency.store.js";
 import { PrismaIdempotencyStore } from "./common/idempotency/infrastructure/adapters/outbound/prisma/idempotency.store.js";
-import { UUIDV7Generator } from "./utils/infrastructure/uuidV7.js";
+import type { Config } from "./config.js";
+import type {
+  ICommand,
+  ICommandBus,
+  ICommandHandler,
+  IQuery,
+  IQueryBus,
+  IQueryHandler,
+} from "./utils/application/cqrs.js";
+import type { IIDGenerator } from "./utils/application/id.generator.js";
+import type { ITransactionManager } from "./utils/application/transaction.manager.js";
+import { CommandBus, QueryBus } from "./utils/infrastructure/cqrs.js";
 import { PinoAdapter } from "./utils/infrastructure/observability/pino.adapter.js";
 import { SafeLogger } from "./utils/infrastructure/observability/safe.logger.js";
 import { SensitiveKeysFilter } from "./utils/infrastructure/observability/sensitive.filter.js";
-import type { IIDGenerator } from "./utils/application/id.generator.js";
-import type { ILogger } from "./utils/kernel/observability/logger.port.js";
-import type {
-  ICommandBus,
-  IQueryBus,
-  ICommandHandler,
-  IQueryHandler,
-  ICommand,
-  IQuery,
-} from "./utils/application/cqrs.js";
-import type { ITransactionManager } from "./utils/application/transaction.manager.js";
-import { CommandBus, QueryBus } from "./utils/infrastructure/cqrs.js";
 import { PrismaTransactionManager } from "./utils/infrastructure/prisma.transaction.manager.js";
+import { UUIDV7Generator } from "./utils/infrastructure/uuidV7.js";
+import type { ILogger } from "./utils/kernel/observability/logger.port.js";
 
 // ── Module types ───────────────────────────
 
@@ -46,10 +46,10 @@ export interface ModuleHandlers {
   queries?: QueryRegistration[];
 }
 
+import * as CommonModule from "./common/common.module.js";
+import * as PlatformModule from "./platform/platform.module.js";
 // Modules
 import * as WalletModule from "./wallet/wallet.module.js";
-import * as PlatformModule from "./platform/platform.module.js";
-import * as CommonModule from "./common/common.module.js";
 
 /**
  * Dependencies holds all injected dependencies for the API.

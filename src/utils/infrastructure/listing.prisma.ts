@@ -86,17 +86,17 @@ function buildKeysetWhere(
 ): Record<string, unknown> {
   const orClauses: Record<string, unknown>[] = [];
 
-  for (let i = 0; i < sort.length; i++) {
+  for (const [i, currentSort] of sort.entries()) {
     const andParts: Record<string, unknown> = {};
 
     // All preceding fields must be equal
-    for (let j = 0; j < i; j++) {
-      andParts[sort[j]!.field] = values[j];
+    for (const [j, sortEntry] of sort.slice(0, i).entries()) {
+      andParts[sortEntry.field] = values[j];
     }
 
     // Current field uses directional comparator
-    const comparator = sort[i]!.direction === "desc" ? "lt" : "gt";
-    andParts[sort[i]!.field] = { [comparator]: values[i] };
+    const comparator = currentSort.direction === "desc" ? "lt" : "gt";
+    andParts[currentSort.field] = { [comparator]: values[i] };
 
     orClauses.push(andParts);
   }

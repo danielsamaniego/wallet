@@ -216,6 +216,20 @@ describe("PrismaHoldReadStore", () => {
       expect(result!.holds).toHaveLength(2);
       expect(result!.next_cursor).toBeTruthy();
     });
+
+    it("Given hasMore is true but items is empty (edge case), When getByWallet is called, Then nextCursor remains null", async () => {
+      // Given — findMany returns 1 row but limit is 0, so hasMore=true and items=[]
+      const { store, hold, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
+      hold.findMany.mockResolvedValue([buildHoldRow()]);
+
+      // When
+      const result = await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing({ limit: 0 }));
+
+      // Then
+      expect(result!.holds).toEqual([]);
+      expect(result!.next_cursor).toBeNull();
+    });
   });
 });
 
@@ -288,6 +302,20 @@ describe("PrismaLedgerEntryReadStore", () => {
       // Then
       expect(result!.ledger_entries).toHaveLength(2);
       expect(result!.next_cursor).toBeTruthy();
+    });
+
+    it("Given hasMore is true but items is empty (edge case), When getByWallet is called, Then nextCursor remains null", async () => {
+      // Given — findMany returns 1 row but limit is 0, so hasMore=true and items=[]
+      const { store, ledgerEntry, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
+      ledgerEntry.findMany.mockResolvedValue([buildLedgerRow()]);
+
+      // When
+      const result = await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing({ limit: 0 }));
+
+      // Then
+      expect(result!.ledger_entries).toEqual([]);
+      expect(result!.next_cursor).toBeNull();
     });
   });
 });
@@ -378,6 +406,20 @@ describe("PrismaTransactionReadStore", () => {
 
       // Then
       expect(result!.transactions[0]!.metadata).toBeNull();
+    });
+
+    it("Given hasMore is true but items is empty (edge case), When getByWallet is called, Then nextCursor remains null", async () => {
+      // Given — findMany returns 1 row but limit is 0, so hasMore=true and items=[]
+      const { store, transaction, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
+      transaction.findMany.mockResolvedValue([buildTransactionRow()]);
+
+      // When
+      const result = await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing({ limit: 0 }));
+
+      // Then
+      expect(result!.transactions).toEqual([]);
+      expect(result!.next_cursor).toBeNull();
     });
   });
 });
