@@ -43,64 +43,134 @@ See `docs/architecture/` for full details.
 
 **Prerequisites:** Node.js 22+, pnpm, Docker
 
-### First time (from scratch)
+### Option A: Everything in Docker (recommended)
+
+One command — starts PostgreSQL + App with hot reload, applies schema, constraints, and seed:
 
 ```bash
-pnpm install          # Install dependencies
-pnpm start:local      # Docker up → wait → schema push → constraints → seed
-pnpm dev              # Start dev server with hot reload (http://localhost:3000)
+pnpm install          # First time only
+pnpm dev:docker       # PostgreSQL :5432 + App :3000 (hot reload)
+```
+
+```bash
+pnpm dev:docker:logs  # Tail app logs
+pnpm dev:docker:down  # Stop everything
+```
+
+### Option B: Only DB in Docker, server local
+
+```bash
+pnpm install          # First time only
+pnpm start:local      # Docker PostgreSQL + schema + constraints + seed
+pnpm dev              # tsx watch on http://localhost:3000
 ```
 
 ### Reset (wipe all data and start fresh)
 
 ```bash
 pnpm reset:local      # docker down -v → full start:local
-pnpm dev
-```
-
-### Code changes (no schema changes)
-
-```bash
-pnpm dev              # tsx watch auto-reloads on file changes
 ```
 
 ### Schema or constraint changes
 
 ```bash
 pnpm db:update        # Push schema → apply constraints → regenerate Prisma client
-                      # Preserves existing data
 ```
 
-### All available scripts
+### Build
+
+```bash
+pnpm build            # tsc → dist/
+pnpm start            # node dist/index.js (requires DB running)
+```
+
+Docker production image:
+
+```bash
+docker build -t wallet-app .
+docker run -p 3000:3000 -e DATABASE_URL=postgresql://... wallet-app
+```
+
+---
+
+## Testing
+
+**670 tests, 100% coverage, BDD style (Given/When/Then).**
+
+| Command | What | Time | Docker? |
+|---------|------|------|---------|
+| `pnpm test` | 581 unit tests | ~2s | No |
+| `pnpm test:watch` | Unit tests in watch mode | — | No |
+| `pnpm test:e2e` | 89 e2e tests (auto-starts Docker) | ~38s | Auto |
+| `pnpm test:coverage` | Unit tests + 100% coverage enforced | ~3s | No |
+| `pnpm test:all` | Unit → E2E sequentially | ~40s | Auto |
+
+E2E tests are fully self-contained — `pnpm test:e2e` starts isolated Docker containers (PostgreSQL `:5433`, App `:3333`), runs tests, and stops them. Dev containers are never touched.
+
+### Docker isolation
+
+| | Dev | Test | Production |
+|---|---|---|---|
+| **Compose** | `docker-compose.dev.yml` | `docker-compose.test.yml` | `Dockerfile` |
+| **Project** | `wallet-dev` | `wallet-test` | — |
+| **PostgreSQL** | `:5432` / `wallet` | `:5433` / `wallet_test` | Managed DB |
+| **App** | `:3000` (hot reload) | `:3333` (built) | `:3000` (built) |
+
+### Test documentation
+
+See `test/docs/` for AI agent and developer testing guides:
+
+- `TESTING_GUIDE.md` — Master guide (TDD workflow, 100% coverage rules, structure)
+- `BDD_STYLE_GUIDE.md` — Given/When/Then naming conventions
+- `E2E_TEST_PATTERNS.md` — 12 security categories, Docker setup, copy-paste templates
+- `DOMAIN_TEST_PATTERNS.md` — Domain entity test templates
+- `USECASE_TEST_PATTERNS.md` — Use case test templates with mocks
+- `MOCK_CATALOG.md` — All available mocks, builders, matchers
+
+---
+
+## All Scripts
 
 ```bash
 # Development
-pnpm dev              # Dev server with hot reload
-pnpm build            # Compile TypeScript
-pnpm start            # Run compiled output (node dist/index.js)
-pnpm test             # Run tests
-pnpm test:watch       # Tests in watch mode
-pnpm lint             # Lint check
-pnpm lint:fix         # Lint fix
-pnpm fmt              # Format code
+pnpm dev              # Local server with hot reload (requires DB running)
+pnpm dev:docker       # Full Docker dev (PostgreSQL + App with hot reload)
+pnpm dev:docker:down  # Stop Docker dev environment
+pnpm dev:docker:logs  # Tail app logs
 
-# Docker (local PostgreSQL)
+# Build
+pnpm build            # Compile TypeScript → dist/
+pnpm start            # Run compiled output (node dist/index.js)
+
+# Testing
+pnpm test             # Unit tests
+pnpm test:watch       # Unit tests in watch mode
+pnpm test:e2e         # E2E tests (Docker auto-start/stop)
+pnpm test:coverage    # Unit tests with 100% coverage enforcement
+pnpm test:all         # Unit → E2E sequentially
+
+# Code quality
+pnpm lint             # Lint check (Biome)
+pnpm lint:fix         # Lint fix
+pnpm fmt              # Format code (Biome)
+
+# Docker (DB only)
 pnpm docker:up        # Start PostgreSQL container
 pnpm docker:down      # Stop PostgreSQL container
 pnpm docker:logs      # Tail container logs
 pnpm docker:wait      # Wait until PostgreSQL is ready
 
 # Database
-pnpm db:push          # Sync schema.prisma → database (no migration history)
-pnpm db:migrate       # Create and apply Prisma migration (auditable)
+pnpm db:push          # Sync schema.prisma → database
+pnpm db:migrate       # Create and apply Prisma migration
 pnpm db:generate      # Regenerate Prisma client
 pnpm db:seed          # Seed test platform + API key
-pnpm db:constraints   # Apply immutable ledger trigger + CHECK constraints
-pnpm db:update        # db:push + db:constraints + db:generate (preserves data)
+pnpm db:constraints   # Apply immutable ledger constraints
+pnpm db:update        # db:push + db:constraints + db:generate
 pnpm db:studio        # Open Prisma Studio GUI
 
 # Composite
-pnpm start:local      # Full local setup (docker + schema + constraints + seed)
+pnpm start:local      # Docker PostgreSQL + schema + constraints + seed
 pnpm reset:local      # Nuclear reset (docker down -v + start:local)
 ```
 
