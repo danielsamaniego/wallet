@@ -4,6 +4,16 @@ Instructions for AI coding agents (Cursor, Codex, etc.) working on the Wallet Se
 
 ---
 
+## Canonical AI Instructions
+
+`AGENTS.md` is the canonical project instruction file for shared AI guidance.
+
+- `CLAUDE.md` exists only as a compatibility wrapper for Claude Code and imports this file.
+- Do not duplicate these instructions in `.cursor/rules/` unless a Cursor-only capability truly requires it.
+- When updating agent guidance, update `AGENTS.md` first and keep wrappers minimal.
+
+---
+
 ## Context Loading (Critical)
 
 **At the start of any task**, read the relevant files from `docs/` before implementing:

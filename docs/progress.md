@@ -40,7 +40,7 @@
 - [x] Composite indexes for common filter+sort patterns (Transaction, LedgerEntry)
 - [x] Full documentation set
 - [x] AGENTS.md
-- [x] .cursor/rules/wallet-context.mdc
+- [x] CLAUDE.md importing `AGENTS.md`
 
 ## Implemented
 

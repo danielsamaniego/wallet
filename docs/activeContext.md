@@ -21,6 +21,7 @@ Wallet bounded context fully implemented and audited. Major architectural refact
 - Docker Compose (PostgreSQL 16 for local dev), Dockerfile
 - pnpm scripts for all workflows: `start:local`, `reset:local`, `db:update`, `dev`
 - Full documentation set + concurrency audit
+- AI agent instructions unified around `AGENTS.md`; `CLAUDE.md` imports it and the dedicated Cursor rule was removed to avoid duplicated guidance
 - Auto-generated OpenAPI 3.1 spec (hono-openapi) + interactive Scalar UI at `/docs`
 - All 13 endpoints documented with `describeRoute()` (tags, summary, response schemas)
 - Dedicated e2e coverage for balance adjustments endpoint (`POST /v1/wallets/:walletId/adjust`) across auth, validation, idempotency, cross-tenant, concurrency, and ledger integrity scenarios

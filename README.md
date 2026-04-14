@@ -262,6 +262,7 @@ Documentation is auto-generated from Zod schemas and `describeRoute()` metadata 
 - `docs/datamodel.md` — Data model and entities
 - `docs/architecture/` — Architecture, patterns, tech context, migrations
 - `AGENTS.md` — AI agent instructions and conventions
+- `CLAUDE.md` — Claude Code wrapper that imports `AGENTS.md`
 
 ## License
 
