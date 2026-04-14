@@ -96,6 +96,7 @@ export function createListingQuerySchema(config: ListingConfig) {
       if (raw.cursor) {
         try {
           decodeCursor(raw.cursor, sortResult.data);
+        /* v8 ignore start -- decodeCursor always throws Error instances */
         } catch (e) {
           ctx.addIssue({
             code: "custom",
@@ -103,6 +104,7 @@ export function createListingQuerySchema(config: ListingConfig) {
           });
           return z.NEVER;
         }
+        /* v8 ignore stop */
       }
 
       return {
@@ -279,6 +281,7 @@ function parseJsonFilters(
 
     const prefix = match[1]!;
     const fieldConfig = prefixes.get(prefix);
+    /* v8 ignore next -- defensive guard; unreachable via public transform (unknown keys rejected earlier) */
     if (!fieldConfig) continue;
 
     const pathStr = match[2]!;

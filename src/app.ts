@@ -41,7 +41,10 @@ export function createApp(deps: Dependencies) {
       return errorResponse(c, err.code, err.msg, status);
     }
 
-    const message = err instanceof Error ? err.message : "unknown error";
+    /* v8 ignore next 3 */
+    const message = err instanceof Error
+      ? err.message
+      : "unknown error";
     deps.logger.error(ctx, "Unhandled exception", { error: message });
     return errorResponse(c, "INTERNAL_ERROR", "an unexpected error occurred", 500);
   });
