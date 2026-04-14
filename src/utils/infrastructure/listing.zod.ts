@@ -12,6 +12,11 @@ import type {
 } from "../kernel/listing.js";
 import { decodeCursor } from "../kernel/listing.js";
 
+/** Safely extracts a message from an unknown caught value, falling back to a default. */
+export function safeErrorMessage(e: unknown, fallback: string): string {
+  return e instanceof Error ? e.message : fallback;
+}
+
 // ── Schema Factory ──────────────────────────────────────────────────────────
 
 /**
@@ -101,15 +106,13 @@ export function createListingQuerySchema(config: ListingConfig) {
       if (raw.cursor) {
         try {
           decodeCursor(raw.cursor, sortResult.data);
-          /* v8 ignore start -- decodeCursor always throws Error instances */
         } catch (e) {
           ctx.addIssue({
             code: "custom",
-            message: e instanceof Error ? e.message : "INVALID_CURSOR",
+            message: safeErrorMessage(e, "INVALID_CURSOR"),
           });
           return z.NEVER;
         }
-        /* v8 ignore stop */
       }
 
       return {
@@ -273,7 +276,7 @@ function isJsonFilterKey(key: string, prefixes: Map<string, JsonFilterableFieldC
   return parsed !== null && prefixes.has(parsed.prefix);
 }
 
-function parseJsonFilters(
+export function parseJsonFilters(
   raw: Record<string, unknown>,
   prefixes: Map<string, JsonFilterableFieldConfig>,
 ): Result<JsonFilterCondition[]> {
@@ -287,7 +290,6 @@ function parseJsonFilters(
 
     const { prefix, pathStr } = parsed;
     const fieldConfig = prefixes.get(prefix);
-    /* v8 ignore next -- defensive guard; unreachable via public transform (unknown keys rejected earlier) */
     if (!fieldConfig) continue;
 
     const segments = pathStr.split(".");

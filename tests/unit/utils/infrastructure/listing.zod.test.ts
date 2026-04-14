@@ -1,5 +1,5 @@
-import { createListingQuerySchema } from "@/utils/infrastructure/listing.zod.js";
-import type { ListingConfig } from "@/utils/kernel/listing.js";
+import { createListingQuerySchema, safeErrorMessage, parseJsonFilters } from "@/utils/infrastructure/listing.zod.js";
+import type { JsonFilterableFieldConfig, ListingConfig } from "@/utils/kernel/listing.js";
 import { encodeCursor } from "@/utils/kernel/listing.js";
 
 // ── Shared Config Fixtures ─────────────────────────────────────────
@@ -625,5 +625,86 @@ describe("createListingQuerySchema", () => {
         ]);
       });
     });
+  });
+});
+
+// ── safeErrorMessage ──────────────────────────────────────────────────
+
+describe("safeErrorMessage", () => {
+  it("Given an Error instance, When called, Then returns its message", () => {
+    expect(safeErrorMessage(new Error("cursor corrupt"), "FALLBACK")).toBe("cursor corrupt");
+  });
+
+  it("Given a string thrown value, When called, Then returns the fallback", () => {
+    expect(safeErrorMessage("boom", "INVALID_CURSOR")).toBe("INVALID_CURSOR");
+  });
+
+  it("Given null, When called, Then returns the fallback", () => {
+    expect(safeErrorMessage(null, "INVALID_CURSOR")).toBe("INVALID_CURSOR");
+  });
+
+  it("Given undefined, When called, Then returns the fallback", () => {
+    expect(safeErrorMessage(undefined, "INVALID_CURSOR")).toBe("INVALID_CURSOR");
+  });
+
+  it("Given a number, When called, Then returns the fallback", () => {
+    expect(safeErrorMessage(42, "INVALID_CURSOR")).toBe("INVALID_CURSOR");
+  });
+
+  it("Given an object, When called, Then returns the fallback", () => {
+    expect(safeErrorMessage({ code: "ERR" }, "INVALID_CURSOR")).toBe("INVALID_CURSOR");
+  });
+});
+
+// ── parseJsonFilters (defensive guard) ────────────────────────────────
+
+describe("parseJsonFilters", () => {
+  it("Given a key whose prefix is NOT in the prefixes map, When called, Then the key is skipped (defensive guard)", () => {
+    // Build a prefixes map that does NOT contain "unknown"
+    const prefixes = new Map<string, JsonFilterableFieldConfig>([
+      ["metadata", { apiName: "metadata", prismaName: "metadata", maxDepth: 3 }],
+    ]);
+
+    // Pass a raw object with a key that matches the JSON filter regex
+    // but whose prefix ("unknown") is not in the map.
+    const result = parseJsonFilters(
+      { "filter[unknown.key]": "value" },
+      prefixes,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // The unknown-prefix key was silently skipped
+    expect(result.data).toEqual([]);
+  });
+
+  it("Given a key whose prefix IS in the prefixes map, When called, Then it produces a condition", () => {
+    const prefixes = new Map<string, JsonFilterableFieldConfig>([
+      ["metadata", { apiName: "metadata", prismaName: "metadata", maxDepth: 3 }],
+    ]);
+
+    const result = parseJsonFilters(
+      { "filter[metadata.source]": "settlement" },
+      prefixes,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toEqual([
+      { field: "metadata", path: ["source"], value: "settlement" },
+    ]);
+  });
+
+  it("Given an empty prefixes map, When called, Then returns empty data immediately", () => {
+    const prefixes = new Map<string, JsonFilterableFieldConfig>();
+
+    const result = parseJsonFilters(
+      { "filter[metadata.source]": "settlement" },
+      prefixes,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toEqual([]);
   });
 });

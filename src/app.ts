@@ -18,6 +18,11 @@ import { transferRoutes } from "./wallet/infrastructure/adapters/inbound/http/tr
 import { walletRoutes } from "./wallet/infrastructure/adapters/inbound/http/wallets.routes.js";
 import type { Dependencies } from "./wiring.js";
 
+/** Extracts a human-readable message from an unknown thrown value. */
+export function extractErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : "unknown error";
+}
+
 /**
  * Creates the Hono app with all middleware, routes, and error handling.
  * Pure HTTP app — no server, no scheduled jobs, no startup verification.
@@ -40,8 +45,7 @@ export function createApp(deps: Dependencies) {
       return errorResponse(c, err.code, err.msg, status);
     }
 
-    /* v8 ignore next 3 */
-    const message = err instanceof Error ? err.message : "unknown error";
+    const message = extractErrorMessage(err);
     deps.logger.error(ctx, "Unhandled exception", { error: message });
     return errorResponse(c, "INTERNAL_ERROR", "an unexpected error occurred", 500);
   });
