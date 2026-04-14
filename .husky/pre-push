@@ -1,0 +1,2 @@
+echo "🔍 Pre-push: lint + typecheck + unit tests (full src/)..."
+pnpm lint && pnpm tsc --noEmit && pnpm test

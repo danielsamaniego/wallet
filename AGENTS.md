@@ -130,6 +130,49 @@ Before implementing domain logic, business rules, or data structures:
 
 ---
 
+## Git Hooks (Automated Quality Gates)
+
+Two Husky hooks enforce quality automatically — **never bypass them with `--no-verify`**.
+
+### pre-commit (fast, per-file)
+
+Runs **lint-staged** on staged files only:
+
+| Glob | Checks |
+|------|--------|
+| `src/**/*.ts` | `biome check` (lint + format), `check-layer-violations.cjs` |
+| `src/**/domain/**/*.ts` | `check-financial-patterns.cjs` (blocks parseFloat, Number(), float arithmetic on money) |
+| `src/**/application/**/*.ts` | `check-financial-patterns.cjs` |
+
+**What it catches**: lint/format errors and architecture violations in files you changed.
+**What it misses**: errors in files you didn't touch (e.g., a biome rule change that breaks existing files).
+
+### pre-push (full project validation)
+
+Runs on the **entire codebase** before any `git push`:
+
+```bash
+pnpm lint          # biome check src/ — ALL files, not just staged
+pnpm tsc --noEmit  # TypeScript strict check
+pnpm test          # Unit tests with 100% coverage enforcement
+```
+
+**What it catches**: lint regressions in untouched files, type errors from indirect changes, coverage drops.
+**Why it exists**: lint-staged only checks staged files, so errors can accumulate in untouched code and only surface in CI. The pre-push hook is the last local gate before code reaches GitHub.
+
+### When each hook fires
+
+| Action | pre-commit | pre-push |
+|--------|-----------|----------|
+| `git commit` | Runs | — |
+| `git push` | — | Runs |
+| Quick feedback on your changes | Yes | — |
+| Full project validation | — | Yes |
+
+If pre-push fails, fix the issues before pushing. **Do not use `--no-verify`** — it defeats the purpose.
+
+---
+
 ## Testing (MANDATORY — Read Before Any Code Change)
 
 > **Every code change MUST include tests. No exceptions.**
