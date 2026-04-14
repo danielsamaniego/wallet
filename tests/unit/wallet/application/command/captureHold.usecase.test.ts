@@ -79,7 +79,7 @@ describe("CaptureHoldUseCase", () => {
         holdRepo.findById.mockResolvedValue(hold);
         walletRepo.findById.mockResolvedValue(wallet);
         walletRepo.findSystemWallet.mockResolvedValue(systemWallet);
-        holdRepo.save.mockResolvedValue(undefined);
+        holdRepo.transitionStatus.mockResolvedValue(undefined);
         walletRepo.save.mockResolvedValue(undefined);
         walletRepo.adjustSystemWalletBalance.mockResolvedValue(undefined);
         transactionRepo.save.mockResolvedValue(undefined);
@@ -91,7 +91,7 @@ describe("CaptureHoldUseCase", () => {
 
         expect(result).toEqual({ transactionId: TX_ID, movementId: MOVEMENT_ID });
 
-        // Hold should have been captured
+        // Hold should have been captured (domain mutation)
         expect(hold.status).toBe("captured");
 
         // Wallet balance should have been debited
@@ -99,7 +99,7 @@ describe("CaptureHoldUseCase", () => {
 
         // All repos should have been called
         expect(movementRepo.save).toHaveBeenCalledOnce();
-        expect(holdRepo.save).toHaveBeenCalledOnce();
+        expect(holdRepo.transitionStatus).toHaveBeenCalledOnce();
         expect(walletRepo.save).toHaveBeenCalledOnce();
         expect(walletRepo.adjustSystemWalletBalance).toHaveBeenCalledOnce();
         expect(transactionRepo.save).toHaveBeenCalledOnce();
@@ -154,7 +154,7 @@ describe("CaptureHoldUseCase", () => {
         holdRepo.findById.mockResolvedValue(hold);
         walletRepo.findById.mockResolvedValue(wallet);
         walletRepo.findSystemWallet.mockResolvedValue(systemWallet);
-        holdRepo.save.mockResolvedValue(undefined);
+        holdRepo.transitionStatus.mockResolvedValue(undefined);
 
         const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
 
@@ -162,8 +162,8 @@ describe("CaptureHoldUseCase", () => {
           return AppError.is(err) && err.kind === ErrorKind.DomainRule && err.code === "HOLD_EXPIRED";
         });
 
-        // Hold should be saved as expired
-        expect(holdRepo.save).toHaveBeenCalledOnce();
+        // Hold should be transitioned to expired
+        expect(holdRepo.transitionStatus).toHaveBeenCalledOnce();
         expect(hold.status).toBe("expired");
 
         // Transaction should NOT have been created

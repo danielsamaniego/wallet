@@ -1,11 +1,11 @@
 import { serve } from "@hono/node-server";
 import type { PrismaClient } from "@prisma/client";
-import { loadConfig } from "./config.js";
-import { wire } from "./wiring.js";
 import { createApp } from "./app.js";
-import { startScheduledJobs } from "./utils/infrastructure/scheduler.js";
 import { idempotencyJobs } from "./common/idempotency/infrastructure/adapters/inbound/scheduler/jobs.js";
+import { loadConfig } from "./config.js";
+import { startScheduledJobs } from "./utils/infrastructure/scheduler.js";
 import { walletJobs } from "./wallet/infrastructure/adapters/inbound/scheduler/jobs.js";
+import { wire } from "./wiring.js";
 
 /**
  * Verifies that critical DB safety nets (triggers, constraints) exist.
@@ -15,12 +15,28 @@ import { walletJobs } from "./wallet/infrastructure/adapters/inbound/scheduler/j
 async function verifyDatabaseSafetyNets(prisma: PrismaClient): Promise<void> {
   const triggers = await prisma.$queryRaw<{ tgname: string }[]>`
     SELECT tgname FROM pg_trigger
-    WHERE tgname IN ('ledger_entries_immutable', 'transactions_immutable', 'movements_immutable')`;
+    WHERE tgname IN (
+      'ledger_entries_immutable', 'transactions_immutable', 'movements_immutable',
+      'trg_ledger_chain_validation',
+      'trg_reconcile_after_ledger',
+      'trg_wallet_field_lock',
+      'trg_prevent_wallet_deletion',
+      'trg_wallet_status_machine',
+      'trg_hold_status_machine',
+      'trg_movement_zero_sum'
+    )`;
 
   const expectedTriggers = [
     "ledger_entries_immutable",
     "transactions_immutable",
     "movements_immutable",
+    "trg_ledger_chain_validation",
+    "trg_reconcile_after_ledger",
+    "trg_wallet_field_lock",
+    "trg_prevent_wallet_deletion",
+    "trg_wallet_status_machine",
+    "trg_hold_status_machine",
+    "trg_movement_zero_sum",
   ];
   const foundTriggers = triggers.map((t) => t.tgname);
   const missingTriggers = expectedTriggers.filter((name) => !foundTriggers.includes(name));

@@ -8,3 +8,6 @@ export const ErrHoldNotActive = (holdId: string) =>
 
 export const ErrHoldExpired = (holdId: string) =>
   AppError.domainRule("HOLD_EXPIRED", `hold ${holdId} has expired`);
+
+export const ErrHoldStatusChanged = (holdId: string) =>
+  AppError.conflict("HOLD_STATUS_CHANGED", `hold ${holdId} status changed concurrently`);

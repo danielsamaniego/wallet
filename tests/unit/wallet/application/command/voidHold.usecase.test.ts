@@ -47,7 +47,7 @@ describe("VoidHoldUseCase", () => {
         holdRepo.findById.mockResolvedValue(hold);
         walletRepo.findById.mockResolvedValue(wallet);
         walletRepo.save.mockResolvedValue(undefined);
-        holdRepo.save.mockResolvedValue(undefined);
+        holdRepo.transitionStatus.mockResolvedValue(undefined);
 
         const cmd = new VoidHoldCommand(HOLD_ID, PLATFORM_ID);
         await useCase.handle(ctx, cmd);
@@ -56,7 +56,7 @@ describe("VoidHoldUseCase", () => {
         expect(wallet.version).toBe(2); // touchForHoldChange bumps version
 
         expect(walletRepo.save).toHaveBeenCalledOnce();
-        expect(holdRepo.save).toHaveBeenCalledOnce();
+        expect(holdRepo.transitionStatus).toHaveBeenCalledOnce();
       });
     });
   });
@@ -79,7 +79,7 @@ describe("VoidHoldUseCase", () => {
 
         holdRepo.findById.mockResolvedValue(hold);
         walletRepo.findById.mockResolvedValue(wallet);
-        holdRepo.save.mockResolvedValue(undefined);
+        holdRepo.transitionStatus.mockResolvedValue(undefined);
 
         const cmd = new VoidHoldCommand(HOLD_ID, PLATFORM_ID);
 
@@ -87,8 +87,8 @@ describe("VoidHoldUseCase", () => {
           return AppError.is(err) && err.kind === ErrorKind.DomainRule && err.code === "HOLD_EXPIRED";
         });
 
-        // Hold should be saved as expired
-        expect(holdRepo.save).toHaveBeenCalledOnce();
+        // Hold should be transitioned to expired
+        expect(holdRepo.transitionStatus).toHaveBeenCalledOnce();
         expect(hold.status).toBe("expired");
 
         // Wallet should NOT have been saved (we threw before that)

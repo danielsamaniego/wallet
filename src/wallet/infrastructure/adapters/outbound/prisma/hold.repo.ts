@@ -3,6 +3,7 @@ import type { AppContext } from "../../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
 import type { HoldStatus } from "../../../../domain/hold/hold.entity.js";
 import { Hold } from "../../../../domain/hold/hold.entity.js";
+import { ErrHoldStatusChanged } from "../../../../domain/hold/hold.errors.js";
 import type { IHoldRepository } from "../../../../domain/ports/hold.repository.js";
 
 type PrismaTransactionClient = Omit<
@@ -36,6 +37,27 @@ export class PrismaHoldRepo implements IHoldRepository {
       },
       update: { status: hold.status, updatedAt: BigInt(hold.updatedAt) },
     });
+  }
+
+  async transitionStatus(
+    ctx: AppContext,
+    holdId: string,
+    fromStatus: HoldStatus,
+    toStatus: HoldStatus,
+    now: number,
+  ): Promise<void> {
+    this.logger.debug(ctx, "HoldRepo | transitionStatus", {
+      hold_id: holdId,
+      from: fromStatus,
+      to: toStatus,
+    });
+    const result = await this.client(ctx).hold.updateMany({
+      where: { id: holdId, status: fromStatus },
+      data: { status: toStatus, updatedAt: BigInt(now) },
+    });
+    if (result.count === 0) {
+      throw ErrHoldStatusChanged(holdId);
+    }
   }
 
   async findById(ctx: AppContext, holdId: string): Promise<Hold | null> {

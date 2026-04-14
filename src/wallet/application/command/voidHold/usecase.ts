@@ -1,9 +1,9 @@
-import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ICommandHandler } from "../../../../utils/application/cqrs.js";
+import type { ITransactionManager } from "../../../../utils/application/transaction.manager.js";
+import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
 import { ErrHoldExpired, ErrHoldNotFound } from "../../../domain/hold/hold.errors.js";
 import type { IHoldRepository } from "../../../domain/ports/hold.repository.js";
-import type { ITransactionManager } from "../../../../utils/application/transaction.manager.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import type { VoidHoldCommand } from "./command.js";
 
@@ -49,7 +49,11 @@ export class VoidHoldUseCase implements ICommandHandler<VoidHoldCommand, void> {
           expires_at: hold.expiresAt,
         });
         hold.expire(now);
-        await this.holdRepo.save(txCtx, hold);
+        try {
+          await this.holdRepo.transitionStatus(txCtx, hold.id, "active", "expired", now);
+        } catch {
+          /* already expired/changed by another process — that's fine */
+        }
         throw ErrHoldExpired(cmd.holdId);
       }
 
@@ -60,7 +64,7 @@ export class VoidHoldUseCase implements ICommandHandler<VoidHoldCommand, void> {
       wallet.touchForHoldChange(now); // Just update the updatedAt timestamp.
 
       await this.walletRepo.save(txCtx, wallet); // If version mismatch, the save will fail with VERSION_CONFLICT.
-      await this.holdRepo.save(txCtx, hold);
+      await this.holdRepo.transitionStatus(txCtx, hold.id, "active", "voided", now);
     });
 
     this.logger.info(ctx, `${methodLogTag} hold voided`, { hold_id: cmd.holdId });

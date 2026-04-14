@@ -1,6 +1,7 @@
-import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ICommandHandler } from "../../../../utils/application/cqrs.js";
 import type { IIDGenerator } from "../../../../utils/application/id.generator.js";
+import type { ITransactionManager } from "../../../../utils/application/transaction.manager.js";
+import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
 import { ErrHoldExpired, ErrHoldNotFound } from "../../../domain/hold/hold.errors.js";
 import { LedgerEntry } from "../../../domain/ledgerEntry/ledgerEntry.entity.js";
@@ -8,7 +9,6 @@ import { Movement } from "../../../domain/movement/movement.entity.js";
 import type { IHoldRepository } from "../../../domain/ports/hold.repository.js";
 import type { ILedgerEntryRepository } from "../../../domain/ports/ledgerEntry.repository.js";
 import type { IMovementRepository } from "../../../domain/ports/movement.repository.js";
-import type { ITransactionManager } from "../../../../utils/application/transaction.manager.js";
 import type { ITransactionRepository } from "../../../domain/ports/transaction.repository.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { Transaction } from "../../../domain/transaction/transaction.entity.js";
@@ -84,7 +84,11 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
           expires_at: hold.expiresAt,
         });
         hold.expire(now);
-        await this.holdRepo.save(txCtx, hold);
+        try {
+          await this.holdRepo.transitionStatus(txCtx, hold.id, "active", "expired", now);
+        } catch {
+          /* already expired/changed by another process — that's fine */
+        }
         throw ErrHoldExpired(cmd.holdId);
       }
 
@@ -139,7 +143,7 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
 
       // Persist (movement first — FK constraint)
       await this.movementRepo.save(txCtx, movement);
-      await this.holdRepo.save(txCtx, hold);
+      await this.holdRepo.transitionStatus(txCtx, hold.id, "active", "captured", now);
       await this.walletRepo.save(txCtx, wallet);
       await this.walletRepo.adjustSystemWalletBalance(
         txCtx,
