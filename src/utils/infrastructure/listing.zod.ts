@@ -12,11 +12,6 @@ import type {
 } from "../kernel/listing.js";
 import { decodeCursor } from "../kernel/listing.js";
 
-/** Safely extracts a message from an unknown caught value, falling back to a default. */
-export function safeErrorMessage(e: unknown, fallback: string): string {
-  return e instanceof Error ? e.message : fallback;
-}
-
 // ── Schema Factory ──────────────────────────────────────────────────────────
 
 /**
@@ -109,7 +104,7 @@ export function createListingQuerySchema(config: ListingConfig) {
         } catch (e) {
           ctx.addIssue({
             code: "custom",
-            message: safeErrorMessage(e, "INVALID_CURSOR"),
+            message: (e as Error).message,
           });
           return z.NEVER;
         }

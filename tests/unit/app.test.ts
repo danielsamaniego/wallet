@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createApp, extractErrorMessage } from "@/app.js";
+import { createApp } from "@/app.js";
 import { AppError, ErrorKind } from "@/utils/kernel/appError.js";
 import type { Dependencies } from "@/wiring.js";
 import { createMockLogger, createMockIDGenerator } from "@test/helpers/mocks/index.js";
@@ -324,30 +324,3 @@ describe("createApp", () => {
   });
 });
 
-// ── extractErrorMessage ────────────────────────────────────────────────
-
-describe("extractErrorMessage", () => {
-  it("Given an Error instance, When called, Then returns its message", () => {
-    expect(extractErrorMessage(new Error("db timeout"))).toBe("db timeout");
-  });
-
-  it("Given a string thrown value, When called, Then returns 'unknown error'", () => {
-    expect(extractErrorMessage("some string")).toBe("unknown error");
-  });
-
-  it("Given a number thrown value, When called, Then returns 'unknown error'", () => {
-    expect(extractErrorMessage(42)).toBe("unknown error");
-  });
-
-  it("Given null, When called, Then returns 'unknown error'", () => {
-    expect(extractErrorMessage(null)).toBe("unknown error");
-  });
-
-  it("Given undefined, When called, Then returns 'unknown error'", () => {
-    expect(extractErrorMessage(undefined)).toBe("unknown error");
-  });
-
-  it("Given a plain object, When called, Then returns 'unknown error'", () => {
-    expect(extractErrorMessage({ code: "FAIL" })).toBe("unknown error");
-  });
-});

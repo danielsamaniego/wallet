@@ -1,4 +1,4 @@
-import { createListingQuerySchema, safeErrorMessage, parseJsonFilters } from "@/utils/infrastructure/listing.zod.js";
+import { createListingQuerySchema, parseJsonFilters } from "@/utils/infrastructure/listing.zod.js";
 import type { JsonFilterableFieldConfig, ListingConfig } from "@/utils/kernel/listing.js";
 import { encodeCursor } from "@/utils/kernel/listing.js";
 
@@ -625,34 +625,6 @@ describe("createListingQuerySchema", () => {
         ]);
       });
     });
-  });
-});
-
-// ── safeErrorMessage ──────────────────────────────────────────────────
-
-describe("safeErrorMessage", () => {
-  it("Given an Error instance, When called, Then returns its message", () => {
-    expect(safeErrorMessage(new Error("cursor corrupt"), "FALLBACK")).toBe("cursor corrupt");
-  });
-
-  it("Given a string thrown value, When called, Then returns the fallback", () => {
-    expect(safeErrorMessage("boom", "INVALID_CURSOR")).toBe("INVALID_CURSOR");
-  });
-
-  it("Given null, When called, Then returns the fallback", () => {
-    expect(safeErrorMessage(null, "INVALID_CURSOR")).toBe("INVALID_CURSOR");
-  });
-
-  it("Given undefined, When called, Then returns the fallback", () => {
-    expect(safeErrorMessage(undefined, "INVALID_CURSOR")).toBe("INVALID_CURSOR");
-  });
-
-  it("Given a number, When called, Then returns the fallback", () => {
-    expect(safeErrorMessage(42, "INVALID_CURSOR")).toBe("INVALID_CURSOR");
-  });
-
-  it("Given an object, When called, Then returns the fallback", () => {
-    expect(safeErrorMessage({ code: "ERR" }, "INVALID_CURSOR")).toBe("INVALID_CURSOR");
   });
 });
 
