@@ -35,6 +35,8 @@ import { GetWalletQuery } from "./application/query/getWallet/query.js";
 import { GetWalletUseCase } from "./application/query/getWallet/usecase.js";
 import { ListHoldsQuery } from "./application/query/listHolds/query.js";
 import { ListHoldsUseCase } from "./application/query/listHolds/usecase.js";
+import { ListWalletsQuery } from "./application/query/listWallets/query.js";
+import { ListWalletsUseCase } from "./application/query/listWallets/usecase.js";
 // Repos
 import { PrismaHoldReadStore } from "./infrastructure/adapters/outbound/prisma/hold.readstore.js";
 import { PrismaHoldRepo } from "./infrastructure/adapters/outbound/prisma/hold.repo.js";
@@ -93,6 +95,7 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
   const unfreezeWallet = new UnfreezeWalletUseCase(txManager, walletRepo, logger);
   const closeWallet = new CloseWalletUseCase(txManager, walletRepo, holdRepo, logger);
   const getWallet = new GetWalletUseCase(walletReadStore, logger);
+  const listWallets = new ListWalletsUseCase(walletReadStore, logger);
   const getHold = new GetHoldUseCase(holdReadStore, logger);
   const listHolds = new ListHoldsUseCase(holdReadStore, logger);
   const getTransactions = new GetTransactionsUseCase(transactionReadStore, logger);
@@ -138,6 +141,7 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
     ],
     queries: [
       { type: GetWalletQuery.TYPE, handler: getWallet },
+      { type: ListWalletsQuery.TYPE, handler: listWallets },
       { type: GetHoldQuery.TYPE, handler: getHold },
       { type: ListHoldsQuery.TYPE, handler: listHolds },
       { type: GetTransactionsQuery.TYPE, handler: getTransactions },

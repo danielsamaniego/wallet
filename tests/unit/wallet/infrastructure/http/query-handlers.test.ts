@@ -9,6 +9,7 @@ import { getLedgerEntriesRoute } from "@/wallet/infrastructure/adapters/inbound/
 import { getTransactionsRoute } from "@/wallet/infrastructure/adapters/inbound/http/getTransactions/handler.js";
 import { listCurrenciesRoute } from "@/wallet/infrastructure/adapters/inbound/http/listCurrencies/handler.js";
 import { listHoldsRoute } from "@/wallet/infrastructure/adapters/inbound/http/listHolds/handler.js";
+import { listWalletsRoute } from "@/wallet/infrastructure/adapters/inbound/http/listWallets/handler.js";
 
 /**
  * Builds a minimal Hono app with tracking context that mounts the given route handlers.
@@ -143,6 +144,61 @@ describe("Wallet query HTTP handlers", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.holds).toEqual([]);
+      expect(queryBus.dispatch).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ── listWallets ────────────────────────────────────────────────
+  describe("listWalletsRoute", () => {
+    it("Given no query params, When GET is called, Then it dispatches ListWalletsQuery and returns 200", async () => {
+      const queryBus: IQueryBus = {
+        dispatch: vi.fn().mockResolvedValue({
+          wallets: [],
+          next_cursor: null,
+        }),
+      };
+
+      const handlers = listWalletsRoute(queryBus);
+      const app = buildApp("/wallets", handlers);
+
+      const res = await app.request("/wallets");
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.wallets).toEqual([]);
+      expect(queryBus.dispatch).toHaveBeenCalledOnce();
+    });
+
+    it("Given an owner_id filter, When GET is called, Then it dispatches ListWalletsQuery with the filter", async () => {
+      const queryBus: IQueryBus = {
+        dispatch: vi.fn().mockResolvedValue({
+          wallets: [
+            {
+              id: "wallet-1",
+              owner_id: "owner-1",
+              platform_id: "platform-1",
+              currency_code: "USD",
+              balance_minor: 1000,
+              available_balance_minor: 1000,
+              status: "active",
+              is_system: false,
+              created_at: 1700000000000,
+              updated_at: 1700000000000,
+            },
+          ],
+          next_cursor: null,
+        }),
+      };
+
+      const handlers = listWalletsRoute(queryBus);
+      const app = buildApp("/wallets", handlers);
+
+      const res = await app.request("/wallets?filter%5Bowner_id%5D=owner-1&filter%5Bcurrency_code%5D=USD");
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.wallets).toHaveLength(1);
+      expect(body.wallets[0].owner_id).toBe("owner-1");
       expect(queryBus.dispatch).toHaveBeenCalledOnce();
     });
   });

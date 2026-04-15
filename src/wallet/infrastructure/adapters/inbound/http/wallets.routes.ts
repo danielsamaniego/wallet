@@ -11,6 +11,7 @@ import { freezeWalletRoute } from "./freezeWallet/handler.js";
 import { getLedgerEntriesRoute } from "./getLedgerEntries/handler.js";
 import { getTransactionsRoute } from "./getTransactions/handler.js";
 import { getWalletRoute } from "./getWallet/handler.js";
+import { listWalletsRoute } from "./listWallets/handler.js";
 import { unfreezeWalletRoute } from "./unfreezeWallet/handler.js";
 import { withdrawRoute } from "./withdraw/handler.js";
 
@@ -29,6 +30,7 @@ export function walletRoutes(deps: Dependencies) {
   router.post("/:walletId/close", auth, ...closeWalletRoute(deps.commandBus));
 
   // Queries
+  router.get("/", auth, ...listWalletsRoute(deps.queryBus));
   router.get("/:walletId", auth, ...getWalletRoute(deps.queryBus));
   router.get("/:walletId/transactions", auth, ...getTransactionsRoute(deps.queryBus));
   router.get("/:walletId/ledger", auth, ...getLedgerEntriesRoute(deps.queryBus));

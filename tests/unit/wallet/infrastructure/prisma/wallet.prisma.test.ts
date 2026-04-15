@@ -1199,7 +1199,7 @@ describe("PrismaWalletReadStore", () => {
   const ctx = createTestContext();
 
   function buildReadStore() {
-    const wallet = { findFirst: vi.fn() };
+    const wallet = { findFirst: vi.fn(), findMany: vi.fn() };
     const hold = { aggregate: vi.fn() };
     const prisma = { wallet, hold } as any;
     const logger = createMockLogger();
@@ -1294,6 +1294,86 @@ describe("PrismaWalletReadStore", () => {
       expect(result).not.toBeNull();
       expect(result!.balance_minor).toBe(5000);
       expect(result!.available_balance_minor).toBe(5000);
+    });
+  });
+
+  // ── list ─────────────────────────────────────────────────────
+
+  describe("list — returns paginated wallets", () => {
+    it("Given wallets exist for the platform, When list is called, Then returns paginated DTOs", async () => {
+      const { store, wallet, hold } = buildReadStore();
+
+      const walletRow = {
+        id: "wallet-1",
+        ownerId: "owner-1",
+        platformId: "platform-1",
+        currencyCode: "USD",
+        cachedBalanceMinor: 10000n,
+        status: "active",
+        isSystem: false,
+        createdAt: 1700000000000n,
+        updatedAt: 1700000000000n,
+      };
+      wallet.findMany.mockResolvedValue([walletRow]);
+      hold.aggregate.mockResolvedValue({ _sum: { amountMinor: null } });
+
+      const listing: ListingQuery = {
+        filters: [],
+        sort: [{ field: "createdAt", direction: "desc" }],
+        limit: 50,
+      };
+
+      const result = await store.list(ctx, "platform-1", listing);
+
+      expect(result.wallets).toHaveLength(1);
+      expect(result.wallets[0]!.id).toBe("wallet-1");
+      expect(result.wallets[0]!.owner_id).toBe("owner-1");
+      expect(result.wallets[0]!.balance_minor).toBe(10000);
+      expect(result.next_cursor).toBeNull();
+    });
+  });
+
+  describe("list — empty result", () => {
+    it("Given no wallets exist for the platform, When list is called, Then returns empty array", async () => {
+      const { store, wallet } = buildReadStore();
+      wallet.findMany.mockResolvedValue([]);
+
+      const listing: ListingQuery = {
+        filters: [],
+        sort: [{ field: "createdAt", direction: "desc" }],
+        limit: 50,
+      };
+
+      const result = await store.list(ctx, "platform-1", listing);
+
+      expect(result.wallets).toEqual([]);
+      expect(result.next_cursor).toBeNull();
+    });
+  });
+
+  describe("list — has more results", () => {
+    it("Given more wallets than limit, When list is called, Then returns next_cursor", async () => {
+      const { store, wallet, hold } = buildReadStore();
+
+      const rows = [
+        { id: "w-1", ownerId: "o-1", platformId: "p-1", currencyCode: "USD", cachedBalanceMinor: 100n, status: "active", isSystem: false, createdAt: 1700000002000n, updatedAt: 1700000002000n },
+        { id: "w-2", ownerId: "o-2", platformId: "p-1", currencyCode: "USD", cachedBalanceMinor: 200n, status: "active", isSystem: false, createdAt: 1700000001000n, updatedAt: 1700000001000n },
+        // Extra row triggers hasMore
+        { id: "w-3", ownerId: "o-3", platformId: "p-1", currencyCode: "USD", cachedBalanceMinor: 300n, status: "active", isSystem: false, createdAt: 1700000000000n, updatedAt: 1700000000000n },
+      ];
+      wallet.findMany.mockResolvedValue(rows);
+      hold.aggregate.mockResolvedValue({ _sum: { amountMinor: null } });
+
+      const listing: ListingQuery = {
+        filters: [],
+        sort: [{ field: "createdAt", direction: "desc" }],
+        limit: 2,
+      };
+
+      const result = await store.list(ctx, "p-1", listing);
+
+      expect(result.wallets).toHaveLength(2);
+      expect(result.next_cursor).not.toBeNull();
     });
   });
 });
