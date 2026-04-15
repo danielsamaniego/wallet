@@ -9,6 +9,7 @@ import {
   ErrInsufficientFunds,
   ErrInvalidAmount,
   ErrInvalidCurrency,
+  ErrUnsupportedCurrency,
   ErrCannotFreezeSystemWallet,
   ErrCannotCloseSystemWallet,
   ErrCurrencyMismatch,
@@ -68,6 +69,13 @@ describe("wallet error factories", () => {
     expect(err.kind).toBe(ErrorKind.Validation);
     expect(err.code).toBe("INVALID_CURRENCY");
     expect(err.msg).toContain("XYZ");
+  });
+
+  it("Given a currency code, When ErrUnsupportedCurrency is called, Then returns Validation with UNSUPPORTED_CURRENCY code", () => {
+    const err = ErrUnsupportedCurrency("JPY");
+    expect(err.kind).toBe(ErrorKind.Validation);
+    expect(err.code).toBe("UNSUPPORTED_CURRENCY");
+    expect(err.msg).toContain("JPY");
   });
 
   it("When ErrCannotFreezeSystemWallet is called, Then returns DomainRule with CANNOT_FREEZE_SYSTEM_WALLET code", () => {

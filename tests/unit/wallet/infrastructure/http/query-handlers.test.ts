@@ -7,6 +7,7 @@ import type { IQueryBus } from "@/utils/application/cqrs.js";
 import { getHoldRoute } from "@/wallet/infrastructure/adapters/inbound/http/getHold/handler.js";
 import { getLedgerEntriesRoute } from "@/wallet/infrastructure/adapters/inbound/http/getLedgerEntries/handler.js";
 import { getTransactionsRoute } from "@/wallet/infrastructure/adapters/inbound/http/getTransactions/handler.js";
+import { listCurrenciesRoute } from "@/wallet/infrastructure/adapters/inbound/http/listCurrencies/handler.js";
 import { listHoldsRoute } from "@/wallet/infrastructure/adapters/inbound/http/listHolds/handler.js";
 
 /**
@@ -101,6 +102,26 @@ describe("Wallet query HTTP handlers", () => {
       const body = await res.json();
       expect(body.transactions).toEqual([]);
       expect(queryBus.dispatch).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ── listCurrencies ─────────────────────────────────────────────
+  describe("listCurrenciesRoute", () => {
+    it("Given the currencies endpoint, When GET is called, Then it returns 200 with supported currencies", async () => {
+      const handlers = listCurrenciesRoute();
+      const app = buildApp("/currencies", handlers);
+
+      const res = await app.request("/currencies");
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.currencies).toEqual([
+        { code: "USD", minor_unit: 2 },
+        { code: "EUR", minor_unit: 2 },
+        { code: "MXN", minor_unit: 2 },
+        { code: "CLP", minor_unit: 0 },
+        { code: "KWD", minor_unit: 3 },
+      ]);
     });
   });
 

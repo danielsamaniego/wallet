@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { createTestApp, type TestApp } from "../setup/test-app.js";
-import { getTestPrisma } from "@test/helpers/db.js";
+import { getTestPrisma, TEST_PLATFORM_ID } from "@test/helpers/db.js";
 
 describe("Ledger Integrity E2E", () => {
   let app: TestApp;
@@ -591,6 +591,26 @@ describe("Ledger Integrity E2E", () => {
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
           expect(message).toMatch(/FIELD_LOCK/i);
+        }
+      });
+    });
+  });
+
+  describe("Given the supported currency CHECK constraint", () => {
+    describe("When inserting a wallet with unsupported currency directly via SQL", () => {
+      it("Then the database should reject the insert with a constraint violation", async () => {
+        const prisma = getTestPrisma();
+        const now = BigInt(Date.now());
+
+        try {
+          await prisma.$executeRaw`
+            INSERT INTO wallets (id, owner_id, platform_id, currency_code, cached_balance_cents, status, version, is_system, created_at, updated_at)
+            VALUES ('chk-test-1', 'owner-chk', ${TEST_PLATFORM_ID}, 'JPY', 0, 'active', 1, false, ${now}, ${now})
+          `;
+          expect.fail("INSERT with unsupported currency should have been blocked by CHECK constraint");
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          expect(message).toMatch(/wallets_supported_currency|violates check constraint/i);
         }
       });
     });

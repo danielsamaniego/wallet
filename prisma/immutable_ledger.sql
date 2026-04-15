@@ -244,3 +244,7 @@ ALTER TABLE holds
 ALTER TABLE transactions
   DROP CONSTRAINT IF EXISTS transactions_positive_amount,
   ADD CONSTRAINT transactions_positive_amount CHECK (amount_cents > 0);
+
+ALTER TABLE wallets
+  DROP CONSTRAINT IF EXISTS wallets_supported_currency,
+  ADD CONSTRAINT wallets_supported_currency CHECK (currency_code IN ('USD', 'EUR', 'MXN', 'CLP', 'KWD'));

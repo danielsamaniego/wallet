@@ -30,6 +30,9 @@ export const ErrInvalidAmount = () =>
 export const ErrInvalidCurrency = (code: string) =>
   AppError.validation("INVALID_CURRENCY", `invalid currency code: ${code}`);
 
+export const ErrUnsupportedCurrency = (code: string) =>
+  AppError.validation("UNSUPPORTED_CURRENCY", `unsupported currency: ${code}`);
+
 export const ErrCannotFreezeSystemWallet = () =>
   AppError.domainRule("CANNOT_FREEZE_SYSTEM_WALLET", "system wallets cannot be frozen");
 

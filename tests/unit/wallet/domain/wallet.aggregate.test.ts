@@ -108,6 +108,33 @@ describe("Wallet Aggregate", () => {
         });
       });
     });
+
+    describe("Given a valid-format but unsupported currency code 'JPY'", () => {
+      describe("When creating a wallet", () => {
+        it("Then throws UNSUPPORTED_CURRENCY validation error", () => {
+          expect(() => Wallet.create("w-1", "o-1", "p-1", "JPY", false, NOW))
+            .toThrowAppError(ErrorKind.Validation, "UNSUPPORTED_CURRENCY");
+        });
+      });
+    });
+
+    describe("Given a valid-format but unsupported currency code 'GBP'", () => {
+      describe("When creating a wallet", () => {
+        it("Then throws UNSUPPORTED_CURRENCY validation error", () => {
+          expect(() => Wallet.create("w-1", "o-1", "p-1", "GBP", false, NOW))
+            .toThrowAppError(ErrorKind.Validation, "UNSUPPORTED_CURRENCY");
+        });
+      });
+    });
+
+    describe("Given a valid-format but unsupported currency code 'CHF'", () => {
+      describe("When creating a wallet", () => {
+        it("Then throws UNSUPPORTED_CURRENCY validation error", () => {
+          expect(() => Wallet.create("w-1", "o-1", "p-1", "CHF", false, NOW))
+            .toThrowAppError(ErrorKind.Validation, "UNSUPPORTED_CURRENCY");
+        });
+      });
+    });
   });
 
   // ── deposit ──────────────────────────────────────────────────────────

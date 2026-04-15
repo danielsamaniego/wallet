@@ -121,6 +121,30 @@ describe("Input Validation Attacks E2E", () => {
         expect([400, 422]).toContain(res.status);
       });
     });
+
+    describe("When using a valid-format but unsupported currency code 'JPY'", () => {
+      it("Then it should reject with 400", async () => {
+        const res = await app.request("/v1/wallets", {
+          method: "POST",
+          headers: { "Idempotency-Key": "val-unsupported-jpy-1" },
+          body: JSON.stringify({ owner_id: "user-1", currency_code: "JPY" }),
+        });
+
+        expect(res.status).toBe(400);
+      });
+    });
+
+    describe("When using a valid-format but unsupported currency code 'GBP'", () => {
+      it("Then it should reject with 400", async () => {
+        const res = await app.request("/v1/wallets", {
+          method: "POST",
+          headers: { "Idempotency-Key": "val-unsupported-gbp-1" },
+          body: JSON.stringify({ owner_id: "user-1", currency_code: "GBP" }),
+        });
+
+        expect(res.status).toBe(400);
+      });
+    });
   });
 
   // ── Missing required fields ────────────────────────────────────────────

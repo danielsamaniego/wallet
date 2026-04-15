@@ -438,4 +438,24 @@ describe("Edge Cases E2E", () => {
       });
     });
   });
+
+  // ── GET /v1/currencies ──────────────────────────────────────────────────
+
+  describe("Given the currencies endpoint", () => {
+    describe("When requesting supported currencies", () => {
+      it("Then it returns 200 with all supported currencies", async () => {
+        const res = await app.request("/v1/currencies");
+        expect(res.status).toBe(200);
+
+        const body = await res.json();
+        expect(body.currencies).toEqual([
+          { code: "USD", minor_unit: 2 },
+          { code: "EUR", minor_unit: 2 },
+          { code: "MXN", minor_unit: 2 },
+          { code: "CLP", minor_unit: 0 },
+          { code: "KWD", minor_unit: 3 },
+        ]);
+      });
+    });
+  });
 });

@@ -1,4 +1,6 @@
 import { AppError } from "../../../utils/kernel/appError.js";
+import { isSupportedCurrency } from "../../../utils/kernel/currency.js";
+import { ErrInvalidCurrency, ErrUnsupportedCurrency } from "./wallet.errors.js";
 
 export type WalletStatus = "active" | "frozen" | "closed";
 
@@ -38,7 +40,10 @@ export class Wallet {
   ): Wallet {
     const upper = currencyCode.toUpperCase();
     if (!/^[A-Z]{3}$/.test(upper)) {
-      throw AppError.validation("INVALID_CURRENCY", `invalid currency code: ${currencyCode}`);
+      throw ErrInvalidCurrency(currencyCode);
+    }
+    if (!isSupportedCurrency(upper)) {
+      throw ErrUnsupportedCurrency(upper);
     }
     const w = new Wallet();
     Object.assign(w, {
