@@ -8,21 +8,40 @@ const adapter = new PrismaPg({
 });
 const prisma = new PrismaClient({ adapter });
 
-async function main() {
-  const now = BigInt(Date.now());
+/**
+ * Dev-consumer API key: deterministic credentials for a local integrator app.
+ *
+ * The secret is a well-known dev-only value. Do NOT use this in production.
+ * Override via env vars if you want different credentials for your dev setup.
+ */
+const DEV_CONSUMER_PLATFORM_ID =
+  process.env.DEV_CONSUMER_PLATFORM_ID ?? "019560a0-0000-7000-8000-000000000002";
+const DEV_CONSUMER_PLATFORM_NAME = process.env.DEV_CONSUMER_PLATFORM_NAME ?? "Dev Consumer Platform";
+const DEV_CONSUMER_API_KEY_ID = process.env.DEV_CONSUMER_API_KEY_ID ?? "wk_dev_consumer";
+const DEV_CONSUMER_SECRET =
+  process.env.DEV_CONSUMER_SECRET ?? "dev-consumer-secret-not-for-production-use";
 
-  // Generate API key: <api_key_id>.<secret>
-  const apiKeyId = "wk_test_001";
-  const secret = randomBytes(32).toString("hex");
+async function seedPlatform({
+  id,
+  name,
+  apiKeyId,
+  secret,
+}: {
+  id: string;
+  name: string;
+  apiKeyId: string;
+  secret: string;
+}) {
   const apiKeyHash = createHash("sha256").update(secret).digest("hex");
   const fullApiKey = `${apiKeyId}.${secret}`;
+  const now = BigInt(Date.now());
 
   const platform = await prisma.platform.upsert({
     where: { apiKeyId },
     update: {},
     create: {
-      id: "019560a0-0000-7000-8000-000000000001",
-      name: "Test Platform",
+      id,
+      name,
       apiKeyHash,
       apiKeyId,
       status: "active",
@@ -31,17 +50,52 @@ async function main() {
     },
   });
 
-  console.log("=".repeat(60));
-  console.log("Platform seeded:");
-  console.log(`  ID:   ${platform.id}`);
-  console.log(`  Name: ${platform.name}`);
+  return { platform, fullApiKey };
+}
+
+async function main() {
+  // Platform 1: "Test Platform" with random credentials (for quick manual testing)
+  const testApiKeyId = "wk_test_001";
+  const testSecret = randomBytes(32).toString("hex");
+  const { platform: testPlatform, fullApiKey: testApiKey } = await seedPlatform({
+    id: "019560a0-0000-7000-8000-000000000001",
+    name: "Test Platform",
+    apiKeyId: testApiKeyId,
+    secret: testSecret,
+  });
+
+  console.log("=".repeat(70));
+  console.log("Platform seeded: Test Platform (random credentials per run)");
+  console.log(`  ID:   ${testPlatform.id}`);
+  console.log(`  Name: ${testPlatform.name}`);
   console.log("");
-  console.log("API Key (save this — shown only once):");
-  console.log(`  ${fullApiKey}`);
+  console.log("  API Key (save this — shown only once):");
+  console.log(`  ${testApiKey}`);
+  console.log("=".repeat(70));
+
+  // Platform 2: "Dev Consumer Platform" with DETERMINISTIC credentials
+  // so a local consumer app (a service that integrates this Wallet) can
+  // reference stable credentials in its own .env.local.
+  const { platform: devPlatform, fullApiKey: devApiKey } = await seedPlatform({
+    id: DEV_CONSUMER_PLATFORM_ID,
+    name: DEV_CONSUMER_PLATFORM_NAME,
+    apiKeyId: DEV_CONSUMER_API_KEY_ID,
+    secret: DEV_CONSUMER_SECRET,
+  });
+
   console.log("");
-  console.log("Usage:");
-  console.log(`  curl -H "X-API-Key: ${fullApiKey}" http://localhost:3000/health`);
-  console.log("=".repeat(60));
+  console.log("=".repeat(70));
+  console.log(`Platform seeded: ${devPlatform.name} (deterministic credentials)`);
+  console.log(`  ID:   ${devPlatform.id}`);
+  console.log(`  Name: ${devPlatform.name}`);
+  console.log("");
+  console.log("  API Key (stable across re-seeds — DEV ONLY):");
+  console.log(`  ${devApiKey}`);
+  console.log("");
+  console.log("  Use in your local consumer app as:");
+  console.log(`    WALLET_SERVICE_URL=http://localhost:3000`);
+  console.log(`    WALLET_SERVICE_API_KEY=${devApiKey}`);
+  console.log("=".repeat(70));
 }
 
 main()
