@@ -26,7 +26,7 @@ describe("Input Validation Attacks E2E", () => {
     const depositRes = await app.request(`/v1/wallets/${walletId}/deposit`, {
       method: "POST",
       headers: { "Idempotency-Key": `input-val-deposit-${Date.now()}` },
-      body: JSON.stringify({ amount_cents: 100000 }),
+      body: JSON.stringify({ amount_minor: 100000 }),
     });
     expect(depositRes.status).toBe(201);
   });
@@ -39,7 +39,7 @@ describe("Input Validation Attacks E2E", () => {
         const res = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": "val-negative-deposit-1" },
-          body: JSON.stringify({ amount_cents: -500 }),
+          body: JSON.stringify({ amount_minor: -500 }),
         });
 
         expect([400, 422]).toContain(res.status);
@@ -51,7 +51,7 @@ describe("Input Validation Attacks E2E", () => {
         const res = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": "val-zero-deposit-1" },
-          body: JSON.stringify({ amount_cents: 0 }),
+          body: JSON.stringify({ amount_minor: 0 }),
         });
 
         expect([400, 422]).toContain(res.status);
@@ -59,11 +59,11 @@ describe("Input Validation Attacks E2E", () => {
     });
 
     describe("When depositing a float amount", () => {
-      it("Then it should reject with 400 or 422 because amount_cents must be an integer", async () => {
+      it("Then it should reject with 400 or 422 because amount_minor must be an integer", async () => {
         const res = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": "val-float-deposit-1" },
-          body: JSON.stringify({ amount_cents: 100.5 }),
+          body: JSON.stringify({ amount_minor: 100.5 }),
         });
 
         expect([400, 422]).toContain(res.status);
@@ -71,11 +71,11 @@ describe("Input Validation Attacks E2E", () => {
     });
 
     describe("When depositing a string amount", () => {
-      it("Then it should reject with 400 or 422 because amount_cents must be a number", async () => {
+      it("Then it should reject with 400 or 422 because amount_minor must be a number", async () => {
         const res = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": "val-string-deposit-1" },
-          body: JSON.stringify({ amount_cents: "1000" }),
+          body: JSON.stringify({ amount_minor: "1000" }),
         });
 
         expect([400, 422]).toContain(res.status);
@@ -174,7 +174,7 @@ describe("Input Validation Attacks E2E", () => {
       });
     });
 
-    describe("When amount_cents is missing in a deposit", () => {
+    describe("When amount_minor is missing in a deposit", () => {
       it("Then it should reject with 400 or 422", async () => {
         const res = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
@@ -252,7 +252,7 @@ describe("Input Validation Attacks E2E", () => {
         const res = await app.request(`/v1/wallets/${encodeURIComponent(sqlInjectionId)}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": "val-sql-path-deposit-1" },
-          body: JSON.stringify({ amount_cents: 1000 }),
+          body: JSON.stringify({ amount_minor: 1000 }),
         });
 
         expect([400, 404]).toContain(res.status);
@@ -268,7 +268,7 @@ describe("Input Validation Attacks E2E", () => {
         const res = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": "val-bigint-overflow-1" },
-          body: JSON.stringify({ amount_cents: 99999999999999999 }),
+          body: JSON.stringify({ amount_minor: 99999999999999999 }),
         });
 
         // Either rejected outright (preferred) or accepted safely
@@ -277,7 +277,7 @@ describe("Input Validation Attacks E2E", () => {
           const walletRes = await app.request(`/v1/wallets/${walletId}`, { method: "GET" });
           expect(walletRes.status).toBe(200);
           const wallet = await walletRes.json();
-          expect(Number(wallet.balance_cents)).toBeGreaterThanOrEqual(0);
+          expect(Number(wallet.balance_minor)).toBeGreaterThanOrEqual(0);
         } else {
           expect([400, 422]).toContain(res.status);
         }
@@ -293,7 +293,7 @@ describe("Input Validation Attacks E2E", () => {
         const res = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": "val-xss-reference-1" },
-          body: JSON.stringify({ amount_cents: 100, reference: "<script>alert(1)</script>" }),
+          body: JSON.stringify({ amount_minor: 100, reference: "<script>alert(1)</script>" }),
         });
 
         // API-only systems may store it safely; rejection is also fine
@@ -311,7 +311,7 @@ describe("Input Validation Attacks E2E", () => {
           method: "POST",
           headers: { "Idempotency-Key": "val-proto-pollution-1" },
           body: JSON.stringify({
-            amount_cents: 100,
+            amount_minor: 100,
             __proto__: { admin: true },
             constructor: { prototype: { admin: true } },
           }),
@@ -332,7 +332,7 @@ describe("Input Validation Attacks E2E", () => {
         const res = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": "val-oversized-ref-1" },
-          body: JSON.stringify({ amount_cents: 100, reference: longReference }),
+          body: JSON.stringify({ amount_minor: 100, reference: longReference }),
         });
 
         expect([400, 422]).toContain(res.status);
@@ -348,7 +348,7 @@ describe("Input Validation Attacks E2E", () => {
         const res = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": "val-negative-zero-1" },
-          body: JSON.stringify({ amount_cents: -0 }),
+          body: JSON.stringify({ amount_minor: -0 }),
         });
 
         expect([400, 422]).toContain(res.status);

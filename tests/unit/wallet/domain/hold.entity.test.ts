@@ -11,7 +11,7 @@ const activeHold = (overrides?: Partial<Parameters<typeof Hold.reconstruct>[0]>)
   Hold.reconstruct({
     id: "hold-1",
     walletId: "wallet-1",
-    amountCents: 1000n,
+    amountMinor: 1000n,
     status: "active",
     reference: null,
     expiresAt: null,
@@ -26,13 +26,13 @@ describe("Hold Entity", () => {
     describe("Given valid parameters", () => {
       describe("When creating a hold", () => {
         it("Then creates with status active", () => {
-          const h = Hold.create({ id: "h-1", walletId: "w-1", amountCents: 500n, reference: null, expiresAt: FUTURE, now: NOW });
+          const h = Hold.create({ id: "h-1", walletId: "w-1", amountMinor: 500n, reference: null, expiresAt: FUTURE, now: NOW });
           expect(h.status).toBe("active");
-          expect(h.amountCents).toBe(500n);
+          expect(h.amountMinor).toBe(500n);
         });
 
         it("Then sets all fields correctly", () => {
-          const h = Hold.create({ id: "h-1", walletId: "w-1", amountCents: 500n, reference: "ref-1", expiresAt: FUTURE, now: NOW });
+          const h = Hold.create({ id: "h-1", walletId: "w-1", amountMinor: 500n, reference: "ref-1", expiresAt: FUTURE, now: NOW });
           expect(h.id).toBe("h-1");
           expect(h.walletId).toBe("w-1");
           expect(h.reference).toBe("ref-1");
@@ -46,7 +46,7 @@ describe("Hold Entity", () => {
     describe("Given null expiresAt", () => {
       describe("When creating a hold", () => {
         it("Then creates successfully with null expiresAt", () => {
-          const h = Hold.create({ id: "h-1", walletId: "w-1", amountCents: 500n, reference: null, expiresAt: null, now: NOW });
+          const h = Hold.create({ id: "h-1", walletId: "w-1", amountMinor: 500n, reference: null, expiresAt: null, now: NOW });
           expect(h.expiresAt).toBeNull();
           expect(h.status).toBe("active");
         });
@@ -56,7 +56,7 @@ describe("Hold Entity", () => {
     describe("Given zero amount", () => {
       describe("When creating a hold", () => {
         it("Then throws INVALID_AMOUNT", () => {
-          expect(() => Hold.create({ id: "h-1", walletId: "w-1", amountCents: 0n, reference: null, expiresAt: null, now: NOW }))
+          expect(() => Hold.create({ id: "h-1", walletId: "w-1", amountMinor: 0n, reference: null, expiresAt: null, now: NOW }))
             .toThrowAppError(ErrorKind.Validation, "INVALID_AMOUNT");
         });
       });
@@ -65,7 +65,7 @@ describe("Hold Entity", () => {
     describe("Given negative amount", () => {
       describe("When creating a hold", () => {
         it("Then throws INVALID_AMOUNT", () => {
-          expect(() => Hold.create({ id: "h-1", walletId: "w-1", amountCents: -100n, reference: null, expiresAt: null, now: NOW }))
+          expect(() => Hold.create({ id: "h-1", walletId: "w-1", amountMinor: -100n, reference: null, expiresAt: null, now: NOW }))
             .toThrowAppError(ErrorKind.Validation, "INVALID_AMOUNT");
         });
       });
@@ -74,7 +74,7 @@ describe("Hold Entity", () => {
     describe("Given expiresAt in the past", () => {
       describe("When creating a hold", () => {
         it("Then throws HOLD_EXPIRES_IN_PAST", () => {
-          expect(() => Hold.create({ id: "h-1", walletId: "w-1", amountCents: 100n, reference: null, expiresAt: PAST, now: NOW }))
+          expect(() => Hold.create({ id: "h-1", walletId: "w-1", amountMinor: 100n, reference: null, expiresAt: PAST, now: NOW }))
             .toThrowAppError(ErrorKind.Validation, "HOLD_EXPIRES_IN_PAST");
         });
       });
@@ -83,7 +83,7 @@ describe("Hold Entity", () => {
     describe("Given expiresAt exactly equal to now (boundary)", () => {
       describe("When creating a hold", () => {
         it("Then throws HOLD_EXPIRES_IN_PAST", () => {
-          expect(() => Hold.create({ id: "h-1", walletId: "w-1", amountCents: 100n, reference: null, expiresAt: NOW, now: NOW }))
+          expect(() => Hold.create({ id: "h-1", walletId: "w-1", amountMinor: 100n, reference: null, expiresAt: NOW, now: NOW }))
             .toThrowAppError(ErrorKind.Validation, "HOLD_EXPIRES_IN_PAST");
         });
       });
@@ -302,7 +302,7 @@ describe("Hold Entity", () => {
           const h = Hold.reconstruct({
             id: "r-h",
             walletId: "r-w",
-            amountCents: 999n,
+            amountMinor: 999n,
             status: "voided",
             reference: "ref-x",
             expiresAt: 12345,
@@ -311,7 +311,7 @@ describe("Hold Entity", () => {
           });
           expect(h.id).toBe("r-h");
           expect(h.walletId).toBe("r-w");
-          expect(h.amountCents).toBe(999n);
+          expect(h.amountMinor).toBe(999n);
           expect(h.status).toBe("voided");
           expect(h.reference).toBe("ref-x");
           expect(h.expiresAt).toBe(12345);

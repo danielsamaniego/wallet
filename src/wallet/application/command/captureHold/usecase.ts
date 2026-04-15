@@ -39,6 +39,7 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
 
     const txId = this.idGen.newId();
     const movementId = this.idGen.newId();
+    let walletCurrency = "";
 
     await this.txManager.run(ctx, async (txCtx) => {
       const hold = await this.holdRepo.findById(txCtx, cmd.holdId);
@@ -52,9 +53,11 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
         this.logger.warn(txCtx, `${methodLogTag} wallet not found`, { wallet_id: hold.walletId });
         throw ErrWalletNotFound(hold.walletId);
       }
+      walletCurrency = wallet.currencyCode;
       if (wallet.platformId !== cmd.platformId) {
         this.logger.warn(txCtx, `${methodLogTag} platform mismatch`, {
           wallet_id: hold.walletId,
+          currency_code: wallet.currencyCode,
           expected_platform_id: cmd.platformId,
           actual_platform_id: wallet.platformId,
         });
@@ -81,6 +84,7 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
         this.logger.info(txCtx, `${methodLogTag} hold expired on access`, {
           hold_id: hold.id,
           wallet_id: hold.walletId,
+          currency_code: wallet.currencyCode,
           expires_at: hold.expiresAt,
         });
         hold.expire(now);
@@ -99,17 +103,17 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
       const movement = Movement.create({ id: movementId, type: "hold_capture", createdAt: now });
 
       // Debit user wallet
-      wallet.withdraw(hold.amountCents, wallet.cachedBalanceCents, now);
+      wallet.withdraw(hold.amountMinor, wallet.cachedBalanceMinor, now);
 
       // System wallet: compute snapshot for ledger entry (approximate under concurrency)
-      const systemBalanceAfter = systemWallet.cachedBalanceCents + hold.amountCents;
+      const systemBalanceAfter = systemWallet.cachedBalanceMinor + hold.amountMinor;
 
       const tx = Transaction.create({
         id: txId,
         walletId: wallet.id,
         counterpartWalletId: systemWallet.id,
         type: "hold_capture",
-        amountCents: hold.amountCents,
+        amountMinor: hold.amountMinor,
         status: "completed",
         idempotencyKey: cmd.idempotencyKey,
         reference: hold.reference,
@@ -124,8 +128,8 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
         transactionId: txId,
         walletId: wallet.id,
         entryType: "DEBIT",
-        amountCents: -hold.amountCents,
-        balanceAfterCents: wallet.cachedBalanceCents,
+        amountMinor: -hold.amountMinor,
+        balanceAfterMinor: wallet.cachedBalanceMinor,
         movementId,
         createdAt: now,
       });
@@ -135,8 +139,8 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
         transactionId: txId,
         walletId: systemWallet.id,
         entryType: "CREDIT",
-        amountCents: hold.amountCents,
-        balanceAfterCents: systemBalanceAfter,
+        amountMinor: hold.amountMinor,
+        balanceAfterMinor: systemBalanceAfter,
         movementId,
         createdAt: now,
       });
@@ -148,7 +152,7 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
       await this.walletRepo.adjustSystemWalletBalance(
         txCtx,
         systemWallet.id,
-        hold.amountCents,
+        hold.amountMinor,
         now,
       );
       await this.transactionRepo.save(txCtx, tx);
@@ -157,6 +161,7 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
 
     this.logger.info(ctx, `${methodLogTag} hold captured`, {
       hold_id: cmd.holdId,
+      currency_code: walletCurrency,
       transaction_id: txId,
     });
 

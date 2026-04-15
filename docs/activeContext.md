@@ -25,6 +25,8 @@ Wallet bounded context fully implemented and audited. Major architectural refact
 - Auto-generated OpenAPI 3.1 spec (hono-openapi) + interactive Scalar UI at `/docs`
 - All 13 endpoints documented with `describeRoute()` (tags, summary, response schemas)
 - Dedicated e2e coverage for balance adjustments endpoint (`POST /v1/wallets/:walletId/adjust`) across auth, validation, idempotency, cross-tenant, concurrency, and ledger integrity scenarios
+- Multi-currency support: explicit currency catalog (USD, EUR, MXN, CLP, KWD) with `wallets_supported_currency` CHECK constraint
+- Renamed all `_cents` fields to `_minor` across domain, application, infrastructure, and API layers to accurately reflect multi-currency minor unit semantics
 - Endpoint `schemas.ts` pattern: request + response Zod schemas per endpoint
 - Shared `ErrorResponseSchema` in `utils/infrastructure/hono.error.ts`
 - Reusable listing system: Stripe-style flat filters (`filter[field][op]=value`), dynamic multi-field sorting (`sort=-field`), keyset cursor pagination with sort signature validation
@@ -46,9 +48,9 @@ Wallet bounded context fully implemented and audited. Major architectural refact
 
 ## Active Decisions
 
-- **Amounts**: Integer in smallest currency unit per ISO 4217 (BigInt) — `_cents` suffix is convention
+- **Amounts**: Integer in smallest currency unit per ISO 4217 (BigInt) — `_minor` suffix is convention
 - **Concurrency**: Optimistic locking (version field) for ALL wallet mutations including PlaceHold/VoidHold — no SELECT FOR UPDATE in domain (see systemPatterns.md)
-- **Ledger**: Double-entry via Movement entity, append-only, protected by PostgreSQL trigger. Audit invariant: `SUM(amount_cents) GROUP BY movement_id = 0`
+- **Ledger**: Double-entry via Movement entity, append-only, protected by PostgreSQL trigger. Audit invariant: `SUM(amount_minor) GROUP BY movement_id = 0`
 - **Auth**: API key per platform (not user JWT)
 - **DI**: Manual wiring (no DI container). All deps instantiated in `wiring.ts`, registered on CommandBus/QueryBus
 - **Transactions**: Serializable isolation level; TransactionManager retries internally (3 attempts, exponential backoff 30/60/120ms) for VERSION_CONFLICT and PostgreSQL serialization failures before escalating to client

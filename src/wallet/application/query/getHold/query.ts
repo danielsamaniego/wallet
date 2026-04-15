@@ -3,7 +3,7 @@ import { IQuery } from "../../../../utils/application/cqrs.js";
 export interface HoldDTO {
   id: string;
   wallet_id: string;
-  amount_cents: number | string;
+  amount_minor: number | string;
   status: string;
   reference: string | null;
   expires_at: number | null;

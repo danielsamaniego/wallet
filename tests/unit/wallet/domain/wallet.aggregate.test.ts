@@ -27,7 +27,7 @@ describe("Wallet Aggregate", () => {
           const w = Wallet.create("w-1", "owner-1", "plat-1", "USD", false, NOW);
           expect(w.status).toBe("active");
           expect(w.version).toBe(1);
-          expect(w.cachedBalanceCents).toBe(0n);
+          expect(w.cachedBalanceMinor).toBe(0n);
         });
 
         it("Then sets all identity fields correctly", () => {
@@ -144,7 +144,7 @@ describe("Wallet Aggregate", () => {
         it("Then balance becomes 1500 cents", () => {
           const w = activeWallet(1000n);
           w.deposit(500n, LATER);
-          expect(w.cachedBalanceCents).toBe(1500n);
+          expect(w.cachedBalanceMinor).toBe(1500n);
         });
 
         it("Then version increments by 1", () => {
@@ -164,7 +164,7 @@ describe("Wallet Aggregate", () => {
         it("Then balance becomes 1001 cents", () => {
           const w = activeWallet(1000n);
           w.deposit(1n, LATER);
-          expect(w.cachedBalanceCents).toBe(1001n);
+          expect(w.cachedBalanceMinor).toBe(1001n);
         });
       });
 
@@ -209,7 +209,7 @@ describe("Wallet Aggregate", () => {
         it("Then balance becomes 500 cents", () => {
           const w = activeWallet(1000n);
           w.withdraw(500n, 1000n, LATER);
-          expect(w.cachedBalanceCents).toBe(500n);
+          expect(w.cachedBalanceMinor).toBe(500n);
         });
 
         it("Then version increments", () => {
@@ -229,7 +229,7 @@ describe("Wallet Aggregate", () => {
         it("Then balance becomes zero", () => {
           const w = activeWallet(1000n);
           w.withdraw(1000n, 1000n, LATER);
-          expect(w.cachedBalanceCents).toBe(0n);
+          expect(w.cachedBalanceMinor).toBe(0n);
         });
       });
 
@@ -272,7 +272,7 @@ describe("Wallet Aggregate", () => {
         it("Then allows negative balance", () => {
           const w = systemWallet(1000n);
           w.withdraw(5000n, 1000n, LATER);
-          expect(w.cachedBalanceCents).toBe(-4000n);
+          expect(w.cachedBalanceMinor).toBe(-4000n);
         });
       });
     });
@@ -305,7 +305,7 @@ describe("Wallet Aggregate", () => {
         it("Then balance becomes 1500 cents", () => {
           const w = activeWallet(1000n);
           w.adjust(500n, 1000n, LATER);
-          expect(w.cachedBalanceCents).toBe(1500n);
+          expect(w.cachedBalanceMinor).toBe(1500n);
         });
 
         it("Then version increments", () => {
@@ -325,7 +325,7 @@ describe("Wallet Aggregate", () => {
         it("Then balance becomes 500 cents", () => {
           const w = activeWallet(1000n);
           w.adjust(-500n, 1000n, LATER);
-          expect(w.cachedBalanceCents).toBe(500n);
+          expect(w.cachedBalanceMinor).toBe(500n);
         });
       });
 
@@ -333,7 +333,7 @@ describe("Wallet Aggregate", () => {
         it("Then balance becomes 0", () => {
           const w = activeWallet(1000n);
           w.adjust(-1000n, 1000n, LATER);
-          expect(w.cachedBalanceCents).toBe(0n);
+          expect(w.cachedBalanceMinor).toBe(0n);
         });
       });
 
@@ -359,7 +359,7 @@ describe("Wallet Aggregate", () => {
         it("Then allows adjustment (admin operation)", () => {
           const w = frozenWallet(1000n);
           w.adjust(500n, 1000n, LATER);
-          expect(w.cachedBalanceCents).toBe(1500n);
+          expect(w.cachedBalanceMinor).toBe(1500n);
         });
       });
 
@@ -367,7 +367,7 @@ describe("Wallet Aggregate", () => {
         it("Then allows adjustment (admin operation)", () => {
           const w = frozenWallet(1000n);
           w.adjust(-500n, 1000n, LATER);
-          expect(w.cachedBalanceCents).toBe(500n);
+          expect(w.cachedBalanceMinor).toBe(500n);
         });
       });
     });
@@ -387,7 +387,7 @@ describe("Wallet Aggregate", () => {
         it("Then allows negative balance", () => {
           const w = systemWallet(1000n);
           w.adjust(-5000n, 1000n, LATER);
-          expect(w.cachedBalanceCents).toBe(-4000n);
+          expect(w.cachedBalanceMinor).toBe(-4000n);
         });
       });
     });
@@ -558,7 +558,7 @@ describe("Wallet Aggregate", () => {
           const w = activeWallet(1000n);
           w.touchForHoldChange(LATER);
           expect(w.version).toBe(2);
-          expect(w.cachedBalanceCents).toBe(1000n);
+          expect(w.cachedBalanceMinor).toBe(1000n);
         });
 
         it("Then updatedAt changes", () => {
@@ -602,7 +602,7 @@ describe("Wallet Aggregate", () => {
           expect(w.ownerId).toBe("r-owner");
           expect(w.platformId).toBe("r-plat");
           expect(w.currencyCode).toBe("EUR");
-          expect(w.cachedBalanceCents).toBe(999n);
+          expect(w.cachedBalanceMinor).toBe(999n);
           expect(w.status).toBe("frozen");
           expect(w.version).toBe(42);
           expect(w.isSystem).toBe(true);

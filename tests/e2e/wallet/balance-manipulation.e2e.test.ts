@@ -26,7 +26,7 @@ describe("Balance Manipulation E2E", () => {
     const depositRes = await app.request(`/v1/wallets/${walletId}/deposit`, {
       method: "POST",
       headers: { "Idempotency-Key": "bm-setup-deposit" },
-      body: JSON.stringify({ amount_cents: 10000 }),
+      body: JSON.stringify({ amount_minor: 10000 }),
     });
     expect(depositRes.status).toBe(201);
 
@@ -47,7 +47,7 @@ describe("Balance Manipulation E2E", () => {
         const res = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": "bm-overdraft-withdraw-1" },
-          body: JSON.stringify({ amount_cents: 99999 }),
+          body: JSON.stringify({ amount_minor: 99999 }),
         });
 
         expect(res.status).toBe(422);
@@ -64,7 +64,7 @@ describe("Balance Manipulation E2E", () => {
           body: JSON.stringify({
             source_wallet_id: walletId,
             target_wallet_id: secondWalletId,
-            amount_cents: 99999,
+            amount_minor: 99999,
           }),
         });
 
@@ -82,7 +82,7 @@ describe("Balance Manipulation E2E", () => {
           body: JSON.stringify({
             source_wallet_id: walletId,
             target_wallet_id: walletId,
-            amount_cents: 100,
+            amount_minor: 100,
           }),
         });
 
@@ -108,7 +108,7 @@ describe("Balance Manipulation E2E", () => {
         const res = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": "bm-frozen-withdraw-1" },
-          body: JSON.stringify({ amount_cents: 100 }),
+          body: JSON.stringify({ amount_minor: 100 }),
         });
 
         expect(res.status).toBe(422);
@@ -122,7 +122,7 @@ describe("Balance Manipulation E2E", () => {
         const res = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": "bm-frozen-deposit-1" },
-          body: JSON.stringify({ amount_cents: 100 }),
+          body: JSON.stringify({ amount_minor: 100 }),
         });
 
         expect(res.status).toBe(422);
@@ -139,7 +139,7 @@ describe("Balance Manipulation E2E", () => {
           body: JSON.stringify({
             source_wallet_id: walletId,
             target_wallet_id: secondWalletId,
-            amount_cents: 100,
+            amount_minor: 100,
           }),
         });
 
@@ -173,7 +173,7 @@ describe("Balance Manipulation E2E", () => {
           body: JSON.stringify({
             source_wallet_id: freshSource,
             target_wallet_id: frozenTarget,
-            amount_cents: 100,
+            amount_minor: 100,
           }),
         });
 
@@ -190,26 +190,26 @@ describe("Balance Manipulation E2E", () => {
         const res1 = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": "bm-seq-wd-1" },
-          body: JSON.stringify({ amount_cents: 3333 }),
+          body: JSON.stringify({ amount_minor: 3333 }),
         });
         expect(res1.status).toBe(201);
 
         const res2 = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": "bm-seq-wd-2" },
-          body: JSON.stringify({ amount_cents: 3333 }),
+          body: JSON.stringify({ amount_minor: 3333 }),
         });
         expect(res2.status).toBe(201);
 
         const res3 = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": "bm-seq-wd-3" },
-          body: JSON.stringify({ amount_cents: 3334 }),
+          body: JSON.stringify({ amount_minor: 3334 }),
         });
         expect(res3.status).toBe(201);
 
         const walletRes = await app.request(`/v1/wallets/${walletId}`);
-        expect(Number((await walletRes.json()).balance_cents)).toBe(0);
+        expect(Number((await walletRes.json()).balance_minor)).toBe(0);
       });
     });
   });
@@ -223,7 +223,7 @@ describe("Balance Manipulation E2E", () => {
         await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": "bm-chain-dep-extra" },
-          body: JSON.stringify({ amount_cents: 40000 }),
+          body: JSON.stringify({ amount_minor: 40000 }),
         });
         // walletId now has 50000
 
@@ -233,22 +233,22 @@ describe("Balance Manipulation E2E", () => {
           body: JSON.stringify({
             source_wallet_id: walletId,
             target_wallet_id: secondWalletId,
-            amount_cents: 20000,
+            amount_minor: 20000,
           }),
         });
 
         const wdRes = await app.request(`/v1/wallets/${secondWalletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": "bm-chain-wd" },
-          body: JSON.stringify({ amount_cents: 15000 }),
+          body: JSON.stringify({ amount_minor: 15000 }),
         });
         expect(wdRes.status).toBe(201);
 
         const aRes = await app.request(`/v1/wallets/${walletId}`);
-        expect(Number((await aRes.json()).balance_cents)).toBe(30000);
+        expect(Number((await aRes.json()).balance_minor)).toBe(30000);
 
         const bRes = await app.request(`/v1/wallets/${secondWalletId}`);
-        expect(Number((await bRes.json()).balance_cents)).toBe(5000);
+        expect(Number((await bRes.json()).balance_minor)).toBe(5000);
       });
     });
   });

@@ -29,7 +29,7 @@ CREATE TRIGGER movements_immutable
   FOR EACH ROW EXECUTE FUNCTION prevent_immutable_modify();
 
 -- Chain validation: each ledger entry must chain correctly from the previous entry.
--- balance_after_cents(N) must equal balance_after_cents(N-1) + amount_cents(N).
+-- balance_after_minor(N) must equal balance_after_minor(N-1) + amount_minor(N).
 -- Uses the existing (wallet_id, created_at) index — O(log n), stops at LIMIT 1.
 CREATE OR REPLACE FUNCTION validate_ledger_chain()
 RETURNS trigger AS $$
@@ -45,7 +45,7 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  SELECT le.balance_after_cents INTO prev_balance
+  SELECT le.balance_after_minor INTO prev_balance
   FROM ledger_entries le
   WHERE le.wallet_id = NEW.wallet_id
   ORDER BY le.created_at DESC, le.id DESC
@@ -53,9 +53,9 @@ BEGIN
 
   prev_balance := COALESCE(prev_balance, 0);
 
-  IF NEW.balance_after_cents != prev_balance + NEW.amount_cents THEN
+  IF NEW.balance_after_minor != prev_balance + NEW.amount_minor THEN
     RAISE EXCEPTION 'CHAIN_BREAK: expected balance %, got % for wallet %',
-      (prev_balance + NEW.amount_cents), NEW.balance_after_cents, NEW.wallet_id;
+      (prev_balance + NEW.amount_minor), NEW.balance_after_minor, NEW.wallet_id;
   END IF;
 
   RETURN NEW;
@@ -67,8 +67,8 @@ CREATE TRIGGER trg_ledger_chain_validation
   BEFORE INSERT ON ledger_entries
   FOR EACH ROW EXECUTE FUNCTION validate_ledger_chain();
 
--- Reconciliation: after each ledger entry insert, verify that cached_balance_cents
--- matches the entry's balance_after_cents. O(1) — single PK lookup on wallets.
+-- Reconciliation: after each ledger entry insert, verify that cached_balance_minor
+-- matches the entry's balance_after_minor. O(1) — single PK lookup on wallets.
 -- Relies on the application updating the wallet BEFORE inserting ledger entries
 -- (confirmed in deposit/withdraw/transfer/captureHold use cases).
 -- System wallets are skipped: their balance snapshots are approximate under concurrency.
@@ -78,7 +78,7 @@ DECLARE
   v_wallet_balance BIGINT;
   v_is_system      BOOLEAN;
 BEGIN
-  SELECT cached_balance_cents, is_system
+  SELECT cached_balance_minor, is_system
     INTO v_wallet_balance, v_is_system
     FROM wallets WHERE id = NEW.wallet_id;
 
@@ -86,9 +86,9 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF v_wallet_balance != NEW.balance_after_cents THEN
+  IF v_wallet_balance != NEW.balance_after_minor THEN
     RAISE EXCEPTION 'RECONCILIATION_FAILED: wallet % cached_balance=% but entry balance_after=%',
-      NEW.wallet_id, v_wallet_balance, NEW.balance_after_cents;
+      NEW.wallet_id, v_wallet_balance, NEW.balance_after_minor;
   END IF;
 
   RETURN NEW;
@@ -102,7 +102,7 @@ CREATE TRIGGER trg_reconcile_after_ledger
 
 -- Field lock: identity fields of a wallet are immutable after creation.
 -- Blocks direct SQL changes to owner_id, platform_id, currency_code, is_system, created_at.
--- Only cached_balance_cents, status, version, and updated_at are allowed to change.
+-- Only cached_balance_minor, status, version, and updated_at are allowed to change.
 CREATE OR REPLACE FUNCTION prevent_wallet_field_tampering()
 RETURNS trigger AS $$
 BEGIN
@@ -212,7 +212,7 @@ DECLARE
   entry_sum BIGINT;
   entry_count INT;
 BEGIN
-  SELECT COALESCE(SUM(amount_cents), 0), COUNT(*)
+  SELECT COALESCE(SUM(amount_minor), 0), COUNT(*)
   INTO entry_sum, entry_count
   FROM ledger_entries
   WHERE movement_id = NEW.movement_id;
@@ -235,15 +235,15 @@ CREATE TRIGGER trg_movement_zero_sum
 -- Safety constraints
 ALTER TABLE wallets
   DROP CONSTRAINT IF EXISTS wallets_positive_balance,
-  ADD CONSTRAINT wallets_positive_balance CHECK (cached_balance_cents >= 0 OR is_system = true);
+  ADD CONSTRAINT wallets_positive_balance CHECK (cached_balance_minor >= 0 OR is_system = true);
 
 ALTER TABLE holds
   DROP CONSTRAINT IF EXISTS holds_positive_amount,
-  ADD CONSTRAINT holds_positive_amount CHECK (amount_cents > 0);
+  ADD CONSTRAINT holds_positive_amount CHECK (amount_minor > 0);
 
 ALTER TABLE transactions
   DROP CONSTRAINT IF EXISTS transactions_positive_amount,
-  ADD CONSTRAINT transactions_positive_amount CHECK (amount_cents > 0);
+  ADD CONSTRAINT transactions_positive_amount CHECK (amount_minor > 0);
 
 ALTER TABLE wallets
   DROP CONSTRAINT IF EXISTS wallets_supported_currency,

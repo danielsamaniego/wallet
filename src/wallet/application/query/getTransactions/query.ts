@@ -6,7 +6,7 @@ export interface TransactionDTO {
   wallet_id: string;
   counterpart_wallet_id: string | null;
   type: string;
-  amount_cents: number | string;
+  amount_minor: number | string;
   status: string;
   idempotency_key: string | null;
   reference: string | null;

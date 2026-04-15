@@ -28,7 +28,7 @@ describe("Wallet Lifecycle E2E", () => {
         const depositRes = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": "wl-close-balance-deposit" },
-          body: JSON.stringify({ amount_cents: 5000 }),
+          body: JSON.stringify({ amount_minor: 5000 }),
         });
         expect(depositRes.status).toBe(201);
 
@@ -178,13 +178,13 @@ describe("Wallet Lifecycle E2E", () => {
         expect(getRes1.status).toBe(200);
         const wallet1 = await getRes1.json();
         expect(wallet1.status).toBe("active");
-        expect(Number(wallet1.balance_cents)).toBe(0);
+        expect(Number(wallet1.balance_minor)).toBe(0);
 
         // Step 2: Deposit $100
         const depositRes = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": "wl-lifecycle-deposit" },
-          body: JSON.stringify({ amount_cents: 10000 }),
+          body: JSON.stringify({ amount_minor: 10000 }),
         });
         expect(depositRes.status).toBe(201);
         const depositBody = await depositRes.json();
@@ -194,20 +194,20 @@ describe("Wallet Lifecycle E2E", () => {
         // Verify balance after deposit
         const getRes2 = await app.request(`/v1/wallets/${walletId}`);
         const wallet2 = await getRes2.json();
-        expect(Number(wallet2.balance_cents)).toBe(10000);
+        expect(Number(wallet2.balance_minor)).toBe(10000);
 
         // Step 3: Withdraw $30
         const withdrawRes1 = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": "wl-lifecycle-withdraw-1" },
-          body: JSON.stringify({ amount_cents: 3000 }),
+          body: JSON.stringify({ amount_minor: 3000 }),
         });
         expect(withdrawRes1.status).toBe(201);
 
         // Verify balance after partial withdrawal
         const getRes3 = await app.request(`/v1/wallets/${walletId}`);
         const wallet3 = await getRes3.json();
-        expect(Number(wallet3.balance_cents)).toBe(7000);
+        expect(Number(wallet3.balance_minor)).toBe(7000);
 
         // Step 4: Freeze wallet
         const freezeRes = await app.request(`/v1/wallets/${walletId}/freeze`, {
@@ -234,20 +234,20 @@ describe("Wallet Lifecycle E2E", () => {
         const getRes5 = await app.request(`/v1/wallets/${walletId}`);
         const wallet5 = await getRes5.json();
         expect(wallet5.status).toBe("active");
-        expect(Number(wallet5.balance_cents)).toBe(7000);
+        expect(Number(wallet5.balance_minor)).toBe(7000);
 
         // Step 6: Withdraw remaining balance ($70)
         const withdrawRes2 = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": "wl-lifecycle-withdraw-all" },
-          body: JSON.stringify({ amount_cents: 7000 }),
+          body: JSON.stringify({ amount_minor: 7000 }),
         });
         expect(withdrawRes2.status).toBe(201);
 
         // Verify zero balance
         const getRes6 = await app.request(`/v1/wallets/${walletId}`);
         const wallet6 = await getRes6.json();
-        expect(Number(wallet6.balance_cents)).toBe(0);
+        expect(Number(wallet6.balance_minor)).toBe(0);
 
         // Step 7: Close wallet
         const closeRes = await app.request(`/v1/wallets/${walletId}/close`, {

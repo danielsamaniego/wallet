@@ -10,7 +10,7 @@ export class WithdrawCommand extends ICommand<WithdrawResult> {
   constructor(
     public readonly walletId: string,
     public readonly platformId: string,
-    public readonly amountCents: bigint,
+    public readonly amountMinor: bigint,
     public readonly idempotencyKey: string,
     public readonly reference?: string,
     public readonly metadata?: Record<string, unknown>,

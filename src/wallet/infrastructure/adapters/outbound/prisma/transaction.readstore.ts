@@ -76,7 +76,7 @@ export class PrismaTransactionReadStore implements ITransactionReadStore {
     walletId: string;
     counterpartWalletId: string | null;
     type: string;
-    amountCents: bigint;
+    amountMinor: bigint;
     status: string;
     idempotencyKey: string | null;
     reference: string | null;
@@ -89,7 +89,7 @@ export class PrismaTransactionReadStore implements ITransactionReadStore {
       wallet_id: row.walletId,
       counterpart_wallet_id: row.counterpartWalletId,
       type: row.type,
-      amount_cents: toSafeNumber(row.amountCents),
+      amount_minor: toSafeNumber(row.amountMinor),
       status: row.status,
       idempotency_key: row.idempotencyKey,
       reference: row.reference,

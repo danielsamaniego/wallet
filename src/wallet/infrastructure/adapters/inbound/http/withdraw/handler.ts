@@ -47,7 +47,7 @@ export function withdrawRoute(commandBus: ICommandBus) {
         new WithdrawCommand(
           walletId,
           ctx.platformId,
-          BigInt(data.amount_cents),
+          BigInt(data.amount_minor),
           c.req.header("idempotency-key") ?? "",
           data.reference,
           data.metadata,

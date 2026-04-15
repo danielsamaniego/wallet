@@ -6,8 +6,8 @@ export interface LedgerEntryDTO {
   transaction_id: string;
   wallet_id: string;
   entry_type: string;
-  amount_cents: number | string;
-  balance_after_cents: number | string;
+  amount_minor: number | string;
+  balance_after_minor: number | string;
   created_at: number;
 }
 

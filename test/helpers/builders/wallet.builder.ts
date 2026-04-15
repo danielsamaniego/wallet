@@ -6,7 +6,7 @@ export class WalletBuilder {
     ownerId: "owner-1",
     platformId: "platform-1",
     currencyCode: "USD",
-    cachedBalanceCents: 0n,
+    cachedBalanceMinor: 0n,
     status: "active" as WalletStatus,
     version: 1,
     isSystem: false,
@@ -34,8 +34,8 @@ export class WalletBuilder {
     return this;
   }
 
-  withBalance(cents: bigint): this {
-    this.props.cachedBalanceCents = cents;
+  withBalance(minor: bigint): this {
+    this.props.cachedBalanceMinor = minor;
     return this;
   }
 
@@ -81,7 +81,7 @@ export class WalletBuilder {
       this.props.ownerId,
       this.props.platformId,
       this.props.currencyCode,
-      this.props.cachedBalanceCents,
+      this.props.cachedBalanceMinor,
       this.props.status,
       this.props.version,
       this.props.isSystem,

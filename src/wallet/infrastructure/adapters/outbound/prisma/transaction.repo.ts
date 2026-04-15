@@ -38,7 +38,7 @@ export class PrismaTransactionRepo implements ITransactionRepository {
       walletId: t.walletId,
       counterpartWalletId: t.counterpartWalletId,
       type: t.type,
-      amountCents: t.amountCents,
+      amountMinor: t.amountMinor,
       status: t.status,
       idempotencyKey: t.idempotencyKey,
       reference: t.reference,

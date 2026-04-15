@@ -9,7 +9,7 @@ describe("Hold Exploitation E2E", () => {
   const nextKey = () => `hold-exploit-${++idempCounter}`;
 
   /** Helper: create a wallet and deposit a known balance. */
-  async function setupFundedWallet(balanceCents = 10000): Promise<string> {
+  async function setupFundedWallet(balanceMinor = 10000): Promise<string> {
     const createRes = await app.request("/v1/wallets", {
       method: "POST",
       headers: { "Idempotency-Key": nextKey() },
@@ -20,15 +20,15 @@ describe("Hold Exploitation E2E", () => {
     await app.request(`/v1/wallets/${wallet_id}/deposit`, {
       method: "POST",
       headers: { "Idempotency-Key": nextKey() },
-      body: JSON.stringify({ amount_cents: balanceCents }),
+      body: JSON.stringify({ amount_minor: balanceMinor }),
     });
 
     return wallet_id;
   }
 
   /** Helper: place a hold and return the hold_id. */
-  async function placeHold(wId: string, amountCents: number, expiresAt?: number): Promise<string> {
-    const body: Record<string, unknown> = { wallet_id: wId, amount_cents: amountCents };
+  async function placeHold(wId: string, amountMinor: number, expiresAt?: number): Promise<string> {
+    const body: Record<string, unknown> = { wallet_id: wId, amount_minor: amountMinor };
     if (expiresAt !== undefined) {
       body.expires_at = expiresAt;
     }
@@ -60,7 +60,7 @@ describe("Hold Exploitation E2E", () => {
         const res = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": nextKey() },
-          body: JSON.stringify({ amount_cents: 10000 }),
+          body: JSON.stringify({ amount_minor: 10000 }),
         });
 
         expect(res.status).toBe(422);
@@ -74,7 +74,7 @@ describe("Hold Exploitation E2E", () => {
         const res = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": nextKey() },
-          body: JSON.stringify({ amount_cents: 7000 }),
+          body: JSON.stringify({ amount_minor: 7000 }),
         });
 
         expect(res.status).toBe(201);
@@ -141,7 +141,7 @@ describe("Hold Exploitation E2E", () => {
           headers: { "Idempotency-Key": nextKey() },
           body: JSON.stringify({
             wallet_id: walletId,
-            amount_cents: 1000,
+            amount_minor: 1000,
             expires_at: pastTimestamp,
           }),
         });
@@ -161,7 +161,7 @@ describe("Hold Exploitation E2E", () => {
           headers: { "Idempotency-Key": nextKey() },
           body: JSON.stringify({
             wallet_id: walletId,
-            amount_cents: 10001,
+            amount_minor: 10001,
           }),
         });
 
@@ -235,7 +235,7 @@ describe("Hold Exploitation E2E", () => {
         const res = await app.request("/v1/holds", {
           method: "POST",
           headers: { "Idempotency-Key": nextKey() },
-          body: JSON.stringify({ wallet_id: emptyWallet, amount_cents: 1 }),
+          body: JSON.stringify({ wallet_id: emptyWallet, amount_minor: 1 }),
         });
 
         expect(res.status).toBe(422);
@@ -263,8 +263,8 @@ describe("Hold Exploitation E2E", () => {
         // Available: 8000 - 2000 (holdB) - 2000 (holdC) = 4000
         const walletRes = await app.request(`/v1/wallets/${walletId}`);
         const wallet = await walletRes.json();
-        expect(Number(wallet.balance_cents)).toBe(8000);
-        expect(Number(wallet.available_balance_cents)).toBe(4000);
+        expect(Number(wallet.balance_minor)).toBe(8000);
+        expect(Number(wallet.available_balance_minor)).toBe(4000);
 
         // Hold B and C can still be voided
         const voidB = await app.request(`/v1/holds/${holdB}/void`, { method: "POST" });
@@ -276,7 +276,7 @@ describe("Hold Exploitation E2E", () => {
         // After voiding remaining holds, available = balance = 8000
         const finalRes = await app.request(`/v1/wallets/${walletId}`);
         const finalWallet = await finalRes.json();
-        expect(Number(finalWallet.available_balance_cents)).toBe(8000);
+        expect(Number(finalWallet.available_balance_minor)).toBe(8000);
       });
     });
   });
@@ -292,7 +292,7 @@ describe("Hold Exploitation E2E", () => {
         const wdRes = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": nextKey() },
-          body: JSON.stringify({ amount_cents: 7000 }),
+          body: JSON.stringify({ amount_minor: 7000 }),
         });
         expect(wdRes.status).toBe(201);
 
@@ -305,7 +305,7 @@ describe("Hold Exploitation E2E", () => {
 
         // Balance should be 0 (3000 - 3000 captured)
         const walletRes = await app.request(`/v1/wallets/${walletId}`);
-        expect(Number((await walletRes.json()).balance_cents)).toBe(0);
+        expect(Number((await walletRes.json()).balance_minor)).toBe(0);
       });
     });
   });
@@ -326,7 +326,7 @@ describe("Hold Exploitation E2E", () => {
         await app.request(`/v1/wallets/${w}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": nextKey() },
-          body: JSON.stringify({ amount_cents: 5000 }),
+          body: JSON.stringify({ amount_minor: 5000 }),
         });
 
         const holdId = await placeHold(w, 3000);
@@ -335,7 +335,7 @@ describe("Hold Exploitation E2E", () => {
         await app.request(`/v1/wallets/${w}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": nextKey() },
-          body: JSON.stringify({ amount_cents: 2000 }),
+          body: JSON.stringify({ amount_minor: 2000 }),
         });
 
         // Capture
@@ -346,7 +346,7 @@ describe("Hold Exploitation E2E", () => {
         expect(captureRes.status).toBe(201);
 
         const walletRes = await app.request(`/v1/wallets/${w}`);
-        expect(Number((await walletRes.json()).balance_cents)).toBe(4000);
+        expect(Number((await walletRes.json()).balance_minor)).toBe(4000);
       });
     });
   });
@@ -363,7 +363,7 @@ describe("Hold Exploitation E2E", () => {
         const res = await app.request("/v1/holds", {
           method: "POST",
           headers: { "Idempotency-Key": nextKey() },
-          body: JSON.stringify({ wallet_id: walletId, amount_cents: 1000 }),
+          body: JSON.stringify({ wallet_id: walletId, amount_minor: 1000 }),
         });
         expect(res.status).toBe(422);
         const body = await res.json();
@@ -385,7 +385,7 @@ describe("Hold Exploitation E2E", () => {
         const failRes = await app.request("/v1/holds", {
           method: "POST",
           headers: { "Idempotency-Key": nextKey() },
-          body: JSON.stringify({ wallet_id: walletId, amount_cents: 1 }),
+          body: JSON.stringify({ wallet_id: walletId, amount_minor: 1 }),
         });
         expect(failRes.status).toBe(422);
 
@@ -397,7 +397,7 @@ describe("Hold Exploitation E2E", () => {
         const newHoldRes = await app.request("/v1/holds", {
           method: "POST",
           headers: { "Idempotency-Key": nextKey() },
-          body: JSON.stringify({ wallet_id: walletId, amount_cents: 5000 }),
+          body: JSON.stringify({ wallet_id: walletId, amount_minor: 5000 }),
         });
         expect(newHoldRes.status).toBe(201);
       });

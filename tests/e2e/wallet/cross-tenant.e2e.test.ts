@@ -27,7 +27,7 @@ describe("Cross-Tenant Isolation E2E", () => {
     const depositRes = await app.request(`/v1/wallets/${victimWalletId}/deposit`, {
       method: "POST",
       headers: { "Idempotency-Key": `tenant-victim-deposit-${Date.now()}` },
-      body: JSON.stringify({ amount_cents: 500000 }),
+      body: JSON.stringify({ amount_minor: 500000 }),
     });
     expect(depositRes.status).toBe(201);
 
@@ -66,7 +66,7 @@ describe("Cross-Tenant Isolation E2E", () => {
         const res = await app.attackerRequest(`/v1/wallets/${victimWalletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": "tenant-attack-deposit-1" },
-          body: JSON.stringify({ amount_cents: 99999 }),
+          body: JSON.stringify({ amount_minor: 99999 }),
         });
 
         expect(res.status).toBe(404);
@@ -82,7 +82,7 @@ describe("Cross-Tenant Isolation E2E", () => {
         const res = await app.attackerRequest(`/v1/wallets/${victimWalletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": "tenant-attack-withdraw-1" },
-          body: JSON.stringify({ amount_cents: 1000 }),
+          body: JSON.stringify({ amount_minor: 1000 }),
         });
 
         expect(res.status).toBe(404);
@@ -101,7 +101,7 @@ describe("Cross-Tenant Isolation E2E", () => {
           body: JSON.stringify({
             source_wallet_id: victimWalletId,
             target_wallet_id: attackerWalletId,
-            amount_cents: 1000,
+            amount_minor: 1000,
           }),
         });
 
@@ -120,7 +120,7 @@ describe("Cross-Tenant Isolation E2E", () => {
           headers: { "Idempotency-Key": "tenant-attack-hold-1" },
           body: JSON.stringify({
             wallet_id: victimWalletId,
-            amount_cents: 1000,
+            amount_minor: 1000,
           }),
         });
 

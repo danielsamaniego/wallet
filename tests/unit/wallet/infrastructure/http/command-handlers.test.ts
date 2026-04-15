@@ -43,7 +43,7 @@ describe("Wallet command HTTP handlers", () => {
       const res = await app.request("/wallets/wallet-1/adjust", {
         method: "POST",
         headers: { "content-type": "application/json", "idempotency-key": "idem-1" },
-        body: JSON.stringify({ amount_cents: 5000, reason: "Promotional credit" }),
+        body: JSON.stringify({ amount_minor: 5000, reason: "Promotional credit" }),
       });
 
       expect(res.status).toBe(201);
@@ -126,7 +126,7 @@ describe("Wallet command HTTP handlers", () => {
       const res = await app.request("/wallets/wallet-1/deposit", {
         method: "POST",
         headers: { "content-type": "application/json", "idempotency-key": "idem-1" },
-        body: JSON.stringify({ amount_cents: 5000 }),
+        body: JSON.stringify({ amount_minor: 5000 }),
       });
 
       expect(res.status).toBe(201);
@@ -162,8 +162,8 @@ describe("Wallet command HTTP handlers", () => {
           owner_id: "owner-1",
           platform_id: "platform-1",
           currency_code: "USD",
-          balance_cents: 10000,
-          available_balance_cents: 8000,
+          balance_minor: 10000,
+          available_balance_minor: 8000,
           status: "active",
           is_system: false,
           created_at: 1700000000000,
@@ -195,7 +195,7 @@ describe("Wallet command HTTP handlers", () => {
       const res = await app.request("/holds", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ wallet_id: "wallet-1", amount_cents: 2000 }),
+        body: JSON.stringify({ wallet_id: "wallet-1", amount_minor: 2000 }),
       });
 
       expect(res.status).toBe(201);
@@ -224,7 +224,7 @@ describe("Wallet command HTTP handlers", () => {
         body: JSON.stringify({
           source_wallet_id: "wallet-1",
           target_wallet_id: "wallet-2",
-          amount_cents: 1000,
+          amount_minor: 1000,
         }),
       });
 
@@ -287,7 +287,7 @@ describe("Wallet command HTTP handlers", () => {
       const res = await app.request("/wallets/wallet-1/withdraw", {
         method: "POST",
         headers: { "content-type": "application/json", "idempotency-key": "idem-1" },
-        body: JSON.stringify({ amount_cents: 3000 }),
+        body: JSON.stringify({ amount_minor: 3000 }),
       });
 
       expect(res.status).toBe(201);
@@ -308,7 +308,7 @@ describe("Wallet command HTTP handlers", () => {
       const res = await app.request("/wallets/wallet-1/adjust", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ amount_cents: 1000, reason: "test" }),
+        body: JSON.stringify({ amount_minor: 1000, reason: "test" }),
       });
 
       expect(res.status).toBe(201);
@@ -344,7 +344,7 @@ describe("Wallet command HTTP handlers", () => {
       const res = await app.request("/wallets/wallet-1/deposit", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ amount_cents: 5000 }),
+        body: JSON.stringify({ amount_minor: 5000 }),
       });
 
       expect(res.status).toBe(201);
@@ -371,7 +371,7 @@ describe("Wallet command HTTP handlers", () => {
         body: JSON.stringify({
           source_wallet_id: "wallet-1",
           target_wallet_id: "wallet-2",
-          amount_cents: 1000,
+          amount_minor: 1000,
         }),
       });
 
@@ -392,7 +392,7 @@ describe("Wallet command HTTP handlers", () => {
       const res = await app.request("/wallets/wallet-1/withdraw", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ amount_cents: 3000 }),
+        body: JSON.stringify({ amount_minor: 3000 }),
       });
 
       expect(res.status).toBe(201);

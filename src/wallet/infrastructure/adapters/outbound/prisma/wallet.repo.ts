@@ -21,7 +21,11 @@ export class PrismaWalletRepo implements IWalletRepository {
   }
 
   async save(ctx: AppContext, wallet: Wallet): Promise<void> {
-    this.logger.debug(ctx, "WalletRepo | save", { wallet_id: wallet.id, version: wallet.version });
+    this.logger.debug(ctx, "WalletRepo | save", {
+      wallet_id: wallet.id,
+      currency_code: wallet.currencyCode,
+      version: wallet.version,
+    });
     const db = this.client(ctx);
     if (wallet.version === 1) {
       this.logger.debug(ctx, "WalletRepo | save creating new wallet", { wallet_id: wallet.id });
@@ -31,7 +35,7 @@ export class PrismaWalletRepo implements IWalletRepository {
           ownerId: wallet.ownerId,
           platformId: wallet.platformId,
           currencyCode: wallet.currencyCode,
-          cachedBalanceCents: wallet.cachedBalanceCents,
+          cachedBalanceMinor: wallet.cachedBalanceMinor,
           status: wallet.status,
           version: wallet.version,
           isSystem: wallet.isSystem,
@@ -44,7 +48,7 @@ export class PrismaWalletRepo implements IWalletRepository {
       const result = await db.wallet.updateMany({
         where: { id: wallet.id, version: previousVersion },
         data: {
-          cachedBalanceCents: wallet.cachedBalanceCents,
+          cachedBalanceMinor: wallet.cachedBalanceMinor,
           status: wallet.status,
           version: wallet.version,
           updatedAt: BigInt(wallet.updatedAt),
@@ -53,6 +57,7 @@ export class PrismaWalletRepo implements IWalletRepository {
       if (result.count === 0) {
         this.logger.warn(ctx, "WalletRepo | save version conflict", {
           wallet_id: wallet.id,
+          currency_code: wallet.currencyCode,
           expected_version: previousVersion,
         });
         throw ErrVersionConflict();
@@ -63,18 +68,18 @@ export class PrismaWalletRepo implements IWalletRepository {
   async adjustSystemWalletBalance(
     ctx: AppContext,
     walletId: string,
-    deltaCents: bigint,
+    deltaMinor: bigint,
     now: number,
   ): Promise<void> {
     this.logger.debug(ctx, "WalletRepo | adjustSystemWalletBalance", {
       wallet_id: walletId,
-      delta_cents: Number(deltaCents),
+      delta_minor: Number(deltaMinor),
     });
     const db = this.client(ctx);
     await db.wallet.update({
       where: { id: walletId },
       data: {
-        cachedBalanceCents: { increment: deltaCents },
+        cachedBalanceMinor: { increment: deltaMinor },
         updatedAt: BigInt(now),
       },
     });
@@ -171,7 +176,7 @@ export class PrismaWalletRepo implements IWalletRepository {
     ownerId: string;
     platformId: string;
     currencyCode: string;
-    cachedBalanceCents: bigint;
+    cachedBalanceMinor: bigint;
     status: string;
     version: number;
     isSystem: boolean;
@@ -183,7 +188,7 @@ export class PrismaWalletRepo implements IWalletRepository {
       row.ownerId,
       row.platformId,
       row.currencyCode,
-      row.cachedBalanceCents,
+      row.cachedBalanceMinor,
       row.status as WalletStatus,
       row.version,
       row.isSystem,

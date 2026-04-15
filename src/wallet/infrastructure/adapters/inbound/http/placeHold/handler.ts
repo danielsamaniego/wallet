@@ -45,7 +45,7 @@ export function placeHoldRoute(commandBus: ICommandBus) {
         new PlaceHoldCommand(
           data.wallet_id,
           ctx.platformId,
-          BigInt(data.amount_cents),
+          BigInt(data.amount_minor),
           data.reference,
           data.expires_at,
         ),

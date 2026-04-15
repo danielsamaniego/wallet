@@ -21,7 +21,7 @@ model Platform {
   @@map("platforms")
 }
 
-/// User wallet. Balance stored as integer cents (smallest currency unit).
+/// User wallet. Balance stored as integer minor units (smallest currency unit).
 /// Optimistic locking via version field.
 model Wallet {
   id                 String        @id /// UUID v7, app-generated
@@ -29,7 +29,7 @@ model Wallet {
   platformId         String        @map("platform_id")
   platform           Platform      @relation(fields: [platformId], references: [id])
   currencyCode       String        @map("currency_code") /// ISO 4217 (USD, EUR, etc.)
-  cachedBalanceCents BigInt        @default(0) @map("cached_balance_cents") /// Integer cents
+  cachedBalanceMinor BigInt        @default(0) @map("cached_balance_minor") /// Integer minor units
   status             String        @default("active") /// active | frozen | closed
   version            Int           @default(1) /// Optimistic locking
   isSystem           Boolean       @default(false) @map("is_system") /// True for system/omnibus wallets
@@ -59,7 +59,7 @@ model Movement {
   @@map("movements")
 }
 
-/// Financial transaction record. amount_cents is always positive.
+/// Financial transaction record. amount_minor is always positive.
 model Transaction {
   id                  String        @id /// UUID v7, app-generated
   walletId            String        @map("wallet_id")
@@ -67,7 +67,7 @@ model Transaction {
   counterpartWalletId String?       @map("counterpart_wallet_id")
   counterpartWallet   Wallet?       @relation("CounterpartTransactions", fields: [counterpartWalletId], references: [id])
   type                String /// deposit | withdrawal | transfer_in | transfer_out | hold_capture | adjustment_credit | adjustment_debit
-  amountCents         BigInt        @map("amount_cents") /// Always positive, integer cents
+  amountMinor         BigInt        @map("amount_minor") /// Always positive, integer minor units
   status              String        @default("completed") /// completed | failed | reversed
   idempotencyKey      String?       @map("idempotency_key")
   reference           String? /// External reference from caller
@@ -82,7 +82,7 @@ model Transaction {
   @@index([walletId, createdAt])
   @@index([walletId, type, createdAt])
   @@index([walletId, status, createdAt])
-  @@index([walletId, amountCents])
+  @@index([walletId, amountMinor])
   @@index([idempotencyKey])
   @@index([movementId])
   @@map("transactions")
@@ -97,8 +97,8 @@ model LedgerEntry {
   walletId          String      @map("wallet_id")
   wallet            Wallet      @relation(fields: [walletId], references: [id])
   entryType         String      @map("entry_type") /// CREDIT | DEBIT
-  amountCents       BigInt      @map("amount_cents") /// + for credit, - for debit
-  balanceAfterCents BigInt      @map("balance_after_cents") /// Balance snapshot after this entry
+  amountMinor       BigInt      @map("amount_minor") /// + for credit, - for debit
+  balanceAfterMinor BigInt      @map("balance_after_minor") /// Balance snapshot after this entry
   movementId        String      @map("movement_id")
   movement          Movement    @relation(fields: [movementId], references: [id])
   createdAt         BigInt      @map("created_at") /// Unix ms
@@ -115,7 +115,7 @@ model Hold {
   id          String  @id /// UUID v7, app-generated
   walletId    String  @map("wallet_id")
   wallet      Wallet  @relation(fields: [walletId], references: [id])
-  amountCents BigInt  @map("amount_cents") /// Always positive, integer cents
+  amountMinor BigInt  @map("amount_minor") /// Always positive, integer minor units
   status      String  @default("active") /// active | captured | voided | expired
   reference   String?
   expiresAt   BigInt? @map("expires_at") /// Unix ms, optional auto-expiry

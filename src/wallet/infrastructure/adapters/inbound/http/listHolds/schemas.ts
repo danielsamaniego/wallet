@@ -18,8 +18,8 @@ const listingConfig: ListingConfig = {
       enumValues: ["active", "captured", "voided", "expired"],
     },
     {
-      apiName: "amount_cents",
-      prismaName: "amountCents",
+      apiName: "amount_minor",
+      prismaName: "amountMinor",
       type: "bigint",
       operators: ["eq", "gt", "gte", "lt", "lte"],
     },
@@ -38,7 +38,7 @@ const listingConfig: ListingConfig = {
   ],
   sortableFields: [
     { apiName: "created_at", prismaName: "createdAt" },
-    { apiName: "amount_cents", prismaName: "amountCents" },
+    { apiName: "amount_minor", prismaName: "amountMinor" },
   ],
   defaultSort: [{ field: "createdAt", direction: "desc" }],
   maxLimit: 100,
@@ -52,7 +52,7 @@ export const QueryParamsSchema = createListingQuerySchema(listingConfig);
 const HoldSchema = z.object({
   id: z.string(),
   wallet_id: z.string(),
-  amount_cents: z.union([z.number(), z.string()]),
+  amount_minor: z.union([z.number(), z.string()]),
   status: z.string(),
   reference: z.string().nullable(),
   expires_at: z.number().nullable(),

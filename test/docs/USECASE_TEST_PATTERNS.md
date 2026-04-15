@@ -110,7 +110,7 @@ describe("MyUseCase", () => {
       it("Then the wallet is saved with updated balance", async () => {
         await sut.handle(ctx, cmd);
         const savedWallet = walletRepo.save.mock.calls[0]![1] as Wallet;
-        expect(savedWallet.cachedBalanceCents).toBe(15000n);
+        expect(savedWallet.cachedBalanceMinor).toBe(15000n);
       });
 
       it("Then a Transaction is created with correct fields", async () => {
@@ -252,7 +252,7 @@ Example audit of `DepositUseCase`:
 | `if (!wallet)` | `ErrWalletNotFound` | "Given the wallet does not exist" |
 | `if (wallet.platformId !== cmd.platformId)` | `ErrWalletNotFound` | "Given a wallet belonging to a different platform" |
 | `if (!systemWallet)` | `ErrSystemWalletNotFound` | "Given the system wallet does not exist" |
-| `wallet.deposit(cmd.amountCents, now)` | `WALLET_NOT_ACTIVE` (domain) | "Given a frozen wallet" |
+| `wallet.deposit(cmd.amountMinor, now)` | `WALLET_NOT_ACTIVE` (domain) | "Given a frozen wallet" |
 
 ---
 
@@ -270,7 +270,7 @@ it("Then the user wallet balance is updated (original + deposit)", async () => {
 
   // Extract the saved wallet from the mock call
   const savedWallet = walletRepo.save.mock.calls[0]![1] as Wallet;
-  expect(savedWallet.cachedBalanceCents).toBe(15000n);
+  expect(savedWallet.cachedBalanceMinor).toBe(15000n);
 });
 
 it("Then the system wallet balance is adjusted with negative delta", async () => {

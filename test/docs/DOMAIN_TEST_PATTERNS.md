@@ -209,7 +209,7 @@ const activeHold = (overrides?: Partial<Parameters<typeof Hold.reconstruct>[0]>)
   Hold.reconstruct({
     id: "hold-1",
     walletId: "wallet-1",
-    amountCents: 1000n,
+    amountMinor: 1000n,
     status: "active",
     reference: null,
     expiresAt: null,

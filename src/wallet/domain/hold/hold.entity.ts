@@ -5,7 +5,7 @@ export type HoldStatus = "active" | "captured" | "voided" | "expired";
 export class Hold {
   private readonly _id: string;
   private readonly _walletId: string;
-  private readonly _amountCents: bigint;
+  private readonly _amountMinor: bigint;
   private _status: HoldStatus;
   private readonly _reference: string | null;
   private readonly _expiresAt: number | null;
@@ -15,7 +15,7 @@ export class Hold {
   private constructor() {
     this._id = "";
     this._walletId = "";
-    this._amountCents = 0n;
+    this._amountMinor = 0n;
     this._status = "active";
     this._reference = null;
     this._expiresAt = null;
@@ -26,12 +26,12 @@ export class Hold {
   static create(params: {
     id: string;
     walletId: string;
-    amountCents: bigint;
+    amountMinor: bigint;
     reference: string | null;
     expiresAt: number | null;
     now: number;
   }): Hold {
-    if (params.amountCents <= 0n) {
+    if (params.amountMinor <= 0n) {
       throw AppError.validation("INVALID_AMOUNT", "hold amount must be positive");
     }
     if (params.expiresAt !== null && params.expiresAt <= params.now) {
@@ -41,7 +41,7 @@ export class Hold {
     Object.assign(h, {
       _id: params.id,
       _walletId: params.walletId,
-      _amountCents: params.amountCents,
+      _amountMinor: params.amountMinor,
       _status: "active",
       _reference: params.reference,
       _expiresAt: params.expiresAt,
@@ -54,7 +54,7 @@ export class Hold {
   static reconstruct(params: {
     id: string;
     walletId: string;
-    amountCents: bigint;
+    amountMinor: bigint;
     status: HoldStatus;
     reference: string | null;
     expiresAt: number | null;
@@ -65,7 +65,7 @@ export class Hold {
     Object.assign(h, {
       _id: params.id,
       _walletId: params.walletId,
-      _amountCents: params.amountCents,
+      _amountMinor: params.amountMinor,
       _status: params.status,
       _reference: params.reference,
       _expiresAt: params.expiresAt,
@@ -81,8 +81,8 @@ export class Hold {
   get walletId(): string {
     return this._walletId;
   }
-  get amountCents(): bigint {
-    return this._amountCents;
+  get amountMinor(): bigint {
+    return this._amountMinor;
   }
   get status(): HoldStatus {
     return this._status;

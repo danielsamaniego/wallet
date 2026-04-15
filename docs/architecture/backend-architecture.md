@@ -67,9 +67,9 @@ This architecture uses **CQRS without Event Sourcing** and **without Event-Drive
 **Why we don't use it**:
 
 1. **The double-entry ledger already provides the audit trail.** Event Sourcing's main benefit is full history and auditability — but our `ledger_entries` table is already an append-only, immutable log of every financial operation. We get the audit trail without the complexity of event replay.
-2. **State reconstruction complexity.** Rebuilding a wallet's balance from thousands of events on every read adds latency and implementation cost. We use a `cached_balance_cents` field (updated atomically on write) for O(1) reads.
+2. **State reconstruction complexity.** Rebuilding a wallet's balance from thousands of events on every read adds latency and implementation cost. We use a `cached_balance_minor` field (updated atomically on write) for O(1) reads.
 3. **Operational overhead.** Event stores need compaction, snapshotting, and projection rebuilds. For a wallet service where the core invariant is "balance must be consistent", direct state persistence with optimistic locking is simpler and equally correct.
-4. **No need for temporal queries.** We don't need "what was the balance at 3pm yesterday?" — the ledger entries with `balance_after_cents` snapshots already answer that question.
+4. **No need for temporal queries.** We don't need "what was the balance at 3pm yesterday?" — the ledger entries with `balance_after_minor` snapshots already answer that question.
 
 **What we use instead**:
 
@@ -85,7 +85,7 @@ This architecture uses **CQRS without Event Sourcing** and **without Event-Drive
 
 ### Amounts
 
-All financial amounts use **integer cents** (BigInt). The smallest currency unit. No floating point.
+All financial amounts use **integer minor units** (BigInt). The smallest currency unit per ISO 4217. No floating point. Supported currencies: USD, EUR, MXN, CLP, KWD.
 
 ### Timestamps
 
@@ -334,14 +334,14 @@ const listingConfig: ListingConfig = {
   filterableFields: [
     { apiName: "type", prismaName: "type", type: "enum", operators: ["eq", "in"],
       enumValues: ["deposit", "withdrawal", "transfer_in", "transfer_out"] },
-    { apiName: "amount_cents", prismaName: "amountCents", type: "bigint",
+    { apiName: "amount_minor", prismaName: "amountMinor", type: "bigint",
       operators: ["eq", "gt", "gte", "lt", "lte"] },
     { apiName: "created_at", prismaName: "createdAt", type: "bigint",
       operators: ["gt", "gte", "lt", "lte"] },
   ],
   sortableFields: [
     { apiName: "created_at", prismaName: "createdAt" },
-    { apiName: "amount_cents", prismaName: "amountCents" },
+    { apiName: "amount_minor", prismaName: "amountMinor" },
   ],
   defaultSort: [{ field: "createdAt", direction: "desc" }],
   maxLimit: 100,
@@ -356,8 +356,8 @@ export const QueryParamsSchema = createListingQuerySchema(listingConfig);
 ```
 ?filter[type]=deposit              # eq
 ?filter[type]=deposit,withdrawal   # implicit in (CSV)
-?filter[amount_cents][gte]=1000    # explicit operator
-?sort=-amount_cents,created_at     # multi-field, - prefix = desc
+?filter[amount_minor][gte]=1000    # explicit operator
+?sort=-amount_minor,created_at     # multi-field, - prefix = desc
 ?limit=20&cursor=eyJ...            # keyset cursor pagination
 ```
 
@@ -628,8 +628,8 @@ const ctx = createAppContext(idGen);
 
 - Every financial operation produces **2 entries** (debit + credit).
 - **ledger_entries** is immutable: DB trigger prevents UPDATE/DELETE; `prisma/immutable_ledger.sql` applied after migrations.
-- `entry_type`: CREDIT or DEBIT; `amount_cents` signed (+ credit, - debit).
-- `balance_after_cents` stores running balance snapshot.
+- `entry_type`: CREDIT or DEBIT; `amount_minor` signed (+ credit, - debit).
+- `balance_after_minor` stores running balance snapshot.
 
 ---
 
@@ -656,7 +656,7 @@ export class Wallet {
   private readonly _ownerId: string;
   private readonly _platformId: string;
   private readonly _currencyCode: string;
-  private _cachedBalanceCents: bigint;
+  private _cachedBalanceMinor: bigint;
   private _status: string;
   private _version: number;
   private readonly _isSystem: boolean;
@@ -678,7 +678,7 @@ export class Wallet {
     Object.assign(w, {
       _id: id, _ownerId: ownerId, _platformId: platformId,
       _currencyCode: currencyCode.toUpperCase(),
-      _cachedBalanceCents: 0n, _status: "active", _version: 0,
+      _cachedBalanceMinor: 0n, _status: "active", _version: 0,
       _isSystem: isSystem, _createdAt: now, _updatedAt: now,
     });
     return w;
@@ -687,13 +687,13 @@ export class Wallet {
   // --- Factory: load from DB (no validation) ---
   static reconstruct(
     id: string, ownerId: string, platformId: string, currencyCode: string,
-    cachedBalanceCents: bigint, status: string, version: number,
+    cachedBalanceMinor: bigint, status: string, version: number,
     isSystem: boolean, createdAt: number, updatedAt: number,
   ): Wallet {
     const w = new Wallet();
     Object.assign(w, {
       _id: id, _ownerId: ownerId, _platformId: platformId,
-      _currencyCode: currencyCode, _cachedBalanceCents: cachedBalanceCents,
+      _currencyCode: currencyCode, _cachedBalanceMinor: cachedBalanceMinor,
       _status: status, _version: version, _isSystem: isSystem,
       _createdAt: createdAt, _updatedAt: updatedAt,
     });
@@ -705,7 +705,7 @@ export class Wallet {
   get ownerId(): string { return this._ownerId; }
   get platformId(): string { return this._platformId; }
   get currencyCode(): string { return this._currencyCode; }
-  get cachedBalanceCents(): bigint { return this._cachedBalanceCents; }
+  get cachedBalanceMinor(): bigint { return this._cachedBalanceMinor; }
   get status(): string { return this._status; }
   get version(): number { return this._version; }
   get isSystem(): boolean { return this._isSystem; }
@@ -714,20 +714,20 @@ export class Wallet {
 
   // --- Domain methods (mutations with invariant checks) ---
 
-  deposit(amountCents: bigint, now: number): void {
+  deposit(amountMinor: bigint, now: number): void {
     if (this._status !== "active") throw ErrWalletNotActive(this._id);
-    if (amountCents <= 0n) throw ErrInvalidAmount();
-    this._cachedBalanceCents += amountCents;
+    if (amountMinor <= 0n) throw ErrInvalidAmount();
+    this._cachedBalanceMinor += amountMinor;
     this.touch(now);
   }
 
-  withdraw(amountCents: bigint, availableBalanceCents: bigint, now: number): void {
+  withdraw(amountMinor: bigint, availableBalanceMinor: bigint, now: number): void {
     if (this._status !== "active") throw ErrWalletNotActive(this._id);
-    if (amountCents <= 0n) throw ErrInvalidAmount();
-    if (!this._isSystem && availableBalanceCents < amountCents) {
+    if (amountMinor <= 0n) throw ErrInvalidAmount();
+    if (!this._isSystem && availableBalanceMinor < amountMinor) {
       throw ErrInsufficientFunds(this._id);
     }
-    this._cachedBalanceCents -= amountCents;
+    this._cachedBalanceMinor -= amountMinor;
     this.touch(now);
   }
 
@@ -870,7 +870,7 @@ export class PrismaWalletRepo implements IWalletRepository {
       const result = await db.wallet.updateMany({
         where: { id: wallet.id, version: wallet.version },
         data: {
-          cachedBalanceCents: wallet.cachedBalanceCents,
+          cachedBalanceMinor: wallet.cachedBalanceMinor,
           status: wallet.status,
           version: wallet.version + 1,
           updatedAt: BigInt(wallet.updatedAt),
@@ -889,12 +889,12 @@ export class PrismaWalletRepo implements IWalletRepository {
   // --- Map Prisma row → domain aggregate (Reconstruct, no validation) ---
   private toDomain(row: {
     id: string; ownerId: string; platformId: string; currencyCode: string;
-    cachedBalanceCents: bigint; status: string; version: number;
+    cachedBalanceMinor: bigint; status: string; version: number;
     isSystem: boolean; createdAt: bigint; updatedAt: bigint;
   }): Wallet {
     return Wallet.reconstruct(
       row.id, row.ownerId, row.platformId, row.currencyCode,
-      row.cachedBalanceCents, row.status, row.version,
+      row.cachedBalanceMinor, row.status, row.version,
       row.isSystem, Number(row.createdAt), Number(row.updatedAt),
     );
   }
@@ -952,7 +952,7 @@ export class DepositHandler {
 
       // 3. Mutate aggregate (domain validates invariants)
       const now = Date.now();
-      wallet.deposit(cmd.amountCents, now);
+      wallet.deposit(cmd.amountMinor, now);
 
       // 4. Create movement + transaction + ledger entries
       const movement = Movement.create({ id: movementId, type: "deposit", createdAt: now });
@@ -961,7 +961,7 @@ export class DepositHandler {
 
       // 5. Save user wallet (optimistic locking), system wallet (atomic increment)
       await this.walletRepo.save(txCtx, wallet);
-      await this.walletRepo.adjustSystemWalletBalance(txCtx, systemWallet.id, -cmd.amountCents, now);
+      await this.walletRepo.adjustSystemWalletBalance(txCtx, systemWallet.id, -cmd.amountMinor, now);
       await this.movementRepo.save(txCtx, movement);
       await this.transactionRepo.save(txCtx, tx);
       await this.ledgerEntryRepo.saveMany(txCtx, [userEntry, systemEntry]);
@@ -1035,7 +1035,7 @@ import type { ICommandBus } from "utils/application/cqrs.js";
 
 const ParamSchema = z.object({ walletId: z.string().min(1).max(255) });
 const BodySchema = z.object({
-  amount_cents: z.number().int().positive(),
+  amount_minor: z.number().int().positive(),
   reference: z.string().max(500).optional(),
 });
 
@@ -1050,7 +1050,7 @@ export function depositRoute(commandBus: ICommandBus) {
 
       const result = await commandBus.dispatch(ctx, {
         walletId,
-        amountCents: BigInt(data.amount_cents),
+        amountMinor: BigInt(data.amount_minor),
         reference: data.reference,
         idempotencyKey: c.req.header("idempotency-key")!,
         platformId: ctx.platformId!,

@@ -77,7 +77,7 @@ describe("Information Disclosure E2E", () => {
         const res = await app.request(`/v1/wallets/${wallet_id}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": nextKey() },
-          body: JSON.stringify({ amount_cents: 9999 }),
+          body: JSON.stringify({ amount_minor: 9999 }),
         });
 
         expect(res.status).toBe(422);

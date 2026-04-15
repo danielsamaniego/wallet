@@ -22,6 +22,8 @@ export class VoidHoldUseCase implements ICommandHandler<VoidHoldCommand, void> {
 
     this.logger.debug(ctx, `${methodLogTag} start`, { hold_id: cmd.holdId });
 
+    let walletCurrency = "";
+
     await this.txManager.run(ctx, async (txCtx) => {
       const hold = await this.holdRepo.findById(txCtx, cmd.holdId);
       if (!hold) {
@@ -34,10 +36,12 @@ export class VoidHoldUseCase implements ICommandHandler<VoidHoldCommand, void> {
         this.logger.warn(txCtx, `${methodLogTag} wallet not found or platform mismatch`, {
           hold_id: cmd.holdId,
           wallet_id: hold.walletId,
+          currency_code: wallet?.currencyCode,
           platform_id: cmd.platformId,
         });
         throw ErrHoldNotFound(cmd.holdId);
       }
+      walletCurrency = wallet.currencyCode;
 
       const now = Date.now();
 
@@ -46,6 +50,7 @@ export class VoidHoldUseCase implements ICommandHandler<VoidHoldCommand, void> {
         this.logger.info(txCtx, `${methodLogTag} hold expired on access`, {
           hold_id: hold.id,
           wallet_id: hold.walletId,
+          currency_code: wallet.currencyCode,
           expires_at: hold.expiresAt,
         });
         hold.expire(now);
@@ -67,6 +72,9 @@ export class VoidHoldUseCase implements ICommandHandler<VoidHoldCommand, void> {
       await this.holdRepo.transitionStatus(txCtx, hold.id, "active", "voided", now);
     });
 
-    this.logger.info(ctx, `${methodLogTag} hold voided`, { hold_id: cmd.holdId });
+    this.logger.info(ctx, `${methodLogTag} hold voided`, {
+      hold_id: cmd.holdId,
+      currency_code: walletCurrency,
+    });
   }
 }

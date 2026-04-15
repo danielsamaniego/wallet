@@ -24,8 +24,8 @@ const entryA: LedgerEntryDTO = {
   transaction_id: "tx-1",
   wallet_id: WALLET_ID,
   entry_type: "DEBIT",
-  amount_cents: 5000,
-  balance_after_cents: 5000,
+  amount_minor: 5000,
+  balance_after_minor: 5000,
   created_at: 1700000000000,
 };
 
@@ -34,8 +34,8 @@ const entryB: LedgerEntryDTO = {
   transaction_id: "tx-2",
   wallet_id: WALLET_ID,
   entry_type: "CREDIT",
-  amount_cents: 3000,
-  balance_after_cents: 8000,
+  amount_minor: 3000,
+  balance_after_minor: 8000,
   created_at: 1700000001000,
 };
 

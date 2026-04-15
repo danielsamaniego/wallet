@@ -10,7 +10,7 @@ export class AdjustBalanceCommand extends ICommand<AdjustBalanceResult> {
   constructor(
     public readonly walletId: string,
     public readonly platformId: string,
-    public readonly amountCents: bigint,
+    public readonly amountMinor: bigint,
     public readonly reason: string,
     public readonly idempotencyKey: string,
     public readonly reference?: string,

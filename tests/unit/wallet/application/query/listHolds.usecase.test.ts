@@ -23,7 +23,7 @@ const listing: ListingQuery = {
 const holdA: HoldDTO = {
   id: "hold-1",
   wallet_id: WALLET_ID,
-  amount_cents: 5000,
+  amount_minor: 5000,
   status: "ACTIVE",
   reference: "ref-001",
   expires_at: 1700100000000,
@@ -34,7 +34,7 @@ const holdA: HoldDTO = {
 const holdB: HoldDTO = {
   id: "hold-2",
   wallet_id: WALLET_ID,
-  amount_cents: 3000,
+  amount_minor: 3000,
   status: "CAPTURED",
   reference: null,
   expires_at: null,

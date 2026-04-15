@@ -43,7 +43,7 @@ export function adjustBalanceRoute(commandBus: ICommandBus) {
         new AdjustBalanceCommand(
           walletId,
           ctx.platformId,
-          BigInt(data.amount_cents),
+          BigInt(data.amount_minor),
           data.reason,
           c.req.header("idempotency-key") ?? "",
           data.reference,

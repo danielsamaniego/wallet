@@ -22,15 +22,19 @@ export class CloseWalletUseCase implements ICommandHandler<CloseWalletCommand, v
 
     this.logger.debug(ctx, `${methodLogTag} start`, { wallet_id: cmd.walletId });
 
+    let walletCurrency = "";
+
     await this.txManager.run(ctx, async (txCtx) => {
       const wallet = await this.walletRepo.findById(txCtx, cmd.walletId);
       if (!wallet) {
         this.logger.warn(txCtx, `${methodLogTag} wallet not found`, { wallet_id: cmd.walletId });
         throw ErrWalletNotFound(cmd.walletId);
       }
+      walletCurrency = wallet.currencyCode;
       if (wallet.platformId !== cmd.platformId) {
         this.logger.warn(txCtx, `${methodLogTag} platform mismatch`, {
           wallet_id: cmd.walletId,
+          currency_code: wallet.currencyCode,
           expected_platform_id: cmd.platformId,
           actual_platform_id: wallet.platformId,
         });
@@ -42,14 +46,18 @@ export class CloseWalletUseCase implements ICommandHandler<CloseWalletCommand, v
 
       this.logger.debug(txCtx, `${methodLogTag} close pre-check`, {
         wallet_id: wallet.id,
+        currency_code: wallet.currencyCode,
         active_holds_count: activeHoldsCount,
-        balance_cents: Number(wallet.cachedBalanceCents),
+        balance_minor: Number(wallet.cachedBalanceMinor),
       });
 
       wallet.close(activeHoldsCount, now);
       await this.walletRepo.save(txCtx, wallet);
     });
 
-    this.logger.info(ctx, `${methodLogTag} wallet closed`, { wallet_id: cmd.walletId });
+    this.logger.info(ctx, `${methodLogTag} wallet closed`, {
+      wallet_id: cmd.walletId,
+      currency_code: walletCurrency,
+    });
   }
 }

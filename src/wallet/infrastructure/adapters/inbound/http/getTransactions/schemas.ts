@@ -25,8 +25,8 @@ const listingConfig: ListingConfig = {
       enumValues: ["completed", "failed", "reversed"],
     },
     {
-      apiName: "amount_cents",
-      prismaName: "amountCents",
+      apiName: "amount_minor",
+      prismaName: "amountMinor",
       type: "bigint",
       operators: ["eq", "gt", "gte", "lt", "lte"],
     },
@@ -52,7 +52,7 @@ const listingConfig: ListingConfig = {
   jsonFilterableFields: [{ apiName: "metadata", prismaName: "metadata", maxDepth: 3 }],
   sortableFields: [
     { apiName: "created_at", prismaName: "createdAt" },
-    { apiName: "amount_cents", prismaName: "amountCents" },
+    { apiName: "amount_minor", prismaName: "amountMinor" },
     { apiName: "type", prismaName: "type" },
   ],
   defaultSort: [{ field: "createdAt", direction: "desc" }],
@@ -69,7 +69,7 @@ const TransactionSchema = z.object({
   wallet_id: z.string(),
   counterpart_wallet_id: z.string().nullable(),
   type: z.string(),
-  amount_cents: z.union([z.number(), z.string()]),
+  amount_minor: z.union([z.number(), z.string()]),
   status: z.string(),
   idempotency_key: z.string().nullable(),
   reference: z.string().nullable(),

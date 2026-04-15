@@ -20,34 +20,34 @@ describe("Ledger Integrity E2E", () => {
   }
 
   /** Helper: deposit into a wallet. */
-  async function deposit(walletId: string, amountCents: number): Promise<void> {
+  async function deposit(walletId: string, amountMinor: number): Promise<void> {
     const res = await app.request(`/v1/wallets/${walletId}/deposit`, {
       method: "POST",
       headers: { "Idempotency-Key": nextKey() },
-      body: JSON.stringify({ amount_cents: amountCents }),
+      body: JSON.stringify({ amount_minor: amountMinor }),
     });
     expect(res.status).toBe(201);
   }
 
   /** Helper: withdraw from a wallet. */
-  async function withdraw(walletId: string, amountCents: number): Promise<void> {
+  async function withdraw(walletId: string, amountMinor: number): Promise<void> {
     const res = await app.request(`/v1/wallets/${walletId}/withdraw`, {
       method: "POST",
       headers: { "Idempotency-Key": nextKey() },
-      body: JSON.stringify({ amount_cents: amountCents }),
+      body: JSON.stringify({ amount_minor: amountMinor }),
     });
     expect(res.status).toBe(201);
   }
 
   /** Helper: transfer between wallets. */
-  async function transfer(sourceId: string, targetId: string, amountCents: number): Promise<void> {
+  async function transfer(sourceId: string, targetId: string, amountMinor: number): Promise<void> {
     const res = await app.request("/v1/transfers", {
       method: "POST",
       headers: { "Idempotency-Key": nextKey() },
       body: JSON.stringify({
         source_wallet_id: sourceId,
         target_wallet_id: targetId,
-        amount_cents: amountCents,
+        amount_minor: amountMinor,
       }),
     });
     expect(res.status).toBe(201);
@@ -76,7 +76,7 @@ describe("Ledger Integrity E2E", () => {
 
         const prisma = getTestPrisma();
         const results: { movement_id: string; total: unknown }[] = await prisma.$queryRaw`
-          SELECT movement_id, SUM(amount_cents) AS total
+          SELECT movement_id, SUM(amount_minor) AS total
           FROM ledger_entries
           GROUP BY movement_id
         `;
@@ -106,19 +106,19 @@ describe("Ledger Integrity E2E", () => {
         const prisma = getTestPrisma();
 
         // Get cached balances for non-system wallets
-        const wallets: { id: string; cached_balance_cents: unknown }[] = await prisma.$queryRaw`
-          SELECT id, cached_balance_cents FROM wallets WHERE is_system = false
+        const wallets: { id: string; cached_balance_minor: unknown }[] = await prisma.$queryRaw`
+          SELECT id, cached_balance_minor FROM wallets WHERE is_system = false
         `;
 
         for (const wallet of wallets) {
           const [ledgerSum]: [{ total: unknown }] = await prisma.$queryRaw`
-            SELECT COALESCE(SUM(amount_cents), 0) AS total
+            SELECT COALESCE(SUM(amount_minor), 0) AS total
             FROM ledger_entries
             WHERE wallet_id = ${wallet.id}
           `;
 
           // Prisma $queryRaw returns Decimal/BigInt — compare as numbers
-          expect(Number(wallet.cached_balance_cents)).toBe(Number(ledgerSum.total));
+          expect(Number(wallet.cached_balance_minor)).toBe(Number(ledgerSum.total));
         }
       });
     });
@@ -137,9 +137,9 @@ describe("Ledger Integrity E2E", () => {
         await transfer(walletA, walletB, 10000);
 
         const prisma = getTestPrisma();
-        const negativeWallets: { id: string; cached_balance_cents: bigint }[] = await prisma.$queryRaw`
-          SELECT id, cached_balance_cents FROM wallets
-          WHERE is_system = false AND cached_balance_cents < 0
+        const negativeWallets: { id: string; cached_balance_minor: bigint }[] = await prisma.$queryRaw`
+          SELECT id, cached_balance_minor FROM wallets
+          WHERE is_system = false AND cached_balance_minor < 0
         `;
 
         expect(negativeWallets).toHaveLength(0);
@@ -151,7 +151,7 @@ describe("Ledger Integrity E2E", () => {
 
   describe("Given multiple financial operations have been recorded", () => {
     describe("When querying all transaction amounts", () => {
-      it("Then every transaction amount_cents should be positive", async () => {
+      it("Then every transaction amount_minor should be positive", async () => {
         const walletA = await createWallet("owner-pos-a");
         const walletB = await createWallet("owner-pos-b");
 
@@ -161,8 +161,8 @@ describe("Ledger Integrity E2E", () => {
         await transfer(walletA, walletB, 3000);
 
         const prisma = getTestPrisma();
-        const nonPositive: { id: string; amount_cents: bigint }[] = await prisma.$queryRaw`
-          SELECT id, amount_cents FROM transactions WHERE amount_cents <= 0
+        const nonPositive: { id: string; amount_minor: bigint }[] = await prisma.$queryRaw`
+          SELECT id, amount_minor FROM transactions WHERE amount_minor <= 0
         `;
 
         expect(nonPositive).toHaveLength(0);
@@ -188,7 +188,7 @@ describe("Ledger Integrity E2E", () => {
 
         try {
           await prisma.$executeRaw`
-            UPDATE ledger_entries SET amount_cents = 999999 WHERE id = ${entries[0]!.id}
+            UPDATE ledger_entries SET amount_minor = 999999 WHERE id = ${entries[0]!.id}
           `;
           // If we reach here, the trigger did not fire
           expect.fail("UPDATE on ledger_entries should have been blocked by immutable trigger");
@@ -232,7 +232,7 @@ describe("Ledger Integrity E2E", () => {
   // ── Chain validation: INSERT with wrong balance_after blocked ────────
 
   describe("Given a wallet with existing ledger entries", () => {
-    describe("When attempting to INSERT a ledger entry with an incorrect balance_after_cents", () => {
+    describe("When attempting to INSERT a ledger entry with an incorrect balance_after_minor", () => {
       it("Then the database should reject the operation with CHAIN_BREAK", async () => {
         const walletA = await createWallet("owner-chain-break-a");
         await deposit(walletA, 10000); // balance is now 10000
@@ -240,7 +240,7 @@ describe("Ledger Integrity E2E", () => {
         const prisma = getTestPrisma();
 
         // Fetch a real transaction_id and movement_id from the deposit
-        // so the FK constraints pass — only balance_after_cents is wrong
+        // so the FK constraints pass — only balance_after_minor is wrong
         const refs: { tid: string; mid: string }[] = await prisma.$queryRaw`
           SELECT t.id AS tid, t.movement_id AS mid
           FROM transactions t
@@ -254,7 +254,7 @@ describe("Ledger Integrity E2E", () => {
         // we write 99999 to trigger CHAIN_BREAK
         try {
           await prisma.$executeRaw`
-            INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount_cents, balance_after_cents, movement_id, created_at)
+            INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount_minor, balance_after_minor, movement_id, created_at)
             VALUES (
               gen_random_uuid()::text,
               ${tid},
@@ -266,7 +266,7 @@ describe("Ledger Integrity E2E", () => {
               (SELECT MAX(created_at) + 1 FROM ledger_entries WHERE wallet_id = ${walletA})
             )
           `;
-          expect.fail("INSERT with wrong balance_after_cents should have been blocked by chain validation");
+          expect.fail("INSERT with wrong balance_after_minor should have been blocked by chain validation");
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
           expect(message).toMatch(/CHAIN_BREAK/i);
@@ -278,7 +278,7 @@ describe("Ledger Integrity E2E", () => {
   // ── Chain validation: first entry with wrong balance blocked ──────────
 
   describe("Given a wallet with no ledger entries", () => {
-    describe("When attempting to INSERT a first ledger entry with balance_after_cents != amount_cents", () => {
+    describe("When attempting to INSERT a first ledger entry with balance_after_minor != amount_minor", () => {
       it("Then the database should reject the operation with CHAIN_BREAK", async () => {
         const walletA = await createWallet("owner-chain-break-first");
         // No deposit — wallet is empty, prev_balance = 0
@@ -307,7 +307,7 @@ describe("Ledger Integrity E2E", () => {
         // We write 999 to trigger CHAIN_BREAK
         try {
           await prisma.$executeRaw`
-            INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount_cents, balance_after_cents, movement_id, created_at)
+            INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount_minor, balance_after_minor, movement_id, created_at)
             VALUES (
               gen_random_uuid()::text,
               ${tid},
@@ -319,7 +319,7 @@ describe("Ledger Integrity E2E", () => {
               ${BigInt(Date.now())}
             )
           `;
-          expect.fail("First INSERT with wrong balance_after_cents should have been blocked");
+          expect.fail("First INSERT with wrong balance_after_minor should have been blocked");
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
           expect(message).toMatch(/CHAIN_BREAK/i);
@@ -332,7 +332,7 @@ describe("Ledger Integrity E2E", () => {
 
   describe("Given deposits and withdrawals on a wallet", () => {
     describe("When summing ledger entries by wallet and comparing to balance_after of last entry", () => {
-      it("Then balance_after_cents of the last entry matches the running sum (chain is intact)", async () => {
+      it("Then balance_after_minor of the last entry matches the running sum (chain is intact)", async () => {
         const walletA = await createWallet("owner-chain-valid-a");
         await deposit(walletA, 50000);
         await deposit(walletA, 20000);
@@ -342,10 +342,10 @@ describe("Ledger Integrity E2E", () => {
 
         const rows: { last_balance: unknown; total: unknown }[] = await prisma.$queryRaw`
           SELECT
-            (SELECT balance_after_cents FROM ledger_entries
+            (SELECT balance_after_minor FROM ledger_entries
              WHERE wallet_id = ${walletA}
              ORDER BY created_at DESC, id DESC LIMIT 1) AS last_balance,
-            COALESCE(SUM(amount_cents), 0) AS total
+            COALESCE(SUM(amount_minor), 0) AS total
           FROM ledger_entries
           WHERE wallet_id = ${walletA}
         `;
@@ -379,7 +379,7 @@ describe("Ledger Integrity E2E", () => {
         // Insert a third entry on this movement with a positive amount — breaks zero-sum.
         try {
           await prisma.$executeRaw`
-            INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount_cents, balance_after_cents, movement_id, created_at)
+            INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount_minor, balance_after_minor, movement_id, created_at)
             VALUES (
               gen_random_uuid()::text,
               ${tid},
@@ -433,7 +433,7 @@ describe("Ledger Integrity E2E", () => {
         const holdRes = await app.request(`/v1/holds`, {
           method: "POST",
           headers: { "Idempotency-Key": nextKey() },
-          body: JSON.stringify({ wallet_id: walletA, amount_cents: 10000 }),
+          body: JSON.stringify({ wallet_id: walletA, amount_minor: 10000 }),
         });
         expect(holdRes.status).toBe(201);
 
@@ -470,9 +470,9 @@ describe("Ledger Integrity E2E", () => {
     });
   });
 
-  // ── Reconciliation: cached_balance_cents must match entry balance_after ──
+  // ── Reconciliation: cached_balance_minor must match entry balance_after ──
 
-  describe("Given a wallet whose cached_balance_cents was tampered directly in the database", () => {
+  describe("Given a wallet whose cached_balance_minor was tampered directly in the database", () => {
     describe("When a new ledger entry is inserted with the correct chain but mismatched cached balance", () => {
       it("Then the database should reject the operation with RECONCILIATION_FAILED", async () => {
         const walletA = await createWallet("owner-reconcile-a");
@@ -480,9 +480,9 @@ describe("Ledger Integrity E2E", () => {
 
         const prisma = getTestPrisma();
 
-        // Tamper cached_balance_cents directly (field lock does not protect this field)
+        // Tamper cached_balance_minor directly (field lock does not protect this field)
         await prisma.$executeRaw`
-          UPDATE wallets SET cached_balance_cents = 99999 WHERE id = ${walletA}
+          UPDATE wallets SET cached_balance_minor = 99999 WHERE id = ${walletA}
         `;
 
         // Create a NEW movement + transaction so the ledger entry is the ONLY
@@ -499,7 +499,7 @@ describe("Ledger Integrity E2E", () => {
 
         const newTxId: string = (
           await prisma.$queryRaw<{ id: string }[]>`
-            INSERT INTO transactions (id, wallet_id, type, amount_cents, status, movement_id, created_at)
+            INSERT INTO transactions (id, wallet_id, type, amount_minor, status, movement_id, created_at)
             VALUES (gen_random_uuid()::text, ${walletA}, 'deposit', 500, 'completed', ${newMovementId}, ${now})
             RETURNING id
           `
@@ -509,7 +509,7 @@ describe("Ledger Integrity E2E", () => {
         // but cached_balance is 99999 — reconciliation must catch this
         try {
           await prisma.$executeRaw`
-            INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount_cents, balance_after_cents, movement_id, created_at)
+            INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount_minor, balance_after_minor, movement_id, created_at)
             VALUES (
               gen_random_uuid()::text,
               ${newTxId},
@@ -532,7 +532,7 @@ describe("Ledger Integrity E2E", () => {
 
   describe("Given normal deposits and withdrawals on a wallet", () => {
     describe("When operations complete successfully", () => {
-      it("Then cached_balance_cents always matches balance_after_cents of the last ledger entry", async () => {
+      it("Then cached_balance_minor always matches balance_after_minor of the last ledger entry", async () => {
         const walletA = await createWallet("owner-reconcile-valid");
         await deposit(walletA, 50000);
         await withdraw(walletA, 15000);
@@ -542,8 +542,8 @@ describe("Ledger Integrity E2E", () => {
 
         const rows: { cached: unknown; last_balance: unknown }[] = await prisma.$queryRaw`
           SELECT
-            w.cached_balance_cents AS cached,
-            (SELECT balance_after_cents FROM ledger_entries
+            w.cached_balance_minor AS cached,
+            (SELECT balance_after_minor FROM ledger_entries
              WHERE wallet_id = ${walletA}
              ORDER BY created_at DESC, id DESC LIMIT 1) AS last_balance
           FROM wallets w
@@ -604,7 +604,7 @@ describe("Ledger Integrity E2E", () => {
 
         try {
           await prisma.$executeRaw`
-            INSERT INTO wallets (id, owner_id, platform_id, currency_code, cached_balance_cents, status, version, is_system, created_at, updated_at)
+            INSERT INTO wallets (id, owner_id, platform_id, currency_code, cached_balance_minor, status, version, is_system, created_at, updated_at)
             VALUES ('chk-test-1', 'owner-chk', ${TEST_PLATFORM_ID}, 'JPY', 0, 'active', 1, false, ${now}, ${now})
           `;
           expect.fail("INSERT with unsupported currency should have been blocked by CHECK constraint");
@@ -655,7 +655,7 @@ describe("Ledger Integrity E2E", () => {
   });
 
   describe("Given an existing wallet", () => {
-    describe("When updating only allowed fields (status, cached_balance_cents)", () => {
+    describe("When updating only allowed fields (status, cached_balance_minor)", () => {
       it("Then the database should allow the update", async () => {
         const walletId = await createWallet("owner-field-lock-allowed");
         const prisma = getTestPrisma();
@@ -731,7 +731,7 @@ describe("Ledger Integrity E2E", () => {
         const holdRes = await app.request("/v1/holds", {
           method: "POST",
           headers: { "Idempotency-Key": nextKey() },
-          body: JSON.stringify({ wallet_id: walletA, amount_cents: 10000 }),
+          body: JSON.stringify({ wallet_id: walletA, amount_minor: 10000 }),
         });
         expect(holdRes.status).toBe(201);
         const { hold_id } = await holdRes.json();
@@ -768,7 +768,7 @@ describe("Ledger Integrity E2E", () => {
         const holdRes = await app.request("/v1/holds", {
           method: "POST",
           headers: { "Idempotency-Key": nextKey() },
-          body: JSON.stringify({ wallet_id: walletA, amount_cents: 5000 }),
+          body: JSON.stringify({ wallet_id: walletA, amount_minor: 5000 }),
         });
         expect(holdRes.status).toBe(201);
         const { hold_id } = await holdRes.json();
@@ -797,7 +797,7 @@ describe("Ledger Integrity E2E", () => {
   // ── DB constraint blocks negative balance via direct SQL ──────────────
 
   describe("Given a non-system wallet exists in the database", () => {
-    describe("When attempting to set cached_balance_cents to -1 via direct SQL", () => {
+    describe("When attempting to set cached_balance_minor to -1 via direct SQL", () => {
       it("Then the database should reject the operation with a constraint violation", async () => {
         const walletA = await createWallet("owner-neg-constraint");
         await deposit(walletA, 10000);
@@ -806,7 +806,7 @@ describe("Ledger Integrity E2E", () => {
 
         try {
           await prisma.$executeRaw`
-            UPDATE wallets SET cached_balance_cents = -1
+            UPDATE wallets SET cached_balance_minor = -1
             WHERE id = ${walletA} AND is_system = false
           `;
           expect.fail("UPDATE setting negative balance should have been blocked by a DB constraint");
@@ -838,8 +838,8 @@ describe("Ledger Integrity E2E", () => {
         const prisma = getTestPrisma();
 
         // Verify chain integrity by reading all entries ordered
-        const entries: { amount_cents: unknown; balance_after_cents: unknown }[] = await prisma.$queryRaw`
-          SELECT amount_cents, balance_after_cents
+        const entries: { amount_minor: unknown; balance_after_minor: unknown }[] = await prisma.$queryRaw`
+          SELECT amount_minor, balance_after_minor
           FROM ledger_entries
           WHERE wallet_id = ${walletA}
           ORDER BY created_at ASC, id ASC
@@ -850,8 +850,8 @@ describe("Ledger Integrity E2E", () => {
         // Chain validation per-wallet: each consecutive entry chains correctly
         let prevBalance = 0n;
         for (const entry of entries) {
-          const amount = BigInt(entry.amount_cents as string | number);
-          const balanceAfter = BigInt(entry.balance_after_cents as string | number);
+          const amount = BigInt(entry.amount_minor as string | number);
+          const balanceAfter = BigInt(entry.balance_after_minor as string | number);
           expect(balanceAfter).toBe(prevBalance + amount);
           prevBalance = balanceAfter;
         }
@@ -876,7 +876,7 @@ describe("Ledger Integrity E2E", () => {
 
         try {
           await prisma.$executeRaw`
-            UPDATE transactions SET amount_cents = 99999 WHERE id = ${txId}
+            UPDATE transactions SET amount_minor = 99999 WHERE id = ${txId}
           `;
           expect.fail("UPDATE on transactions should have been blocked");
         } catch (error: unknown) {
@@ -972,7 +972,7 @@ describe("Ledger Integrity E2E", () => {
         const holdRes = await app.request("/v1/holds", {
           method: "POST",
           headers: { "Idempotency-Key": `hold-expire-test-${Date.now()}` },
-          body: JSON.stringify({ wallet_id: walletA, amount_cents: 5000 }),
+          body: JSON.stringify({ wallet_id: walletA, amount_minor: 5000 }),
         });
         expect(holdRes.status).toBe(201);
         const { hold_id } = await holdRes.json();
@@ -1022,7 +1022,7 @@ describe("Ledger Integrity E2E", () => {
         // Adding a 3rd that breaks zero-sum should be caught.
         try {
           await prisma.$executeRaw`
-            INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount_cents, balance_after_cents, movement_id, created_at)
+            INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount_minor, balance_after_minor, movement_id, created_at)
             VALUES (
               gen_random_uuid()::text,
               ${tid},

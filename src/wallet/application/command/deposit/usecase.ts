@@ -34,11 +34,12 @@ export class DepositUseCase implements ICommandHandler<DepositCommand, DepositRe
 
     this.logger.debug(ctx, `${methodLogTag} start`, {
       wallet_id: cmd.walletId,
-      amount_cents: Number(cmd.amountCents),
+      amount_minor: Number(cmd.amountMinor),
     });
 
     const txId = this.idGen.newId();
     const movementId = this.idGen.newId();
+    let walletCurrency = "";
 
     await this.txManager.run(ctx, async (txCtx) => {
       const wallet = await this.walletRepo.findById(txCtx, cmd.walletId);
@@ -46,9 +47,11 @@ export class DepositUseCase implements ICommandHandler<DepositCommand, DepositRe
         this.logger.warn(txCtx, `${methodLogTag} wallet not found`, { wallet_id: cmd.walletId });
         throw ErrWalletNotFound(cmd.walletId);
       }
+      walletCurrency = wallet.currencyCode;
       if (wallet.platformId !== cmd.platformId) {
         this.logger.warn(txCtx, `${methodLogTag} platform mismatch`, {
           wallet_id: cmd.walletId,
+          currency_code: wallet.currencyCode,
           expected_platform_id: cmd.platformId,
           actual_platform_id: wallet.platformId,
         });
@@ -74,10 +77,10 @@ export class DepositUseCase implements ICommandHandler<DepositCommand, DepositRe
       const movement = Movement.create({ id: movementId, type: "deposit", createdAt: now });
 
       // Mutate user wallet aggregate
-      wallet.deposit(cmd.amountCents, now);
+      wallet.deposit(cmd.amountMinor, now);
 
       // System wallet: compute snapshot for ledger entry (approximate under concurrency)
-      const systemBalanceAfter = systemWallet.cachedBalanceCents - cmd.amountCents;
+      const systemBalanceAfter = systemWallet.cachedBalanceMinor - cmd.amountMinor;
 
       // Create transaction
       const tx = Transaction.create({
@@ -85,7 +88,7 @@ export class DepositUseCase implements ICommandHandler<DepositCommand, DepositRe
         walletId: wallet.id,
         counterpartWalletId: systemWallet.id,
         type: "deposit",
-        amountCents: cmd.amountCents,
+        amountMinor: cmd.amountMinor,
         status: "completed",
         idempotencyKey: cmd.idempotencyKey,
         reference: cmd.reference ?? null,
@@ -101,8 +104,8 @@ export class DepositUseCase implements ICommandHandler<DepositCommand, DepositRe
         transactionId: txId,
         walletId: wallet.id,
         entryType: "CREDIT",
-        amountCents: cmd.amountCents,
-        balanceAfterCents: wallet.cachedBalanceCents,
+        amountMinor: cmd.amountMinor,
+        balanceAfterMinor: wallet.cachedBalanceMinor,
         movementId,
         createdAt: now,
       });
@@ -112,8 +115,8 @@ export class DepositUseCase implements ICommandHandler<DepositCommand, DepositRe
         transactionId: txId,
         walletId: systemWallet.id,
         entryType: "DEBIT",
-        amountCents: -cmd.amountCents,
-        balanceAfterCents: systemBalanceAfter,
+        amountMinor: -cmd.amountMinor,
+        balanceAfterMinor: systemBalanceAfter,
         movementId,
         createdAt: now,
       });
@@ -124,7 +127,7 @@ export class DepositUseCase implements ICommandHandler<DepositCommand, DepositRe
       await this.walletRepo.adjustSystemWalletBalance(
         txCtx,
         systemWallet.id,
-        -cmd.amountCents,
+        -cmd.amountMinor,
         now,
       );
       await this.transactionRepo.save(txCtx, tx);
@@ -133,8 +136,9 @@ export class DepositUseCase implements ICommandHandler<DepositCommand, DepositRe
 
     this.logger.info(ctx, `${methodLogTag} deposit success`, {
       wallet_id: cmd.walletId,
+      currency_code: walletCurrency,
       transaction_id: txId,
-      amount_cents: Number(cmd.amountCents),
+      amount_minor: Number(cmd.amountMinor),
     });
 
     return { transactionId: txId, movementId };

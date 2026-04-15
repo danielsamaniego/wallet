@@ -8,7 +8,7 @@ const baseParams = {
   id: "le-1",
   transactionId: "tx-1",
   walletId: "w-1",
-  balanceAfterCents: 1000n,
+  balanceAfterMinor: 1000n,
   movementId: "mov-1",
   createdAt: NOW,
 };
@@ -19,9 +19,9 @@ describe("LedgerEntry Entity", () => {
     describe("Given a positive amount", () => {
       describe("When creating a CREDIT entry", () => {
         it("Then creates successfully", () => {
-          const e = LedgerEntry.create({ ...baseParams, entryType: "CREDIT", amountCents: 500n });
+          const e = LedgerEntry.create({ ...baseParams, entryType: "CREDIT", amountMinor: 500n });
           expect(e.entryType).toBe("CREDIT");
-          expect(e.amountCents).toBe(500n);
+          expect(e.amountMinor).toBe(500n);
         });
       });
     });
@@ -29,8 +29,8 @@ describe("LedgerEntry Entity", () => {
     describe("Given zero amount", () => {
       describe("When creating a CREDIT entry", () => {
         it("Then creates successfully (zero is non-negative)", () => {
-          const e = LedgerEntry.create({ ...baseParams, entryType: "CREDIT", amountCents: 0n });
-          expect(e.amountCents).toBe(0n);
+          const e = LedgerEntry.create({ ...baseParams, entryType: "CREDIT", amountMinor: 0n });
+          expect(e.amountMinor).toBe(0n);
         });
       });
     });
@@ -38,7 +38,7 @@ describe("LedgerEntry Entity", () => {
     describe("Given a negative amount", () => {
       describe("When creating a CREDIT entry", () => {
         it("Then throws INVALID_LEDGER_SIGN", () => {
-          expect(() => LedgerEntry.create({ ...baseParams, entryType: "CREDIT", amountCents: -100n }))
+          expect(() => LedgerEntry.create({ ...baseParams, entryType: "CREDIT", amountMinor: -100n }))
             .toThrowAppError(ErrorKind.Validation, "INVALID_LEDGER_SIGN");
         });
       });
@@ -50,9 +50,9 @@ describe("LedgerEntry Entity", () => {
     describe("Given a negative amount", () => {
       describe("When creating a DEBIT entry", () => {
         it("Then creates successfully", () => {
-          const e = LedgerEntry.create({ ...baseParams, entryType: "DEBIT", amountCents: -500n });
+          const e = LedgerEntry.create({ ...baseParams, entryType: "DEBIT", amountMinor: -500n });
           expect(e.entryType).toBe("DEBIT");
-          expect(e.amountCents).toBe(-500n);
+          expect(e.amountMinor).toBe(-500n);
         });
       });
     });
@@ -60,8 +60,8 @@ describe("LedgerEntry Entity", () => {
     describe("Given zero amount", () => {
       describe("When creating a DEBIT entry", () => {
         it("Then creates successfully (zero is non-positive)", () => {
-          const e = LedgerEntry.create({ ...baseParams, entryType: "DEBIT", amountCents: 0n });
-          expect(e.amountCents).toBe(0n);
+          const e = LedgerEntry.create({ ...baseParams, entryType: "DEBIT", amountMinor: 0n });
+          expect(e.amountMinor).toBe(0n);
         });
       });
     });
@@ -69,7 +69,7 @@ describe("LedgerEntry Entity", () => {
     describe("Given a positive amount", () => {
       describe("When creating a DEBIT entry", () => {
         it("Then throws INVALID_LEDGER_SIGN", () => {
-          expect(() => LedgerEntry.create({ ...baseParams, entryType: "DEBIT", amountCents: 100n }))
+          expect(() => LedgerEntry.create({ ...baseParams, entryType: "DEBIT", amountMinor: 100n }))
             .toThrowAppError(ErrorKind.Validation, "INVALID_LEDGER_SIGN");
         });
       });
@@ -82,9 +82,9 @@ describe("LedgerEntry Entity", () => {
       describe("When reconstructing", () => {
         it("Then bypasses sign validation (for DB rebuild)", () => {
           // DEBIT with positive amount would throw in create, but reconstruct allows it
-          const e = LedgerEntry.reconstruct({ ...baseParams, entryType: "DEBIT", amountCents: 100n });
+          const e = LedgerEntry.reconstruct({ ...baseParams, entryType: "DEBIT", amountMinor: 100n });
           expect(e.entryType).toBe("DEBIT");
-          expect(e.amountCents).toBe(100n);
+          expect(e.amountMinor).toBe(100n);
         });
       });
     });
@@ -97,8 +97,8 @@ describe("LedgerEntry Entity", () => {
             transactionId: "tx-r",
             walletId: "w-r",
             entryType: "CREDIT",
-            amountCents: 777n,
-            balanceAfterCents: 1777n,
+            amountMinor: 777n,
+            balanceAfterMinor: 1777n,
             movementId: "mov-r",
             createdAt: 999,
           });
@@ -106,8 +106,8 @@ describe("LedgerEntry Entity", () => {
           expect(e.transactionId).toBe("tx-r");
           expect(e.walletId).toBe("w-r");
           expect(e.entryType).toBe("CREDIT");
-          expect(e.amountCents).toBe(777n);
-          expect(e.balanceAfterCents).toBe(1777n);
+          expect(e.amountMinor).toBe(777n);
+          expect(e.balanceAfterMinor).toBe(1777n);
           expect(e.movementId).toBe("mov-r");
           expect(e.createdAt).toBe(999);
         });

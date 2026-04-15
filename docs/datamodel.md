@@ -39,7 +39,7 @@ erDiagram
         string owner_id
         uuid platform_id FK
         string currency_code
-        bigint cached_balance_cents
+        bigint cached_balance_minor
         string status
         int version
         boolean is_system
@@ -52,7 +52,7 @@ erDiagram
         uuid wallet_id FK
         uuid counterpart_wallet_id
         string type
-        bigint amount_cents
+        bigint amount_minor
         string status
         string idempotency_key UK
         string reference
@@ -67,8 +67,8 @@ erDiagram
         uuid transaction_id FK
         uuid wallet_id FK
         string entry_type
-        bigint amount_cents
-        bigint balance_after_cents
+        bigint amount_minor
+        bigint balance_after_minor
         uuid movement_id FK
         bigint created_at
     }
@@ -76,7 +76,7 @@ erDiagram
     Hold {
         uuid id PK
         uuid wallet_id FK
-        bigint amount_cents
+        bigint amount_minor
         string status
         string reference
         bigint expires_at
@@ -129,14 +129,16 @@ Per-owner, per-platform, per-currency balance container. Uses optimistic locking
 | owner_id | string | External user ID from platform |
 | platform_id | UUID | FK → Platform |
 | currency_code | string | ISO 4217 (USD, EUR, etc.) |
-| cached_balance_cents | BIGINT | Integer cents; denormalized balance |
+| cached_balance_minor | BIGINT | Integer minor units; denormalized balance |
 | status | string | active, frozen, closed |
-| version | int | Optimistic locking for user wallets; incremented on every mutation (deposit, withdraw, transfer, captureHold, placeHold, voidHold, freeze, unfreeze, close). System wallets bypass version check — they use atomic increment (`cached_balance_cents + delta`) to avoid hot-row contention. Not exposed in the API — clients use idempotency keys for retry, not version numbers |
+| version | int | Optimistic locking for user wallets; incremented on every mutation (deposit, withdraw, transfer, captureHold, placeHold, voidHold, freeze, unfreeze, close). System wallets bypass version check -- they use atomic increment (`cached_balance_minor + delta`) to avoid hot-row contention. Not exposed in the API -- clients use idempotency keys for retry, not version numbers |
 | is_system | boolean | True for system/omnibus wallets |
 | created_at | BIGINT | Unix ms |
 | updated_at | BIGINT | Unix ms |
 
 **Unique constraint:** (owner_id, platform_id, currency_code)
+
+**CHECK constraint:** `wallets_supported_currency` ensures `currency_code` is one of the supported currencies (USD, EUR, MXN, CLP, KWD).
 
 **Relationships:**
 - Belongs to Platform
@@ -156,7 +158,7 @@ Journal entry that groups all transactions and ledger entries for a single finan
 | type | string | deposit, withdrawal, transfer, hold_capture |
 | created_at | BIGINT | Unix ms |
 
-**Audit invariant:** `SUM(amount_cents) GROUP BY movement_id = 0` for all movements.
+**Audit invariant:** `SUM(amount_minor) GROUP BY movement_id = 0` for all movements.
 
 **Relationships:**
 - One-to-many Transactions (1 for most ops, 2 for transfers)
@@ -166,7 +168,7 @@ Journal entry that groups all transactions and ledger entries for a single finan
 
 ### Transaction
 
-Record of a financial operation per wallet. `amount_cents` is always positive; direction implied by `type` and ledger entries.
+Record of a financial operation per wallet. `amount_minor` is always positive (integer minor units); direction implied by `type` and ledger entries.
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -174,7 +176,7 @@ Record of a financial operation per wallet. `amount_cents` is always positive; d
 | wallet_id | UUID | FK → Wallet (primary wallet) |
 | counterpart_wallet_id | UUID? | FK → Wallet (for transfers) |
 | type | string | deposit, withdrawal, transfer_in, transfer_out, hold_capture |
-| amount_cents | BIGINT | Always positive; smallest currency unit |
+| amount_minor | BIGINT | Always positive; smallest currency unit |
 | status | string | completed, failed, reversed |
 | idempotency_key | string? | Unique; for safe retries |
 | reference | string? | External reference from caller |
@@ -200,8 +202,8 @@ Immutable double-entry ledger line. Append-only — DB trigger prevents UPDATE a
 | transaction_id | UUID | FK → Transaction |
 | wallet_id | UUID | FK → Wallet |
 | entry_type | string | CREDIT or DEBIT |
-| amount_cents | BIGINT | Positive for credit, negative for debit |
-| balance_after_cents | BIGINT | Balance snapshot after this entry |
+| amount_minor | BIGINT | Positive for credit, negative for debit |
+| balance_after_minor | BIGINT | Balance snapshot after this entry |
 | movement_id | UUID | FK → Movement; entries sharing a movement_id must sum to zero |
 | created_at | BIGINT | Unix ms |
 
@@ -222,7 +224,7 @@ Authorization that reserves funds without moving them. Lifecycle: active → cap
 |-------|------|-------|
 | id | UUID | Primary key; app generates UUID v7 |
 | wallet_id | UUID | FK → Wallet |
-| amount_cents | BIGINT | Always positive; integer cents |
+| amount_minor | BIGINT | Always positive; integer minor units |
 | status | string | active, captured, voided, expired |
 | reference | string? | Optional reference |
 | expires_at | BIGINT? | Unix ms; optional auto-expiry |
@@ -278,7 +280,7 @@ Stores response for idempotent mutations. Prevents duplicate financial operation
 
 2. **Timestamps**: Unix milliseconds (ms since epoch) everywhere: DB (BIGINT), domain, ports, DTOs, API.
 
-3. **Amounts**: Integer values in the smallest currency unit per ISO 4217 (BIGINT). No floats. Stripe-style representation. The `_cents` column suffix is a naming convention; the actual unit depends on the currency's minor unit exponent (e.g., 2 for USD/EUR, 0 for JPY, 3 for BHD).
+3. **Amounts**: Integer values in the smallest currency unit per ISO 4217 (BIGINT). No floats. Stripe-style representation. The `_minor` column suffix is a naming convention; the actual unit depends on the currency's minor unit exponent (e.g., 2 for USD/EUR, 0 for CLP, 3 for KWD). Supported currencies: USD, EUR, MXN, CLP, KWD.
 
 4. **System wallets**: `is_system = true`; can have negative balance. Act as counterparty for deposits and withdrawals.
 

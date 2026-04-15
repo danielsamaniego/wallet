@@ -28,7 +28,7 @@ export class PrismaHoldRepo implements IHoldRepository {
       create: {
         id: hold.id,
         walletId: hold.walletId,
-        amountCents: hold.amountCents,
+        amountMinor: hold.amountMinor,
         status: hold.status,
         reference: hold.reference,
         expiresAt: hold.expiresAt !== null ? BigInt(hold.expiresAt) : null,
@@ -82,9 +82,9 @@ export class PrismaHoldRepo implements IHoldRepository {
     this.logger.debug(ctx, "HoldRepo | sumActiveHolds", { wallet_id: walletId });
     const result = await this.client(ctx).hold.aggregate({
       where: this.activeHoldFilter(walletId),
-      _sum: { amountCents: true },
+      _sum: { amountMinor: true },
     });
-    return result._sum.amountCents ?? 0n;
+    return result._sum.amountMinor ?? 0n;
   }
 
   async countActiveHolds(ctx: AppContext, walletId: string): Promise<number> {
@@ -121,7 +121,7 @@ export class PrismaHoldRepo implements IHoldRepository {
   private toDomain(row: {
     id: string;
     walletId: string;
-    amountCents: bigint;
+    amountMinor: bigint;
     status: string;
     reference: string | null;
     expiresAt: bigint | null;
@@ -131,7 +131,7 @@ export class PrismaHoldRepo implements IHoldRepository {
     return Hold.reconstruct({
       id: row.id,
       walletId: row.walletId,
-      amountCents: row.amountCents,
+      amountMinor: row.amountMinor,
       status: row.status as HoldStatus,
       reference: row.reference,
       expiresAt: row.expiresAt !== null ? Number(row.expiresAt) : null,

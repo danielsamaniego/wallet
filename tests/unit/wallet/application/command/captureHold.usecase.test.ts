@@ -95,7 +95,7 @@ describe("CaptureHoldUseCase", () => {
         expect(hold.status).toBe("captured");
 
         // Wallet balance should have been debited
-        expect(wallet.cachedBalanceCents).toBe(3000n); // 5000 - 2000
+        expect(wallet.cachedBalanceMinor).toBe(3000n); // 5000 - 2000
 
         // All repos should have been called
         expect(movementRepo.save).toHaveBeenCalledOnce();

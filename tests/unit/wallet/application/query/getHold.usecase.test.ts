@@ -15,7 +15,7 @@ const PLATFORM_ID = "platform-1";
 const holdDTO: HoldDTO = {
   id: HOLD_ID,
   wallet_id: "wallet-1",
-  amount_cents: 5000,
+  amount_minor: 5000,
   status: "ACTIVE",
   reference: "ref-001",
   expires_at: 1700100000000,

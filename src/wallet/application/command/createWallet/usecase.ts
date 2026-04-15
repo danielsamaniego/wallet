@@ -77,6 +77,7 @@ export class CreateWalletUseCase
 
     this.logger.info(ctx, `${methodLogTag} wallet created`, {
       wallet_id: walletId,
+      currency_code: cmd.currencyCode,
       owner_id: cmd.ownerId,
     });
 

@@ -18,20 +18,20 @@ describe("Balance Adjustments E2E", () => {
     return body.wallet_id;
   }
 
-  async function deposit(walletId: string, amountCents: number): Promise<void> {
+  async function deposit(walletId: string, amountMinor: number): Promise<void> {
     const res = await app.request(`/v1/wallets/${walletId}/deposit`, {
       method: "POST",
       headers: { "Idempotency-Key": nextKey("deposit") },
-      body: JSON.stringify({ amount_cents: amountCents }),
+      body: JSON.stringify({ amount_minor: amountMinor }),
     });
     expect(res.status).toBe(201);
   }
 
-  async function placeHold(walletId: string, amountCents: number): Promise<string> {
+  async function placeHold(walletId: string, amountMinor: number): Promise<string> {
     const res = await app.request("/v1/holds", {
       method: "POST",
       headers: { "Idempotency-Key": nextKey("hold") },
-      body: JSON.stringify({ wallet_id: walletId, amount_cents: amountCents }),
+      body: JSON.stringify({ wallet_id: walletId, amount_minor: amountMinor }),
     });
     expect(res.status).toBe(201);
     const body = await res.json();
@@ -39,8 +39,8 @@ describe("Balance Adjustments E2E", () => {
   }
 
   async function getWallet(walletId: string): Promise<{
-    balance_cents: number;
-    available_balance_cents: number;
+    balance_minor: number;
+    available_balance_minor: number;
     status: string;
   }> {
     const res = await app.request(`/v1/wallets/${walletId}`);
@@ -67,7 +67,7 @@ describe("Balance Adjustments E2E", () => {
           method: "POST",
           headers: { "Idempotency-Key": nextKey("adjust-credit") },
           body: JSON.stringify({
-            amount_cents: 1500,
+            amount_minor: 1500,
             reason: "Promotional credit",
             reference: "promo-1",
             metadata: { source: "ops" },
@@ -80,8 +80,8 @@ describe("Balance Adjustments E2E", () => {
         expect(body.movement_id).toBeDefined();
 
         const wallet = await getWallet(walletId);
-        expect(wallet.balance_cents).toBe(6500);
-        expect(wallet.available_balance_cents).toBe(6500);
+        expect(wallet.balance_minor).toBe(6500);
+        expect(wallet.available_balance_minor).toBe(6500);
 
         const movement = await app.prisma.movement.findUnique({
           where: { id: body.movement_id },
@@ -94,7 +94,7 @@ describe("Balance Adjustments E2E", () => {
         });
         expect(transactions).toHaveLength(1);
         expect(transactions[0]?.type).toBe("adjustment_credit");
-        expect(transactions[0]?.amountCents).toBe(1500n);
+        expect(transactions[0]?.amountMinor).toBe(1500n);
         expect(transactions[0]?.reference).toBe("promo-1");
         expect(transactions[0]?.metadata).toEqual({ source: "ops" });
 
@@ -102,13 +102,13 @@ describe("Balance Adjustments E2E", () => {
           where: { movementId: body.movement_id },
         });
         expect(entries).toHaveLength(2);
-        const total = entries.reduce((sum, entry) => sum + Number(entry.amountCents), 0);
+        const total = entries.reduce((sum, entry) => sum + Number(entry.amountMinor), 0);
         expect(total).toBe(0);
-        expect(entries.some((entry) => entry.walletId === walletId && entry.amountCents === 1500n)).toBe(
+        expect(entries.some((entry) => entry.walletId === walletId && entry.amountMinor === 1500n)).toBe(
           true,
         );
         expect(
-          entries.some((entry) => entry.walletId !== walletId && entry.amountCents === -1500n),
+          entries.some((entry) => entry.walletId !== walletId && entry.amountMinor === -1500n),
         ).toBe(true);
       });
     });
@@ -125,7 +125,7 @@ describe("Balance Adjustments E2E", () => {
           method: "POST",
           headers: { "Idempotency-Key": nextKey("adjust-insufficient") },
           body: JSON.stringify({
-            amount_cents: -7001,
+            amount_minor: -7001,
             reason: "Manual correction",
           }),
         });
@@ -135,8 +135,8 @@ describe("Balance Adjustments E2E", () => {
         expect(body.error).toBe("INSUFFICIENT_FUNDS");
 
         const wallet = await getWallet(walletId);
-        expect(wallet.balance_cents).toBe(10000);
-        expect(wallet.available_balance_cents).toBe(6000);
+        expect(wallet.balance_minor).toBe(10000);
+        expect(wallet.available_balance_minor).toBe(6000);
       });
     });
   });
@@ -156,7 +156,7 @@ describe("Balance Adjustments E2E", () => {
           method: "POST",
           headers: { "Idempotency-Key": nextKey("adjust-frozen") },
           body: JSON.stringify({
-            amount_cents: 2000,
+            amount_minor: 2000,
             reason: "Admin credit on frozen wallet",
           }),
         });
@@ -165,7 +165,7 @@ describe("Balance Adjustments E2E", () => {
 
         const wallet = await getWallet(walletId);
         expect(wallet.status).toBe("frozen");
-        expect(wallet.balance_cents).toBe(5000);
+        expect(wallet.balance_minor).toBe(5000);
       });
     });
   });
@@ -184,7 +184,7 @@ describe("Balance Adjustments E2E", () => {
           method: "POST",
           headers: { "Idempotency-Key": nextKey("adjust-closed") },
           body: JSON.stringify({
-            amount_cents: 1000,
+            amount_minor: 1000,
             reason: "Should fail",
           }),
         });
@@ -206,7 +206,7 @@ describe("Balance Adjustments E2E", () => {
           method: "POST",
           headers: { "Idempotency-Key": nextKey("adjust-cross-tenant") },
           body: JSON.stringify({
-            amount_cents: 1000,
+            amount_minor: 1000,
             reason: "Attack attempt",
           }),
         });
@@ -225,7 +225,7 @@ describe("Balance Adjustments E2E", () => {
           method: "POST",
           headers: { "Idempotency-Key": nextKey("adjust-unauth") },
           body: JSON.stringify({
-            amount_cents: 1000,
+            amount_minor: 1000,
             reason: "Unauthorized attempt",
           }),
         });
@@ -236,7 +236,7 @@ describe("Balance Adjustments E2E", () => {
   });
 
   describe("Given invalid adjustment payloads", () => {
-    describe("When amount_cents is zero", () => {
+    describe("When amount_minor is zero", () => {
       it("Then it should reject with 400 or 422", async () => {
         const walletId = await createWallet("adjust-zero-owner");
 
@@ -244,7 +244,7 @@ describe("Balance Adjustments E2E", () => {
           method: "POST",
           headers: { "Idempotency-Key": nextKey("adjust-zero") },
           body: JSON.stringify({
-            amount_cents: 0,
+            amount_minor: 0,
             reason: "Zero should fail",
           }),
         });
@@ -253,7 +253,7 @@ describe("Balance Adjustments E2E", () => {
       });
     });
 
-    describe("When amount_cents is a float", () => {
+    describe("When amount_minor is a float", () => {
       it("Then it should reject with 400 or 422", async () => {
         const walletId = await createWallet("adjust-float-owner");
 
@@ -261,7 +261,7 @@ describe("Balance Adjustments E2E", () => {
           method: "POST",
           headers: { "Idempotency-Key": nextKey("adjust-float") },
           body: JSON.stringify({
-            amount_cents: 100.5,
+            amount_minor: 100.5,
             reason: "Float should fail",
           }),
         });
@@ -278,7 +278,7 @@ describe("Balance Adjustments E2E", () => {
           method: "POST",
           headers: { "Idempotency-Key": nextKey("adjust-no-reason") },
           body: JSON.stringify({
-            amount_cents: 1000,
+            amount_minor: 1000,
           }),
         });
 
@@ -293,7 +293,7 @@ describe("Balance Adjustments E2E", () => {
         const walletId = await createWallet("adjust-idempotent-owner");
         const idempotencyKey = "adjust-replay-key";
         const body = JSON.stringify({
-          amount_cents: 1200,
+          amount_minor: 1200,
           reason: "Replay-safe credit",
         });
 
@@ -317,7 +317,7 @@ describe("Balance Adjustments E2E", () => {
         expect(payload2.movement_id).toBe(payload1.movement_id);
 
         const wallet = await getWallet(walletId);
-        expect(wallet.balance_cents).toBe(1200);
+        expect(wallet.balance_minor).toBe(1200);
       });
     });
   });
@@ -332,7 +332,7 @@ describe("Balance Adjustments E2E", () => {
           method: "POST",
           headers: { "Idempotency-Key": idempotencyKey },
           body: JSON.stringify({
-            amount_cents: 1000,
+            amount_minor: 1000,
             reason: "Original adjustment",
           }),
         });
@@ -342,7 +342,7 @@ describe("Balance Adjustments E2E", () => {
           method: "POST",
           headers: { "Idempotency-Key": idempotencyKey },
           body: JSON.stringify({
-            amount_cents: 2000,
+            amount_minor: 2000,
             reason: "Different adjustment",
           }),
         });
@@ -362,7 +362,7 @@ describe("Balance Adjustments E2E", () => {
         const res = await app.request(`/v1/wallets/${walletId}/adjust`, {
           method: "POST",
           body: JSON.stringify({
-            amount_cents: 1000,
+            amount_minor: 1000,
             reason: "Missing key",
           }),
         });
@@ -385,7 +385,7 @@ describe("Balance Adjustments E2E", () => {
               method: "POST",
               headers: { "Idempotency-Key": `adjust-concurrency-${index}-${Date.now()}` },
               body: JSON.stringify({
-                amount_cents: 1000,
+                amount_minor: 1000,
                 reason: `Concurrent adjustment ${index}`,
               }),
             }),
@@ -400,7 +400,7 @@ describe("Balance Adjustments E2E", () => {
         expect(successes).toBeGreaterThan(0);
 
         const wallet = await getWallet(walletId);
-        expect(wallet.balance_cents).toBe(successes * 1000);
+        expect(wallet.balance_minor).toBe(successes * 1000);
       });
     });
   });

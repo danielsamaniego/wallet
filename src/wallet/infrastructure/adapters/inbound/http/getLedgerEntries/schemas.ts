@@ -18,8 +18,8 @@ const listingConfig: ListingConfig = {
       enumValues: ["CREDIT", "DEBIT"],
     },
     {
-      apiName: "amount_cents",
-      prismaName: "amountCents",
+      apiName: "amount_minor",
+      prismaName: "amountMinor",
       type: "bigint",
       operators: ["eq", "gt", "gte", "lt", "lte"],
     },
@@ -38,8 +38,8 @@ const listingConfig: ListingConfig = {
   ],
   sortableFields: [
     { apiName: "created_at", prismaName: "createdAt" },
-    { apiName: "amount_cents", prismaName: "amountCents" },
-    { apiName: "balance_after_cents", prismaName: "balanceAfterCents" },
+    { apiName: "amount_minor", prismaName: "amountMinor" },
+    { apiName: "balance_after_minor", prismaName: "balanceAfterMinor" },
   ],
   defaultSort: [{ field: "createdAt", direction: "desc" }],
   maxLimit: 100,
@@ -55,8 +55,8 @@ const LedgerEntrySchema = z.object({
   transaction_id: z.string(),
   wallet_id: z.string(),
   entry_type: z.string(),
-  amount_cents: z.union([z.number(), z.string()]),
-  balance_after_cents: z.union([z.number(), z.string()]),
+  amount_minor: z.union([z.number(), z.string()]),
+  balance_after_minor: z.union([z.number(), z.string()]),
   created_at: z.number(),
 });
 

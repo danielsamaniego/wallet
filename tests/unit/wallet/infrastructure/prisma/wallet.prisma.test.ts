@@ -33,7 +33,7 @@ function buildHoldRow(overrides?: Partial<Record<string, unknown>>) {
   return {
     id: "hold-1",
     walletId: "wallet-1",
-    amountCents: 5000n,
+    amountMinor: 5000n,
     status: "active",
     reference: "ref-1",
     expiresAt: 1700100000000n,
@@ -49,8 +49,8 @@ function buildLedgerRow(overrides?: Partial<Record<string, unknown>>) {
     transactionId: "txn-1",
     walletId: "wallet-1",
     entryType: "credit",
-    amountCents: 10000n,
-    balanceAfterCents: 10000n,
+    amountMinor: 10000n,
+    balanceAfterMinor: 10000n,
     createdAt: 1700000000000n,
     ...overrides,
   };
@@ -62,7 +62,7 @@ function buildTransactionRow(overrides?: Partial<Record<string, unknown>>) {
     walletId: "wallet-1",
     counterpartWalletId: null,
     type: "deposit",
-    amountCents: 10000n,
+    amountMinor: 10000n,
     status: "completed",
     idempotencyKey: "idem-1",
     reference: "ref-1",
@@ -79,7 +79,7 @@ function buildWalletRow(overrides?: Partial<Record<string, unknown>>) {
     ownerId: "owner-1",
     platformId: "platform-1",
     currencyCode: "USD",
-    cachedBalanceCents: 10000n,
+    cachedBalanceMinor: 10000n,
     status: "active",
     version: 1,
     isSystem: false,
@@ -121,7 +121,7 @@ describe("PrismaHoldReadStore", () => {
       expect(result).not.toBeNull();
       expect(result!.id).toBe("hold-1");
       expect(result!.wallet_id).toBe("wallet-1");
-      expect(result!.amount_cents).toBe(5000);
+      expect(result!.amount_minor).toBe(5000);
       expect(result!.status).toBe("active");
       expect(result!.reference).toBe("ref-1");
       expect(result!.expires_at).toBe(1700100000000);
@@ -267,8 +267,8 @@ describe("PrismaLedgerEntryReadStore", () => {
         transaction_id: "txn-1",
         wallet_id: "wallet-1",
         entry_type: "credit",
-        amount_cents: 10000,
-        balance_after_cents: 10000,
+        amount_minor: 10000,
+        balance_after_minor: 10000,
         created_at: 1700000000000,
       });
       expect(result!.next_cursor).toBeNull();
@@ -354,7 +354,7 @@ describe("PrismaTransactionReadStore", () => {
         wallet_id: "wallet-1",
         counterpart_wallet_id: null,
         type: "deposit",
-        amount_cents: 10000,
+        amount_minor: 10000,
         status: "completed",
         idempotency_key: "idem-1",
         reference: "ref-1",
@@ -454,7 +454,7 @@ describe("PrismaHoldRepo", () => {
       const holdEntity = Hold.reconstruct({
         id: "hold-1",
         walletId: "wallet-1",
-        amountCents: 5000n,
+        amountMinor: 5000n,
         status: "active",
         reference: "ref-1",
         expiresAt: 1700100000000,
@@ -471,7 +471,7 @@ describe("PrismaHoldRepo", () => {
         create: expect.objectContaining({
           id: "hold-1",
           walletId: "wallet-1",
-          amountCents: 5000n,
+          amountMinor: 5000n,
           status: "active",
           reference: "ref-1",
           expiresAt: 1700100000000n,
@@ -487,7 +487,7 @@ describe("PrismaHoldRepo", () => {
       const holdEntity = Hold.reconstruct({
         id: "hold-1",
         walletId: "wallet-1",
-        amountCents: 5000n,
+        amountMinor: 5000n,
         status: "active",
         reference: null,
         expiresAt: null,
@@ -517,7 +517,7 @@ describe("PrismaHoldRepo", () => {
       expect(result).not.toBeNull();
       expect(result!.id).toBe("hold-1");
       expect(result!.walletId).toBe("wallet-1");
-      expect(result!.amountCents).toBe(5000n);
+      expect(result!.amountMinor).toBe(5000n);
       expect(result!.status).toBe("active");
     });
 
@@ -562,10 +562,10 @@ describe("PrismaHoldRepo", () => {
   });
 
   describe("sumActiveHolds", () => {
-    it("Given active holds exist, When sumActiveHolds is called, Then returns sum of amountCents", async () => {
+    it("Given active holds exist, When sumActiveHolds is called, Then returns sum of amountMinor", async () => {
       // Given
       const { repo, hold: holdModel } = buildRepo();
-      holdModel.aggregate.mockResolvedValue({ _sum: { amountCents: 15000n } });
+      holdModel.aggregate.mockResolvedValue({ _sum: { amountMinor: 15000n } });
 
       // When
       const result = await repo.sumActiveHolds(ctx, "wallet-1");
@@ -577,7 +577,7 @@ describe("PrismaHoldRepo", () => {
     it("Given no active holds, When sumActiveHolds is called, Then returns 0n", async () => {
       // Given
       const { repo, hold: holdModel } = buildRepo();
-      holdModel.aggregate.mockResolvedValue({ _sum: { amountCents: null } });
+      holdModel.aggregate.mockResolvedValue({ _sum: { amountMinor: null } });
 
       // When
       const result = await repo.sumActiveHolds(ctx, "wallet-1");
@@ -713,7 +713,7 @@ describe("PrismaWalletRepo", () => {
           ownerId: "owner-1",
           platformId: "platform-1",
           currencyCode: "USD",
-          cachedBalanceCents: 0n,
+          cachedBalanceMinor: 0n,
           status: "active",
           version: 1,
           isSystem: false,
@@ -736,7 +736,7 @@ describe("PrismaWalletRepo", () => {
       expect(walletModel.updateMany).toHaveBeenCalledWith({
         where: { id: "w-1", version: 1 },
         data: expect.objectContaining({
-          cachedBalanceCents: 5000n,
+          cachedBalanceMinor: 5000n,
           status: "active",
           version: 2,
         }),
@@ -769,7 +769,7 @@ describe("PrismaWalletRepo", () => {
       expect(walletModel.update).toHaveBeenCalledWith({
         where: { id: "sys-wallet" },
         data: {
-          cachedBalanceCents: { increment: 5000n },
+          cachedBalanceMinor: { increment: 5000n },
           updatedAt: 1700000000000n,
         },
       });
@@ -791,7 +791,7 @@ describe("PrismaWalletRepo", () => {
       expect(result!.ownerId).toBe("owner-1");
       expect(result!.platformId).toBe("platform-1");
       expect(result!.currencyCode).toBe("USD");
-      expect(result!.cachedBalanceCents).toBe(10000n);
+      expect(result!.cachedBalanceMinor).toBe(10000n);
       expect(result!.status).toBe("active");
     });
 
@@ -996,8 +996,8 @@ describe("PrismaLedgerEntryRepo", () => {
         transactionId: "txn-1",
         walletId: "wallet-1",
         entryType: "CREDIT",
-        amountCents: 1000n,
-        balanceAfterCents: 1000n,
+        amountMinor: 1000n,
+        balanceAfterMinor: 1000n,
         movementId: "mov-1",
         createdAt: 1700000000000,
       });
@@ -1017,8 +1017,8 @@ describe("PrismaLedgerEntryRepo", () => {
         transactionId: "txn-1",
         walletId: "wallet-1",
         entryType: "CREDIT",
-        amountCents: 1000n,
-        balanceAfterCents: 1000n,
+        amountMinor: 1000n,
+        balanceAfterMinor: 1000n,
         movementId: "mov-1",
         createdAt: 1700000000000,
       });
@@ -1113,7 +1113,7 @@ describe("PrismaTransactionRepo", () => {
         walletId: "wallet-1",
         counterpartWalletId: null,
         type: "deposit",
-        amountCents: 5000n,
+        amountMinor: 5000n,
         status: "completed",
         idempotencyKey: "idem-1",
         reference: null,
@@ -1138,7 +1138,7 @@ describe("PrismaTransactionRepo", () => {
         walletId: "wallet-1",
         counterpartWalletId: null,
         type: "deposit",
-        amountCents: 5000n,
+        amountMinor: 5000n,
         status: "completed",
         idempotencyKey: "idem-1",
         reference: null,
@@ -1174,7 +1174,7 @@ describe("PrismaTransactionRepo", () => {
         walletId: "wallet-1",
         counterpartWalletId: "wallet-2",
         type: "transfer_out",
-        amountCents: 5000n,
+        amountMinor: 5000n,
         status: "completed",
         idempotencyKey: "idem-1",
         reference: "ref",
@@ -1208,7 +1208,7 @@ describe("PrismaWalletReadStore", () => {
   }
 
   describe("getById — available balance clamped to zero", () => {
-    it("Given active holds exceed cached balance, When getById is called, Then available_balance_cents is 0", async () => {
+    it("Given active holds exceed cached balance, When getById is called, Then available_balance_minor is 0", async () => {
       const { store, wallet, hold } = buildReadStore();
 
       wallet.findFirst.mockResolvedValue({
@@ -1216,7 +1216,7 @@ describe("PrismaWalletReadStore", () => {
         ownerId: "owner-1",
         platformId: "platform-1",
         currencyCode: "USD",
-        cachedBalanceCents: 5000n,
+        cachedBalanceMinor: 5000n,
         status: "active",
         isSystem: false,
         createdAt: 1700000000000n,
@@ -1224,13 +1224,13 @@ describe("PrismaWalletReadStore", () => {
       });
 
       // Active holds exceed balance: 8000 > 5000
-      hold.aggregate.mockResolvedValue({ _sum: { amountCents: 8000n } });
+      hold.aggregate.mockResolvedValue({ _sum: { amountMinor: 8000n } });
 
       const result = await store.getById(ctx, "wallet-1", "platform-1");
 
       expect(result).not.toBeNull();
-      expect(result!.available_balance_cents).toBe(0);
-      expect(result!.balance_cents).toBe(5000);
+      expect(result!.available_balance_minor).toBe(0);
+      expect(result!.balance_minor).toBe(5000);
     });
   });
 
@@ -1246,7 +1246,7 @@ describe("PrismaWalletReadStore", () => {
   });
 
   describe("getById — positive available balance", () => {
-    it("Given active holds are less than cached balance, When getById is called, Then available_balance_cents is positive", async () => {
+    it("Given active holds are less than cached balance, When getById is called, Then available_balance_minor is positive", async () => {
       const { store, wallet, hold } = buildReadStore();
 
       wallet.findFirst.mockResolvedValue({
@@ -1254,24 +1254,24 @@ describe("PrismaWalletReadStore", () => {
         ownerId: "owner-1",
         platformId: "platform-1",
         currencyCode: "USD",
-        cachedBalanceCents: 10000n,
+        cachedBalanceMinor: 10000n,
         status: "active",
         isSystem: false,
         createdAt: 1700000000000n,
         updatedAt: 1700000000000n,
       });
 
-      hold.aggregate.mockResolvedValue({ _sum: { amountCents: 3000n } });
+      hold.aggregate.mockResolvedValue({ _sum: { amountMinor: 3000n } });
 
       const result = await store.getById(ctx, "wallet-1", "platform-1");
 
       expect(result).not.toBeNull();
-      expect(result!.available_balance_cents).toBe(7000);
+      expect(result!.available_balance_minor).toBe(7000);
     });
   });
 
   describe("getById — no active holds (null sum)", () => {
-    it("Given no active holds exist (aggregate returns null), When getById is called, Then available_balance_cents equals balance_cents", async () => {
+    it("Given no active holds exist (aggregate returns null), When getById is called, Then available_balance_minor equals balance_minor", async () => {
       const { store, wallet, hold } = buildReadStore();
 
       wallet.findFirst.mockResolvedValue({
@@ -1279,7 +1279,7 @@ describe("PrismaWalletReadStore", () => {
         ownerId: "owner-1",
         platformId: "platform-1",
         currencyCode: "USD",
-        cachedBalanceCents: 5000n,
+        cachedBalanceMinor: 5000n,
         status: "active",
         isSystem: false,
         createdAt: 1700000000000n,
@@ -1287,13 +1287,13 @@ describe("PrismaWalletReadStore", () => {
       });
 
       // aggregate returns null when there are no matching holds
-      hold.aggregate.mockResolvedValue({ _sum: { amountCents: null } });
+      hold.aggregate.mockResolvedValue({ _sum: { amountMinor: null } });
 
       const result = await store.getById(ctx, "wallet-1", "platform-1");
 
       expect(result).not.toBeNull();
-      expect(result!.balance_cents).toBe(5000);
-      expect(result!.available_balance_cents).toBe(5000);
+      expect(result!.balance_minor).toBe(5000);
+      expect(result!.available_balance_minor).toBe(5000);
     });
   });
 });

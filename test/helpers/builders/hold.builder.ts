@@ -4,7 +4,7 @@ export class HoldBuilder {
   private props = {
     id: "hold-1",
     walletId: "wallet-1",
-    amountCents: 1000n,
+    amountMinor: 1000n,
     status: "active" as HoldStatus,
     reference: null as string | null,
     expiresAt: null as number | null,
@@ -22,8 +22,8 @@ export class HoldBuilder {
     return this;
   }
 
-  withAmount(cents: bigint): this {
-    this.props.amountCents = cents;
+  withAmount(minor: bigint): this {
+    this.props.amountMinor = minor;
     return this;
   }
 

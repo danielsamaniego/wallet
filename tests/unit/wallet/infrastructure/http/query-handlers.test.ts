@@ -40,7 +40,7 @@ describe("Wallet query HTTP handlers", () => {
         dispatch: vi.fn().mockResolvedValue({
           id: "hold-1",
           wallet_id: "wallet-1",
-          amount_cents: 1000,
+          amount_minor: 1000,
           status: "active",
           reference: null,
           expires_at: null,

@@ -5,7 +5,7 @@ import { z } from "zod";
 export const ParamSchema = z.object({ walletId: z.string().min(1).max(255) });
 
 export const BodySchema = z.object({
-  amount_cents: z
+  amount_minor: z
     .number()
     .int()
     .refine((v) => v !== 0, { message: "amount must not be zero" }),

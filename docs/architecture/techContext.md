@@ -94,7 +94,7 @@ Credentials via environment variables — never hardcode.
 - **Domain and app**: No external third-party libraries. Depend only on interfaces (ports) and `utils/kernel/`. Third-party libs live in adapters.
 - **Entity IDs**: UUID v7 only (RFC 9562); generated in application via `IIDGenerator`. Database never generates IDs.
 - **Timestamps**: Unix milliseconds (number) everywhere.
-- **Amounts**: Integer cents (BigInt); no floats.
+- **Amounts**: Integer minor units (BigInt); no floats. Supported currencies: USD, EUR, MXN, CLP, KWD.
 - **API**: REST; idempotency keys required for mutations.
 
 ## References

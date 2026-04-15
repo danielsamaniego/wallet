@@ -14,7 +14,7 @@ export class Transaction {
   private readonly _walletId: string;
   private readonly _counterpartWalletId: string | null;
   private readonly _type: TransactionType;
-  private readonly _amountCents: bigint;
+  private readonly _amountMinor: bigint;
   private readonly _status: TransactionStatus;
   private readonly _idempotencyKey: string | null;
   private readonly _reference: string | null;
@@ -28,7 +28,7 @@ export class Transaction {
     this._walletId = "";
     this._counterpartWalletId = null;
     this._type = "deposit";
-    this._amountCents = 0n;
+    this._amountMinor = 0n;
     this._status = "completed";
     this._idempotencyKey = null;
     this._reference = null;
@@ -43,7 +43,7 @@ export class Transaction {
     walletId: string;
     counterpartWalletId: string | null;
     type: TransactionType;
-    amountCents: bigint;
+    amountMinor: bigint;
     status: TransactionStatus;
     idempotencyKey: string | null;
     reference: string | null;
@@ -58,7 +58,7 @@ export class Transaction {
       _walletId: params.walletId,
       _counterpartWalletId: params.counterpartWalletId,
       _type: params.type,
-      _amountCents: params.amountCents,
+      _amountMinor: params.amountMinor,
       _status: params.status,
       _idempotencyKey: params.idempotencyKey,
       _reference: params.reference,
@@ -75,7 +75,7 @@ export class Transaction {
     walletId: string;
     counterpartWalletId: string | null;
     type: TransactionType;
-    amountCents: bigint;
+    amountMinor: bigint;
     status: TransactionStatus;
     idempotencyKey: string | null;
     reference: string | null;
@@ -90,7 +90,7 @@ export class Transaction {
       _walletId: params.walletId,
       _counterpartWalletId: params.counterpartWalletId,
       _type: params.type,
-      _amountCents: params.amountCents,
+      _amountMinor: params.amountMinor,
       _status: params.status,
       _idempotencyKey: params.idempotencyKey,
       _reference: params.reference,
@@ -114,8 +114,8 @@ export class Transaction {
   get type(): TransactionType {
     return this._type;
   }
-  get amountCents(): bigint {
-    return this._amountCents;
+  get amountMinor(): bigint {
+    return this._amountMinor;
   }
   get status(): TransactionStatus {
     return this._status;

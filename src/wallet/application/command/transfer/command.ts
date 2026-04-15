@@ -12,7 +12,7 @@ export class TransferCommand extends ICommand<TransferResult> {
     public readonly sourceWalletId: string,
     public readonly targetWalletId: string,
     public readonly platformId: string,
-    public readonly amountCents: bigint,
+    public readonly amountMinor: bigint,
     public readonly idempotencyKey: string,
     public readonly reference?: string,
     public readonly metadata?: Record<string, unknown>,

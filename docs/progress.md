@@ -60,6 +60,8 @@
 - [x] CQRS bus refactoring: CommandBus/QueryBus with middleware pipeline, static TYPE for dispatch
 - [x] Common: idempotency feature with full architecture (ports, command, use case, scheduler adapter, Prisma adapter)
 - [x] E2E coverage for balance adjustments endpoint (`tests/e2e/wallet/adjustments.e2e.test.ts`) including success, hold-aware insufficient funds, frozen/closed states, auth, validation, idempotency, cross-tenant isolation, concurrency, and ledger assertions
+- [x] Multi-currency support: explicit currency catalog (USD, EUR, MXN, CLP, KWD) with `wallets_supported_currency` CHECK constraint in PostgreSQL
+- [x] Renamed all `_cents` fields to `_minor` across domain, application, infrastructure, API, and documentation to accurately reflect multi-currency minor unit semantics
 
 ## What's Left to Build
 

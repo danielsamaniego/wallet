@@ -78,15 +78,15 @@ describe("Feature Name E2E", () => {
   }
 
   /** Helper: deposit */
-  async function deposit(walletId: string, cents: number): Promise<void> {
+  async function deposit(walletId: string, minor: number): Promise<void> {
     await app.request(`/v1/wallets/${walletId}/deposit`, {
       method: "POST",
       headers: { "Idempotency-Key": nextKey() },
-      body: JSON.stringify({ amount_cents: cents }),
+      body: JSON.stringify({ amount_minor: minor }),
     });
   }
 
-  describe("Given an active wallet with 10000 cents", () => {
+  describe("Given an active wallet with 10000 minor units", () => {
     let walletId: string;
 
     beforeEach(async () => {
@@ -94,12 +94,12 @@ describe("Feature Name E2E", () => {
       await deposit(walletId, 10000);
     });
 
-    describe("When withdrawing 5000 cents", () => {
+    describe("When withdrawing 5000 minor units", () => {
       it("Then returns 201 with transaction ID", async () => {
         const res = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": nextKey() },
-          body: JSON.stringify({ amount_cents: 5000 }),
+          body: JSON.stringify({ amount_minor: 5000 }),
         });
         expect(res.status).toBe(201);
         const body = await res.json();
@@ -249,7 +249,7 @@ import { getTestPrisma } from "@test/helpers/db.js";
 it("Then ledger entries are zero-sum", async () => {
   const prisma = getTestPrisma();
   const results = await prisma.$queryRaw`
-    SELECT movement_id, SUM(amount_cents) AS total
+    SELECT movement_id, SUM(amount_minor) AS total
     FROM ledger_entries
     GROUP BY movement_id
   `;
@@ -266,7 +266,7 @@ it("Then ledger entries are zero-sum", async () => {
 ## Concurrency Test Pattern
 
 ```ts
-describe("Given a wallet with 50000 cents", () => {
+describe("Given a wallet with 50000 minor units", () => {
   describe("When 10 concurrent A→B and 10 concurrent B→A transfers execute", () => {
     it("Then zero 500 errors occur (no deadlocks)", async () => {
       const results = await Promise.all([
@@ -277,7 +277,7 @@ describe("Given a wallet with 50000 cents", () => {
             body: JSON.stringify({
               source_wallet_id: walletA,
               target_wallet_id: walletB,
-              amount_cents: 100,
+              amount_minor: 100,
             }),
           }),
         ),
@@ -288,7 +288,7 @@ describe("Given a wallet with 50000 cents", () => {
             body: JSON.stringify({
               source_wallet_id: walletB,
               target_wallet_id: walletA,
-              amount_cents: 100,
+              amount_minor: 100,
             }),
           }),
         ),

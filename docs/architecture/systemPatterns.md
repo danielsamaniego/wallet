@@ -8,11 +8,11 @@ Architecture patterns and technical decisions for the Wallet Service.
 
 - **Dependency rule**: Domain and app must **not** import from adapters or HTTP. They depend only on interfaces (ports) and `utils/kernel/` packages. Never import from `utils/infrastructure/` or `utils/middleware/` in domain or app — that's an architecture violation. Third-party libs (Prisma, Pino, uuidv7, Hono) live only in adapters.
 - **ID generation — UUID v7 only, from application**: `IIDGenerator` interface; implementation uses `uuidv7`. App generates all IDs; DB never generates them (no `DEFAULT gen_random_uuid()`).
-- **Amounts**: Integer values in smallest currency unit per ISO 4217 (`bigint` / BigInt) everywhere. Column names use `_cents` as convention; the actual unit depends on the currency's minor unit exponent (2 for USD/EUR, 0 for JPY, 3 for BHD). No floating point.
+- **Amounts**: Integer values in smallest currency unit per ISO 4217 (`bigint` / BigInt) everywhere. Column names use `_minor` as convention; the actual unit depends on the currency's minor unit exponent (2 for USD/EUR, 0 for CLP, 3 for KWD). Supported currencies: USD, EUR, MXN, CLP, KWD. No floating point.
 - **Timestamps**: Unix milliseconds (ms since epoch) everywhere: DB (BigInt), domain, ports, DTOs, API.
 - **Commands**: Write side; mutate aggregates via domain repositories (interface). May return minimal data (e.g. created ID) — see backend-architecture.md for rationale. Dispatched via `ICommandBus`.
 - **Queries**: Read side; return DTOs via ReadStore (interface); no aggregate loading for display. Dispatched via `IQueryBus`.
-- **No Event Sourcing**: The immutable `ledger_entries` table provides the audit trail that Event Sourcing would offer. Direct state persistence with `cached_balance_cents` gives O(1) reads without event replay. See backend-architecture.md § "No Event Sourcing — and why" for full rationale.
+- **No Event Sourcing**: The immutable `ledger_entries` table provides the audit trail that Event Sourcing would offer. Direct state persistence with `cached_balance_minor` gives O(1) reads without event replay. See backend-architecture.md § "No Event Sourcing — and why" for full rationale.
 - **No Event-Driven**: BCs communicate synchronously within the same process. No message bus, no eventual consistency.
 - **Driving/inbound adapters**: HTTP (Hono route files in `wallet/infrastructure/adapters/inbound/http/`) and scheduled jobs (in `wallet/infrastructure/adapters/inbound/scheduler/` and `common/idempotency/infrastructure/adapters/inbound/scheduler/`).
 - **Outgoing/outbound adapters**: PostgreSQL (Prisma) in `wallet/infrastructure/adapters/outbound/prisma/`.
@@ -103,7 +103,7 @@ Paginated GET endpoints use a **reusable listing system** (`utils/kernel/listing
 
 **Design:**
 - **Flat filters** (AND logic, no nesting): `filter[field]=value`, `filter[field][op]=value`. Operators: `eq`, `gt`, `gte`, `lt`, `lte`, `in`.
-- **Dynamic multi-field sorting** with per-field direction: `sort=-amount_cents,created_at` (prefix `-` = desc).
+- **Dynamic multi-field sorting** with per-field direction: `sort=-amount_minor,created_at` (prefix `-` = desc).
 - **Keyset cursor pagination** (not offset-based): cursor is an opaque base64url token encoding the keyset values + sort signature. Changing sort with an old cursor returns 400 `CURSOR_SORT_MISMATCH`.
 - **Whitelist per endpoint**: Each endpoint declares a `ListingConfig` with allowed filterable fields, sortable fields, default sort, and limits. No arbitrary field access.
 - **`createListingQuerySchema(config)`** generates a Zod schema with explicit keys for every `filter[field][op]` combination — compatible with hono-openapi for auto-documentation.
@@ -114,7 +114,7 @@ Paginated GET endpoints use a **reusable listing system** (`utils/kernel/listing
 
 - PostgreSQL via Prisma ORM.
 - Optimistic locking: `version` field on wallets; updates must match current version.
-- **Double-entry ledger**: Every operation creates a **Movement** (journal entry) with 2 ledger entries (debit + credit) that must sum to zero. For transfers, both sides share the same `movement_id`. `ledger_entries` is immutable (DB trigger + REVOKE UPDATE/DELETE). Audit invariant: `SUM(amount_cents) GROUP BY movement_id = 0`.
+- **Double-entry ledger**: Every operation creates a **Movement** (journal entry) with 2 ledger entries (debit + credit) that must sum to zero. For transfers, both sides share the same `movement_id`. `ledger_entries` is immutable (DB trigger + REVOKE UPDATE/DELETE). Audit invariant: `SUM(amount_minor) GROUP BY movement_id = 0`.
 - Idempotency records: TTL 48h; stored responses for safe retries. Includes `request_hash` (SHA-256) for payload mismatch detection.
 - DB constraints enforce uniqueness and referential integrity as safety net.
 
@@ -128,7 +128,7 @@ Paginated GET endpoints use a **reusable listing system** (`utils/kernel/listing
 
 ### Why optimistic locking, not SELECT FOR UPDATE
 
-We use optimistic locking (version field) for **user wallet** mutations, including multi-wallet operations like transfers. System wallets use atomic increment (`cached_balance_cents + delta`) instead of version check — they have no balance constraints that require read-before-write. We deliberately avoid `SELECT FOR UPDATE` (pessimistic locking) because:
+We use optimistic locking (version field) for **user wallet** mutations, including multi-wallet operations like transfers. System wallets use atomic increment (`cached_balance_minor + delta`) instead of version check — they have no balance constraints that require read-before-write. We deliberately avoid `SELECT FOR UPDATE` (pessimistic locking) because:
 
 1. **Hexagonal purity**: `SELECT FOR UPDATE` is a SQL-specific concept. Putting it in the domain port (`WalletRepository.findByIdForUpdate`) leaks infrastructure into the domain. If we switch to MongoDB, DynamoDB, or an event store, pessimistic row locking doesn't exist. The `version` field is database-agnostic — any persistence adapter can implement it.
 
@@ -142,7 +142,7 @@ We use optimistic locking (version field) for **user wallet** mutations, includi
 
 Prisma returns `BigInt` fields as native `bigint`, which does not serialize to JSON. Strategy:
 - Use `utils/kernel/bigint.ts` utilities (`toSafeNumber`, `toNumber`, `bigIntReplacer`) in adapters/DTOs.
-- Amounts and timestamps that fit within `Number.MAX_SAFE_INTEGER` (~9 quadrillion cents) → convert to `number`.
+- Amounts and timestamps that fit within `Number.MAX_SAFE_INTEGER` (~9 quadrillion minor units) → convert to `number`.
 - System wallet balances that may exceed safe range → serialize as `string`.
 - API DTOs document whether each field is `number` or `string`.
 

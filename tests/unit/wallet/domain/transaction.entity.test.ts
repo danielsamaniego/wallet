@@ -13,7 +13,7 @@ describe("Transaction Entity", () => {
             walletId: "w-1",
             counterpartWalletId: "sys-1",
             type: "deposit",
-            amountCents: 1000n,
+            amountMinor: 1000n,
             status: "completed",
             idempotencyKey: "idem-1",
             reference: "ref-1",
@@ -26,7 +26,7 @@ describe("Transaction Entity", () => {
           expect(t.walletId).toBe("w-1");
           expect(t.counterpartWalletId).toBe("sys-1");
           expect(t.type).toBe("deposit");
-          expect(t.amountCents).toBe(1000n);
+          expect(t.amountMinor).toBe(1000n);
           expect(t.status).toBe("completed");
           expect(t.idempotencyKey).toBe("idem-1");
           expect(t.reference).toBe("ref-1");
@@ -45,7 +45,7 @@ describe("Transaction Entity", () => {
         it("Then type is set correctly", () => {
           const t = Transaction.create({
             id: "tx-1", walletId: "w-1", counterpartWalletId: null, type,
-            amountCents: 100n, status: "completed", idempotencyKey: null,
+            amountMinor: 100n, status: "completed", idempotencyKey: null,
             reference: null, metadata: null, holdId: null, movementId: "mov-1", createdAt: NOW,
           });
           expect(t.type).toBe(type);
@@ -58,7 +58,7 @@ describe("Transaction Entity", () => {
         it("Then status is set correctly", () => {
           const t = Transaction.create({
             id: "tx-1", walletId: "w-1", counterpartWalletId: null, type: "deposit",
-            amountCents: 100n, status, idempotencyKey: null,
+            amountMinor: 100n, status, idempotencyKey: null,
             reference: null, metadata: null, holdId: null, movementId: "mov-1", createdAt: NOW,
           });
           expect(t.status).toBe(status);
@@ -71,7 +71,7 @@ describe("Transaction Entity", () => {
         it("Then nullable getters return null", () => {
           const t = Transaction.create({
             id: "tx-1", walletId: "w-1", counterpartWalletId: null, type: "deposit",
-            amountCents: 100n, status: "completed", idempotencyKey: null,
+            amountMinor: 100n, status: "completed", idempotencyKey: null,
             reference: null, metadata: null, holdId: null, movementId: "mov-1", createdAt: NOW,
           });
           expect(t.counterpartWalletId).toBeNull();
@@ -88,7 +88,7 @@ describe("Transaction Entity", () => {
         it("Then holdId is set", () => {
           const t = Transaction.create({
             id: "tx-1", walletId: "w-1", counterpartWalletId: "sys-1", type: "hold_capture",
-            amountCents: 500n, status: "completed", idempotencyKey: null,
+            amountMinor: 500n, status: "completed", idempotencyKey: null,
             reference: null, metadata: null, holdId: "hold-1", movementId: "mov-1", createdAt: NOW,
           });
           expect(t.holdId).toBe("hold-1");
@@ -105,7 +105,7 @@ describe("Transaction Entity", () => {
         it("Then all getters return the provided values", () => {
           const t = Transaction.reconstruct({
             id: "tx-r", walletId: "w-r", counterpartWalletId: "cp-r", type: "transfer_in",
-            amountCents: 777n, status: "reversed", idempotencyKey: "ik-r",
+            amountMinor: 777n, status: "reversed", idempotencyKey: "ik-r",
             reference: "ref-r", metadata: { key: "val" }, holdId: "h-r", movementId: "mov-r", createdAt: 999,
           });
           expect(t.id).toBe("tx-r");

@@ -10,8 +10,8 @@ export interface WalletDTO {
   owner_id: string;
   platform_id: string;
   currency_code: string;
-  balance_cents: number | string;
-  available_balance_cents: number | string;
+  balance_minor: number | string;
+  available_balance_minor: number | string;
   status: string;
   is_system: boolean;
   created_at: number;

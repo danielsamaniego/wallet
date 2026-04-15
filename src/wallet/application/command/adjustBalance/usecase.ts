@@ -38,11 +38,12 @@ export class AdjustBalanceUseCase
 
     this.logger.debug(ctx, `${methodLogTag} start`, {
       wallet_id: cmd.walletId,
-      amount_cents: Number(cmd.amountCents),
+      amount_minor: Number(cmd.amountMinor),
     });
 
     const txId = this.idGen.newId();
     const movementId = this.idGen.newId();
+    let walletCurrency = "";
 
     await this.txManager.run(ctx, async (txCtx) => {
       const wallet = await this.walletRepo.findById(txCtx, cmd.walletId);
@@ -50,9 +51,11 @@ export class AdjustBalanceUseCase
         this.logger.warn(txCtx, `${methodLogTag} wallet not found`, { wallet_id: cmd.walletId });
         throw ErrWalletNotFound(cmd.walletId);
       }
+      walletCurrency = wallet.currencyCode;
       if (wallet.platformId !== cmd.platformId) {
         this.logger.warn(txCtx, `${methodLogTag} platform mismatch`, {
           wallet_id: cmd.walletId,
+          currency_code: wallet.currencyCode,
           expected_platform_id: cmd.platformId,
           actual_platform_id: wallet.platformId,
         });
@@ -75,16 +78,17 @@ export class AdjustBalanceUseCase
       const now = Date.now();
 
       // For negative adjustments, compute available balance (cached - active holds)
-      let availableBalance = wallet.cachedBalanceCents;
-      if (cmd.amountCents < 0n) {
+      let availableBalance = wallet.cachedBalanceMinor;
+      if (cmd.amountMinor < 0n) {
         const activeHolds = await this.holdRepo.sumActiveHolds(txCtx, wallet.id);
-        availableBalance = wallet.cachedBalanceCents - activeHolds;
+        availableBalance = wallet.cachedBalanceMinor - activeHolds;
 
         this.logger.debug(txCtx, `${methodLogTag} balance check`, {
           wallet_id: wallet.id,
-          cached_balance_cents: Number(wallet.cachedBalanceCents),
-          active_holds_cents: Number(activeHolds),
-          available_balance_cents: Number(availableBalance),
+          currency_code: wallet.currencyCode,
+          cached_balance_minor: Number(wallet.cachedBalanceMinor),
+          active_holds_minor: Number(activeHolds),
+          available_balance_minor: Number(availableBalance),
         });
       }
 
@@ -97,16 +101,16 @@ export class AdjustBalanceUseCase
       });
 
       // Mutate user wallet aggregate
-      wallet.adjust(cmd.amountCents, availableBalance, now);
+      wallet.adjust(cmd.amountMinor, availableBalance, now);
 
       // Determine direction for transaction type and ledger entries
-      const isCredit = cmd.amountCents > 0n;
-      const absAmount = isCredit ? cmd.amountCents : -cmd.amountCents;
+      const isCredit = cmd.amountMinor > 0n;
+      const absAmount = isCredit ? cmd.amountMinor : -cmd.amountMinor;
       const txType = isCredit ? "adjustment_credit" : "adjustment_debit";
 
       // System wallet: compute snapshot for ledger entry (approximate under concurrency)
       const systemDelta = isCredit ? -absAmount : absAmount;
-      const systemBalanceAfter = systemWallet.cachedBalanceCents + systemDelta;
+      const systemBalanceAfter = systemWallet.cachedBalanceMinor + systemDelta;
 
       // Create transaction
       const tx = Transaction.create({
@@ -114,7 +118,7 @@ export class AdjustBalanceUseCase
         walletId: wallet.id,
         counterpartWalletId: systemWallet.id,
         type: txType,
-        amountCents: absAmount,
+        amountMinor: absAmount,
         status: "completed",
         idempotencyKey: cmd.idempotencyKey,
         reference: cmd.reference ?? null,
@@ -130,8 +134,8 @@ export class AdjustBalanceUseCase
         transactionId: txId,
         walletId: wallet.id,
         entryType: isCredit ? "CREDIT" : "DEBIT",
-        amountCents: isCredit ? absAmount : -absAmount,
-        balanceAfterCents: wallet.cachedBalanceCents,
+        amountMinor: isCredit ? absAmount : -absAmount,
+        balanceAfterMinor: wallet.cachedBalanceMinor,
         movementId,
         createdAt: now,
       });
@@ -141,8 +145,8 @@ export class AdjustBalanceUseCase
         transactionId: txId,
         walletId: systemWallet.id,
         entryType: isCredit ? "DEBIT" : "CREDIT",
-        amountCents: isCredit ? -absAmount : absAmount,
-        balanceAfterCents: systemBalanceAfter,
+        amountMinor: isCredit ? -absAmount : absAmount,
+        balanceAfterMinor: systemBalanceAfter,
         movementId,
         createdAt: now,
       });
@@ -157,8 +161,9 @@ export class AdjustBalanceUseCase
 
     this.logger.info(ctx, `${methodLogTag} adjustment success`, {
       wallet_id: cmd.walletId,
+      currency_code: walletCurrency,
       transaction_id: txId,
-      amount_cents: Number(cmd.amountCents),
+      amount_minor: Number(cmd.amountMinor),
     });
 
     return { transactionId: txId, movementId };

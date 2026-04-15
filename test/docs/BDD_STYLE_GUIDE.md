@@ -20,12 +20,12 @@ describe("Aggregate or UseCase Name")        // Top-level: system under test
 ```ts
 describe("Wallet Aggregate", () => {
   describe("deposit", () => {
-    describe("Given an active wallet with balance 1000 cents", () => {
-      describe("When depositing 500 cents", () => {
-        it("Then balance becomes 1500 cents", () => {
+    describe("Given an active wallet with balance 1000 minor units", () => {
+      describe("When depositing 500 minor units", () => {
+        it("Then balance becomes 1500 minor units", () => {
           const w = activeWallet(1000n);
           w.deposit(500n, LATER);
-          expect(w.cachedBalanceCents).toBe(1500n);
+          expect(w.cachedBalanceMinor).toBe(1500n);
         });
 
         it("Then version increments by 1", () => {
@@ -48,7 +48,7 @@ The nesting depth rule (Given -> When -> Then) exists to keep tests scannable:
 ```
 describe("DepositUseCase")                                    // SUT
   describe("Given an active user wallet and a system wallet") // precondition
-    describe("When depositing 5000 cents")                    // action
+    describe("When depositing 5000 minor units")                    // action
       it("Then it returns the transactionId and movementId")  // assertion
       it("Then the user wallet balance is updated")           // assertion
       it("Then a Movement is created with type 'deposit'")    // assertion
@@ -69,9 +69,9 @@ describe("Given an active wallet", () => {
 
 **Right -- context in the Given string:**
 ```ts
-describe("Given an active USD wallet with balance 1000 cents", () => {
-  describe("When depositing 500 cents", () => {
-    it("Then balance becomes 1500 cents", () => {});
+describe("Given an active USD wallet with balance 1000 minor units", () => {
+  describe("When depositing 500 minor units", () => {
+    it("Then balance becomes 1500 minor units", () => {});
   });
 });
 ```
@@ -95,7 +95,7 @@ it("Then a Transaction is created with type 'deposit' and status 'completed'", a
   const tx = transactionRepo.save.mock.calls[0]![1] as Transaction;
   expect(tx.type).toBe("deposit");
   expect(tx.status).toBe("completed");
-  expect(tx.amountCents).toBe(5000n);
+  expect(tx.amountMinor).toBe(5000n);
 });
 ```
 
@@ -120,10 +120,10 @@ Domain aggregates are mutable. Never share a single instance between `it` blocks
 const activeWallet = (balance = 0n, id = "w-1") =>
   Wallet.reconstruct(id, "owner-1", "platform-1", "USD", balance, "active", 1, false, NOW, NOW);
 
-it("Then balance becomes 1500 cents", () => {
+it("Then balance becomes 1500 minor units", () => {
   const w = activeWallet(1000n);  // fresh instance
   w.deposit(500n, LATER);
-  expect(w.cachedBalanceCents).toBe(1500n);
+  expect(w.cachedBalanceMinor).toBe(1500n);
 });
 
 it("Then version increments by 1", () => {
@@ -139,7 +139,7 @@ const w = activeWallet(1000n);  // shared -- mutations leak between tests!
 
 it("Then balance becomes 1500", () => {
   w.deposit(500n, LATER);
-  expect(w.cachedBalanceCents).toBe(1500n);
+  expect(w.cachedBalanceMinor).toBe(1500n);
 });
 
 it("Then version increments", () => {
@@ -176,11 +176,11 @@ beforeEach(() => {
   - `describe("deposit")`
   - `describe("freeze")`
 - **Given:** Start with `"Given"` and describe the precondition in plain English.
-  - `"Given an active wallet with balance 1000 cents"`
+  - `"Given an active wallet with balance 1000 minor units"`
   - `"Given the wallet does not exist"`
   - `"Given a wallet belonging to a different platform"`
 - **When:** Start with `"When"` and describe the action.
-  - `"When depositing 500 cents"`
+  - `"When depositing 500 minor units"`
   - `"When freezing"`
   - `"When a transfer of $25.00 is executed"`
 
@@ -192,7 +192,7 @@ beforeEach(() => {
 
 | Good                                              | Bad                          |
 |---------------------------------------------------|------------------------------|
-| `"Then balance becomes 1500 cents"`               | `"should work"`              |
+| `"Then balance becomes 1500 minor units"`               | `"should work"`              |
 | `"Then throws WALLET_NOT_ACTIVE"`                 | `"handles error"`            |
 | `"Then version increments by 1"`                  | `"updates correctly"`        |
 | `"Then status becomes frozen"`                    | `"it freezes"`               |
@@ -212,7 +212,7 @@ it("handles the error case", () => { ... });
 it("returns the right thing", () => { ... });
 
 // GOOD
-it("Then balance becomes 1500 cents", () => { ... });
+it("Then balance becomes 1500 minor units", () => { ... });
 it("Then throws WALLET_NOT_ACTIVE", () => { ... });
 it("Then it returns transactionId and movementId", () => { ... });
 ```
@@ -249,7 +249,7 @@ it("Then it returns the transactionId and movementId", async () => {
 it("Then the user wallet balance is updated", async () => {
   await sut.handle(ctx, cmd);
   const savedWallet = walletRepo.save.mock.calls[0]![1] as Wallet;
-  expect(savedWallet.cachedBalanceCents).toBe(15000n);
+  expect(savedWallet.cachedBalanceMinor).toBe(15000n);
 });
 ```
 
@@ -261,9 +261,9 @@ it("deposit 500 into wallet with 1000 balance", () => { ... });
 it("deposit into frozen wallet throws", () => { ... });
 
 // GOOD -- proper BDD nesting
-describe("Given an active wallet with balance 1000 cents", () => {
-  describe("When depositing 500 cents", () => {
-    it("Then balance becomes 1500 cents", () => { ... });
+describe("Given an active wallet with balance 1000 minor units", () => {
+  describe("When depositing 500 minor units", () => {
+    it("Then balance becomes 1500 minor units", () => { ... });
   });
 });
 ```

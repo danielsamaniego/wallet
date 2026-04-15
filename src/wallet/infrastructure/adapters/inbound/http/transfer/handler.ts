@@ -46,7 +46,7 @@ export function transferRoute(commandBus: ICommandBus) {
           data.source_wallet_id,
           data.target_wallet_id,
           ctx.platformId,
-          BigInt(data.amount_cents),
+          BigInt(data.amount_minor),
           c.req.header("idempotency-key") ?? "",
           data.reference,
           data.metadata,

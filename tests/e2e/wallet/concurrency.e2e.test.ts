@@ -20,11 +20,11 @@ describe("Concurrency & Race Conditions E2E", () => {
   }
 
   /** Helper: deposit into a wallet and return the response status. */
-  async function deposit(walletId: string, amountCents: number): Promise<number> {
+  async function deposit(walletId: string, amountMinor: number): Promise<number> {
     const res = await app.request(`/v1/wallets/${walletId}/deposit`, {
       method: "POST",
       headers: { "Idempotency-Key": nextKey() },
-      body: JSON.stringify({ amount_cents: amountCents }),
+      body: JSON.stringify({ amount_minor: amountMinor }),
     });
     return res.status;
   }
@@ -34,7 +34,7 @@ describe("Concurrency & Race Conditions E2E", () => {
     const res = await app.request(`/v1/wallets/${walletId}`, { method: "GET" });
     expect(res.status).toBe(200);
     const json = await res.json();
-    return Number(json.balance_cents);
+    return Number(json.balance_minor);
   }
 
   beforeAll(async () => {
@@ -61,7 +61,7 @@ describe("Concurrency & Race Conditions E2E", () => {
             app.request(`/v1/wallets/${walletId}/deposit`, {
               method: "POST",
               headers: { "Idempotency-Key": `conc-dep-${i}-${Date.now()}` },
-              body: JSON.stringify({ amount_cents: 1000 }),
+              body: JSON.stringify({ amount_minor: 1000 }),
             }),
           ),
         );
@@ -95,7 +95,7 @@ describe("Concurrency & Race Conditions E2E", () => {
             app.request(`/v1/wallets/${walletId}/withdraw`, {
               method: "POST",
               headers: { "Idempotency-Key": `conc-wd-${i}-${Date.now()}` },
-              body: JSON.stringify({ amount_cents: 5000 }),
+              body: JSON.stringify({ amount_minor: 5000 }),
             }),
           ),
         );
@@ -135,7 +135,7 @@ describe("Concurrency & Race Conditions E2E", () => {
             body: JSON.stringify({
               source_wallet_id: walletA,
               target_wallet_id: walletB,
-              amount_cents: 100,
+              amount_minor: 100,
             }),
           }),
         );
@@ -147,7 +147,7 @@ describe("Concurrency & Race Conditions E2E", () => {
             body: JSON.stringify({
               source_wallet_id: walletB,
               target_wallet_id: walletA,
-              amount_cents: 100,
+              amount_minor: 100,
             }),
           }),
         );
@@ -186,7 +186,7 @@ describe("Concurrency & Race Conditions E2E", () => {
             app.request("/v1/holds", {
               method: "POST",
               headers: { "Idempotency-Key": `conc-hold-${i}-${Date.now()}` },
-              body: JSON.stringify({ wallet_id: walletId, amount_cents: 2000 }),
+              body: JSON.stringify({ wallet_id: walletId, amount_minor: 2000 }),
             }),
           ),
         );
@@ -219,7 +219,7 @@ describe("Concurrency & Race Conditions E2E", () => {
           app.request(`/v1/wallets/${walletId}/deposit`, {
             method: "POST",
             headers: { "Idempotency-Key": `conc-mix-dep-${i}-${Date.now()}` },
-            body: JSON.stringify({ amount_cents: 1000 }),
+            body: JSON.stringify({ amount_minor: 1000 }),
           }),
         );
 
@@ -227,7 +227,7 @@ describe("Concurrency & Race Conditions E2E", () => {
           app.request(`/v1/wallets/${walletId}/withdraw`, {
             method: "POST",
             headers: { "Idempotency-Key": `conc-mix-wd-${i}-${Date.now()}` },
-            body: JSON.stringify({ amount_cents: 1000 }),
+            body: JSON.stringify({ amount_minor: 1000 }),
           }),
         );
 
@@ -259,21 +259,21 @@ describe("Concurrency & Race Conditions E2E", () => {
           app.request("/v1/transfers", {
             method: "POST",
             headers: { "Idempotency-Key": `circ-ab-${i}-${Date.now()}` },
-            body: JSON.stringify({ source_wallet_id: walletA, target_wallet_id: walletB, amount_cents: 500 }),
+            body: JSON.stringify({ source_wallet_id: walletA, target_wallet_id: walletB, amount_minor: 500 }),
           }),
         );
         const bc = Array.from({ length: 5 }, (_, i) =>
           app.request("/v1/transfers", {
             method: "POST",
             headers: { "Idempotency-Key": `circ-bc-${i}-${Date.now()}` },
-            body: JSON.stringify({ source_wallet_id: walletB, target_wallet_id: walletC, amount_cents: 500 }),
+            body: JSON.stringify({ source_wallet_id: walletB, target_wallet_id: walletC, amount_minor: 500 }),
           }),
         );
         const ca = Array.from({ length: 5 }, (_, i) =>
           app.request("/v1/transfers", {
             method: "POST",
             headers: { "Idempotency-Key": `circ-ca-${i}-${Date.now()}` },
-            body: JSON.stringify({ source_wallet_id: walletC, target_wallet_id: walletA, amount_cents: 500 }),
+            body: JSON.stringify({ source_wallet_id: walletC, target_wallet_id: walletA, amount_minor: 500 }),
           }),
         );
 
@@ -306,7 +306,7 @@ describe("Concurrency & Race Conditions E2E", () => {
         const holdRes = await app.request("/v1/holds", {
           method: "POST",
           headers: { "Idempotency-Key": `conc-cv-place-${Date.now()}` },
-          body: JSON.stringify({ wallet_id: walletId, amount_cents: 5000 }),
+          body: JSON.stringify({ wallet_id: walletId, amount_minor: 5000 }),
         });
         expect(holdRes.status).toBe(201);
         const { hold_id } = await holdRes.json();
@@ -349,7 +349,7 @@ describe("Concurrency & Race Conditions E2E", () => {
           app.request(`/v1/wallets/${walletId}/deposit`, {
             method: "POST",
             headers: { "Idempotency-Key": `conc-fd-dep-${Date.now()}` },
-            body: JSON.stringify({ amount_cents: 5000 }),
+            body: JSON.stringify({ amount_minor: 5000 }),
           }),
         ]);
 
@@ -402,14 +402,14 @@ describe("Concurrency & Race Conditions E2E", () => {
           const depRes = await app.request(`/v1/wallets/${walletId}/deposit`, {
             method: "POST",
             headers: { "Idempotency-Key": `load-dep-${i}-${Date.now()}` },
-            body: JSON.stringify({ amount_cents: 100 }),
+            body: JSON.stringify({ amount_minor: 100 }),
           });
           expect(depRes.status).toBe(201);
 
           const wdRes = await app.request(`/v1/wallets/${walletId}/withdraw`, {
             method: "POST",
             headers: { "Idempotency-Key": `load-wd-${i}-${Date.now()}` },
-            body: JSON.stringify({ amount_cents: 100 }),
+            body: JSON.stringify({ amount_minor: 100 }),
           });
           expect(wdRes.status).toBe(201);
         }
@@ -439,7 +439,7 @@ describe("Concurrency & Race Conditions E2E", () => {
             app.request("/v1/transfers", {
               method: "POST",
               headers: { "Idempotency-Key": `drain-xfr-${i}-${Date.now()}` },
-              body: JSON.stringify({ source_wallet_id: source, target_wallet_id: target, amount_cents: 1000 }),
+              body: JSON.stringify({ source_wallet_id: source, target_wallet_id: target, amount_minor: 1000 }),
             }),
           ),
         );

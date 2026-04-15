@@ -9,7 +9,7 @@ export class Wallet {
   private readonly _ownerId: string;
   private readonly _platformId: string;
   private readonly _currencyCode: string;
-  private _cachedBalanceCents: bigint;
+  private _cachedBalanceMinor: bigint;
   private _status: WalletStatus;
   private _version: number;
   private readonly _isSystem: boolean;
@@ -22,7 +22,7 @@ export class Wallet {
     this._ownerId = "";
     this._platformId = "";
     this._currencyCode = "";
-    this._cachedBalanceCents = 0n;
+    this._cachedBalanceMinor = 0n;
     this._status = "active";
     this._version = 0;
     this._isSystem = false;
@@ -51,7 +51,7 @@ export class Wallet {
       _ownerId: ownerId,
       _platformId: platformId,
       _currencyCode: upper,
-      _cachedBalanceCents: 0n,
+      _cachedBalanceMinor: 0n,
       _status: "active",
       _version: 1,
       _isSystem: isSystem,
@@ -66,7 +66,7 @@ export class Wallet {
     ownerId: string,
     platformId: string,
     currencyCode: string,
-    cachedBalanceCents: bigint,
+    cachedBalanceMinor: bigint,
     status: WalletStatus,
     version: number,
     isSystem: boolean,
@@ -79,7 +79,7 @@ export class Wallet {
       _ownerId: ownerId,
       _platformId: platformId,
       _currencyCode: currencyCode,
-      _cachedBalanceCents: cachedBalanceCents,
+      _cachedBalanceMinor: cachedBalanceMinor,
       _status: status,
       _version: version,
       _isSystem: isSystem,
@@ -101,8 +101,8 @@ export class Wallet {
   get currencyCode(): string {
     return this._currencyCode;
   }
-  get cachedBalanceCents(): bigint {
-    return this._cachedBalanceCents;
+  get cachedBalanceMinor(): bigint {
+    return this._cachedBalanceMinor;
   }
   get status(): WalletStatus {
     return this._status;
@@ -120,31 +120,31 @@ export class Wallet {
     return this._updatedAt;
   }
 
-  deposit(amountCents: bigint, now: number): void {
+  deposit(amountMinor: bigint, now: number): void {
     if (this._status !== "active") {
       throw AppError.domainRule("WALLET_NOT_ACTIVE", `wallet ${this._id} is not active`);
     }
-    if (amountCents <= 0n) {
+    if (amountMinor <= 0n) {
       throw AppError.validation("INVALID_AMOUNT", "amount must be positive");
     }
-    this._cachedBalanceCents += amountCents;
+    this._cachedBalanceMinor += amountMinor;
     this.touch(now);
   }
 
-  withdraw(amountCents: bigint, availableBalanceCents: bigint, now: number): void {
+  withdraw(amountMinor: bigint, availableBalanceMinor: bigint, now: number): void {
     if (this._status !== "active") {
       throw AppError.domainRule("WALLET_NOT_ACTIVE", `wallet ${this._id} is not active`);
     }
-    if (amountCents <= 0n) {
+    if (amountMinor <= 0n) {
       throw AppError.validation("INVALID_AMOUNT", "amount must be positive");
     }
-    if (!this._isSystem && availableBalanceCents < amountCents) {
+    if (!this._isSystem && availableBalanceMinor < amountMinor) {
       throw AppError.domainRule(
         "INSUFFICIENT_FUNDS",
         `wallet ${this._id} has insufficient available funds`,
       );
     }
-    this._cachedBalanceCents -= amountCents;
+    this._cachedBalanceMinor -= amountMinor;
     this.touch(now);
   }
 
@@ -177,7 +177,7 @@ export class Wallet {
     if (this._status === "closed") {
       throw AppError.domainRule("WALLET_CLOSED", `wallet ${this._id} is already closed`);
     }
-    if (this._cachedBalanceCents !== 0n) {
+    if (this._cachedBalanceMinor !== 0n) {
       throw AppError.domainRule(
         "WALLET_BALANCE_NOT_ZERO",
         `wallet ${this._id} must have zero balance to close`,
@@ -191,20 +191,20 @@ export class Wallet {
   }
 
   /** Administrative balance adjustment. Allowed on active and frozen wallets (not closed). */
-  adjust(amountCents: bigint, availableBalanceCents: bigint, now: number): void {
+  adjust(amountMinor: bigint, availableBalanceMinor: bigint, now: number): void {
     if (this._status === "closed") {
       throw AppError.domainRule("WALLET_CLOSED", `wallet ${this._id} is closed`);
     }
-    if (amountCents === 0n) {
+    if (amountMinor === 0n) {
       throw AppError.validation("INVALID_AMOUNT", "adjustment amount must not be zero");
     }
-    if (amountCents < 0n && !this._isSystem && availableBalanceCents < -amountCents) {
+    if (amountMinor < 0n && !this._isSystem && availableBalanceMinor < -amountMinor) {
       throw AppError.domainRule(
         "INSUFFICIENT_FUNDS",
         `wallet ${this._id} has insufficient available funds`,
       );
     }
-    this._cachedBalanceCents += amountCents;
+    this._cachedBalanceMinor += amountMinor;
     this.touch(now);
   }
 

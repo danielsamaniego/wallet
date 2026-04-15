@@ -26,10 +26,11 @@ export class PlaceHoldUseCase implements ICommandHandler<PlaceHoldCommand, Place
 
     this.logger.debug(ctx, `${methodLogTag} start`, {
       wallet_id: cmd.walletId,
-      amount_cents: Number(cmd.amountCents),
+      amount_minor: Number(cmd.amountMinor),
     });
 
     const holdId = this.idGen.newId();
+    let walletCurrency = "";
 
     await this.txManager.run(ctx, async (txCtx) => {
       const wallet = await this.walletRepo.findById(txCtx, cmd.walletId);
@@ -37,9 +38,11 @@ export class PlaceHoldUseCase implements ICommandHandler<PlaceHoldCommand, Place
         this.logger.warn(txCtx, `${methodLogTag} wallet not found`, { wallet_id: cmd.walletId });
         throw ErrWalletNotFound(cmd.walletId);
       }
+      walletCurrency = wallet.currencyCode;
       if (wallet.platformId !== cmd.platformId) {
         this.logger.warn(txCtx, `${methodLogTag} platform mismatch`, {
           wallet_id: cmd.walletId,
+          currency_code: wallet.currencyCode,
           expected_platform_id: cmd.platformId,
           actual_platform_id: wallet.platformId,
         });
@@ -49,6 +52,7 @@ export class PlaceHoldUseCase implements ICommandHandler<PlaceHoldCommand, Place
       if (wallet.status !== "active") {
         this.logger.warn(txCtx, `${methodLogTag} wallet not active`, {
           wallet_id: wallet.id,
+          currency_code: wallet.currencyCode,
           status: wallet.status,
         });
         throw AppError.domainRule("WALLET_NOT_ACTIVE", `wallet ${wallet.id} is not active`);
@@ -58,20 +62,22 @@ export class PlaceHoldUseCase implements ICommandHandler<PlaceHoldCommand, Place
 
       // Calculate available balance
       const activeHolds = await this.holdRepo.sumActiveHolds(txCtx, wallet.id);
-      const availableBalance = wallet.cachedBalanceCents - activeHolds;
+      const availableBalance = wallet.cachedBalanceMinor - activeHolds;
 
       this.logger.debug(txCtx, `${methodLogTag} balance check`, {
         wallet_id: wallet.id,
-        cached_balance_cents: Number(wallet.cachedBalanceCents),
-        active_holds_cents: Number(activeHolds),
-        available_balance_cents: Number(availableBalance),
+        currency_code: wallet.currencyCode,
+        cached_balance_minor: Number(wallet.cachedBalanceMinor),
+        active_holds_minor: Number(activeHolds),
+        available_balance_minor: Number(availableBalance),
       });
 
-      if (cmd.amountCents > availableBalance) {
+      if (cmd.amountMinor > availableBalance) {
         this.logger.warn(txCtx, `${methodLogTag} insufficient funds`, {
           wallet_id: wallet.id,
-          requested_cents: Number(cmd.amountCents),
-          available_balance_cents: Number(availableBalance),
+          currency_code: wallet.currencyCode,
+          requested_minor: Number(cmd.amountMinor),
+          available_balance_minor: Number(availableBalance),
         });
         throw AppError.domainRule(
           "INSUFFICIENT_FUNDS",
@@ -86,7 +92,7 @@ export class PlaceHoldUseCase implements ICommandHandler<PlaceHoldCommand, Place
       const hold = Hold.create({
         id: holdId,
         walletId: wallet.id,
-        amountCents: cmd.amountCents,
+        amountMinor: cmd.amountMinor,
         reference: cmd.reference ?? null,
         expiresAt: cmd.expiresAt ?? null,
         now,
@@ -99,7 +105,8 @@ export class PlaceHoldUseCase implements ICommandHandler<PlaceHoldCommand, Place
     this.logger.info(ctx, `${methodLogTag} hold placed`, {
       hold_id: holdId,
       wallet_id: cmd.walletId,
-      amount_cents: Number(cmd.amountCents),
+      currency_code: walletCurrency,
+      amount_minor: Number(cmd.amountMinor),
     });
 
     return { holdId };

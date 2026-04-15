@@ -5,7 +5,7 @@
  * `TypeError: Do not know how to serialize a BigInt` on JSON.stringify().
  *
  * Strategy:
- * - Amounts (cents) and timestamps (Unix ms) are converted to `number`
+ * - Amounts (minor units) and timestamps (Unix ms) are converted to `number`
  *   when they fit safely within Number.MAX_SAFE_INTEGER (2^53 - 1).
  * - Values exceeding MAX_SAFE_INTEGER are serialized as strings to
  *   prevent precision loss (relevant for system wallet balances).
@@ -14,7 +14,7 @@
  *
  * Usage in adapters (read stores / HTTP handlers):
  *   import { toSafeNumber, bigIntReplacer } from "../utils/kernel/bigint.js";
- *   const dto = { balance_cents: toSafeNumber(wallet.cachedBalanceCents) };
+ *   const dto = { balance_minor: toSafeNumber(wallet.cachedBalanceMinor) };
  */
 
 /**

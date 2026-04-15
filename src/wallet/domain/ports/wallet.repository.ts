@@ -13,7 +13,7 @@ export interface IWalletRepository {
   adjustSystemWalletBalance(
     ctx: AppContext,
     walletId: string,
-    deltaCents: bigint,
+    deltaMinor: bigint,
     now: number,
   ): Promise<void>;
   findById(ctx: AppContext, walletId: string): Promise<Wallet | null>;

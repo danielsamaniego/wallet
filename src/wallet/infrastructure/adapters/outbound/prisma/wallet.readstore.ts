@@ -33,11 +33,11 @@ export class PrismaWalletReadStore implements IWalletReadStore {
         status: "active",
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
-      _sum: { amountCents: true },
+      _sum: { amountMinor: true },
     });
 
-    const activeHolds = holdSum._sum.amountCents ?? 0n;
-    const rawAvailable = row.cachedBalanceCents - activeHolds;
+    const activeHolds = holdSum._sum.amountMinor ?? 0n;
+    const rawAvailable = row.cachedBalanceMinor - activeHolds;
     const availableBalance = rawAvailable < 0n ? 0n : rawAvailable;
 
     return {
@@ -45,8 +45,8 @@ export class PrismaWalletReadStore implements IWalletReadStore {
       owner_id: row.ownerId,
       platform_id: row.platformId,
       currency_code: row.currencyCode,
-      balance_cents: toSafeNumber(row.cachedBalanceCents),
-      available_balance_cents: toSafeNumber(availableBalance),
+      balance_minor: toSafeNumber(row.cachedBalanceMinor),
+      available_balance_minor: toSafeNumber(availableBalance),
       status: row.status,
       is_system: row.isSystem,
       created_at: toNumber(row.createdAt),

@@ -38,7 +38,7 @@ export class TransferUseCase implements ICommandHandler<TransferCommand, Transfe
     this.logger.debug(ctx, `${methodLogTag} start`, {
       source_wallet_id: cmd.sourceWalletId,
       target_wallet_id: cmd.targetWalletId,
-      amount_cents: Number(cmd.amountCents),
+      amount_minor: Number(cmd.amountMinor),
     });
 
     if (cmd.sourceWalletId === cmd.targetWalletId) {
@@ -51,6 +51,7 @@ export class TransferUseCase implements ICommandHandler<TransferCommand, Transfe
     const sourceTxId = this.idGen.newId();
     const targetTxId = this.idGen.newId();
     const movementId = this.idGen.newId();
+    let sourceCurrency = "";
 
     await this.txManager.run(ctx, async (txCtx) => {
       const source = await this.walletRepo.findById(txCtx, cmd.sourceWalletId);
@@ -60,9 +61,11 @@ export class TransferUseCase implements ICommandHandler<TransferCommand, Transfe
         });
         throw ErrWalletNotFound(cmd.sourceWalletId);
       }
+      sourceCurrency = source.currencyCode;
       if (source.platformId !== cmd.platformId) {
         this.logger.warn(txCtx, `${methodLogTag} source platform mismatch`, {
           source_wallet_id: cmd.sourceWalletId,
+          currency_code: source.currencyCode,
           expected_platform_id: cmd.platformId,
           actual_platform_id: source.platformId,
         });
@@ -79,6 +82,7 @@ export class TransferUseCase implements ICommandHandler<TransferCommand, Transfe
       if (target.platformId !== cmd.platformId) {
         this.logger.warn(txCtx, `${methodLogTag} target platform mismatch`, {
           target_wallet_id: cmd.targetWalletId,
+          currency_code: source.currencyCode,
           expected_platform_id: cmd.platformId,
           actual_platform_id: target.platformId,
         });
@@ -99,21 +103,22 @@ export class TransferUseCase implements ICommandHandler<TransferCommand, Transfe
 
       // Available balance for source
       const activeHolds = await this.holdRepo.sumActiveHolds(txCtx, source.id);
-      const availableBalance = source.cachedBalanceCents - activeHolds;
+      const availableBalance = source.cachedBalanceMinor - activeHolds;
 
       this.logger.debug(txCtx, `${methodLogTag} source balance check`, {
         source_wallet_id: source.id,
-        cached_balance_cents: Number(source.cachedBalanceCents),
-        active_holds_cents: Number(activeHolds),
-        available_balance_cents: Number(availableBalance),
+        currency_code: source.currencyCode,
+        cached_balance_minor: Number(source.cachedBalanceMinor),
+        active_holds_minor: Number(activeHolds),
+        available_balance_minor: Number(availableBalance),
       });
 
       // Create movement (journal entry — groups both sides of the transfer)
       const movement = Movement.create({ id: movementId, type: "transfer", createdAt: now });
 
       // Mutate
-      source.withdraw(cmd.amountCents, availableBalance, now);
-      target.deposit(cmd.amountCents, now);
+      source.withdraw(cmd.amountMinor, availableBalance, now);
+      target.deposit(cmd.amountMinor, now);
 
       // Transactions
       const outTx = Transaction.create({
@@ -121,7 +126,7 @@ export class TransferUseCase implements ICommandHandler<TransferCommand, Transfe
         walletId: source.id,
         counterpartWalletId: target.id,
         type: "transfer_out",
-        amountCents: cmd.amountCents,
+        amountMinor: cmd.amountMinor,
         status: "completed",
         idempotencyKey: cmd.idempotencyKey,
         reference: cmd.reference ?? null,
@@ -136,7 +141,7 @@ export class TransferUseCase implements ICommandHandler<TransferCommand, Transfe
         walletId: target.id,
         counterpartWalletId: source.id,
         type: "transfer_in",
-        amountCents: cmd.amountCents,
+        amountMinor: cmd.amountMinor,
         status: "completed",
         idempotencyKey: null,
         reference: cmd.reference ?? null,
@@ -152,8 +157,8 @@ export class TransferUseCase implements ICommandHandler<TransferCommand, Transfe
         transactionId: sourceTxId,
         walletId: source.id,
         entryType: "DEBIT",
-        amountCents: -cmd.amountCents,
-        balanceAfterCents: source.cachedBalanceCents,
+        amountMinor: -cmd.amountMinor,
+        balanceAfterMinor: source.cachedBalanceMinor,
         movementId,
         createdAt: now,
       });
@@ -163,8 +168,8 @@ export class TransferUseCase implements ICommandHandler<TransferCommand, Transfe
         transactionId: targetTxId,
         walletId: target.id,
         entryType: "CREDIT",
-        amountCents: cmd.amountCents,
-        balanceAfterCents: target.cachedBalanceCents,
+        amountMinor: cmd.amountMinor,
+        balanceAfterMinor: target.cachedBalanceMinor,
         movementId,
         createdAt: now,
       });
@@ -187,9 +192,10 @@ export class TransferUseCase implements ICommandHandler<TransferCommand, Transfe
     this.logger.info(ctx, `${methodLogTag} transfer success`, {
       source_wallet_id: cmd.sourceWalletId,
       target_wallet_id: cmd.targetWalletId,
+      currency_code: sourceCurrency,
       source_transaction_id: sourceTxId,
       target_transaction_id: targetTxId,
-      amount_cents: Number(cmd.amountCents),
+      amount_minor: Number(cmd.amountMinor),
     });
 
     return { sourceTransactionId: sourceTxId, targetTransactionId: targetTxId, movementId };

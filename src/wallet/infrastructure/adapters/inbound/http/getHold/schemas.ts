@@ -9,7 +9,7 @@ export const ParamSchema = z.object({ holdId: z.string().min(1).max(255) });
 export const ResponseSchema = z.object({
   id: z.string(),
   wallet_id: z.string(),
-  amount_cents: z.union([z.number(), z.string()]),
+  amount_minor: z.union([z.number(), z.string()]),
   status: z.string(),
   reference: z.string().nullable(),
   expires_at: z.number().nullable(),

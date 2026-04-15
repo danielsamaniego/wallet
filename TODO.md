@@ -135,14 +135,14 @@ Actualizar `verifyDatabaseSafetyNets()` para verificar los nuevos constraints.
 ### 8. Job de reconciliación
 
 **Fuente:** HARDENING-7
-**Riesgo:** Si `cached_balance_cents` diverge del ledger por un bug, no hay forma de detectarlo automáticamente.
+**Riesgo:** Si `cached_balance_minor` diverge del ledger por un bug, no hay forma de detectarlo automáticamente.
 
 **Plan:** Job periódico que ejecute:
 ```sql
-SELECT w.id, w.cached_balance_cents, COALESCE(SUM(le.amount_cents), 0) as ledger_balance
+SELECT w.id, w.cached_balance_minor, COALESCE(SUM(le.amount_minor), 0) as ledger_balance
 FROM wallets w LEFT JOIN ledger_entries le ON le.wallet_id = w.id
 GROUP BY w.id
-HAVING w.cached_balance_cents != COALESCE(SUM(le.amount_cents), 0);
+HAVING w.cached_balance_minor != COALESCE(SUM(le.amount_minor), 0);
 ```
 Si hay discrepancias, loguear como error crítico (alertable).
 
@@ -168,7 +168,7 @@ Si hay discrepancias, loguear como error crítico (alertable).
 **Fuente:** HARDENING-6
 **Riesgo:** Feature gap — un hold solo se puede capturar por el monto completo. Stripe/Adyen permiten capturas parciales.
 
-**Plan:** Agregar `amount_cents` opcional al capture command. Si presente, capturar ese monto y liberar la diferencia.
+**Plan:** Agregar `amount_minor` opcional al capture command. Si presente, capturar ese monto y liberar la diferencia.
 
 **Esfuerzo:** 4-8h
 

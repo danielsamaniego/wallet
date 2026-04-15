@@ -201,7 +201,7 @@ import { WalletBuilder } from "../../helpers/builders/index.js";
   ownerId: "owner-1",
   platformId: "platform-1",
   currencyCode: "USD",
-  cachedBalanceCents: 0n,
+  cachedBalanceMinor: 0n,
   status: "active",
   version: 1,
   isSystem: false,
@@ -218,7 +218,7 @@ import { WalletBuilder } from "../../helpers/builders/index.js";
 | `.withOwnerId(ownerId)`  | Sets owner ID                                   |
 | `.withPlatformId(pid)`   | Sets platform ID                                |
 | `.withCurrency(code)`    | Sets currency code (e.g., "USD", "EUR")         |
-| `.withBalance(cents)`    | Sets `cachedBalanceCents` (bigint)               |
+| `.withBalance(minor)`    | Sets `cachedBalanceMinor` (bigint)               |
 | `.withStatus(status)`    | Sets status ("active", "frozen", "closed")      |
 | `.withVersion(version)`  | Sets optimistic locking version                  |
 | `.asSystem()`            | Sets `isSystem: true` and `ownerId: "SYSTEM"`   |
@@ -271,7 +271,7 @@ import { HoldBuilder } from "../../helpers/builders/index.js";
 {
   id: "hold-1",
   walletId: "wallet-1",
-  amountCents: 1000n,
+  amountMinor: 1000n,
   status: "active",
   reference: null,
   expiresAt: null,
@@ -286,7 +286,7 @@ import { HoldBuilder } from "../../helpers/builders/index.js";
 |----------------------------|-----------------------------------------------|
 | `.withId(id)`              | Sets hold ID                                  |
 | `.withWalletId(walletId)`  | Sets the wallet this hold belongs to           |
-| `.withAmount(cents)`       | Sets `amountCents` (bigint)                    |
+| `.withAmount(minor)`       | Sets `amountMinor` (bigint)                    |
 | `.withStatus(status)`      | Sets status ("active", "captured", "voided", "expired") |
 | `.withReference(ref)`      | Sets reference string                          |
 | `.withExpiresAt(ts)`       | Sets expiration timestamp                      |

@@ -91,7 +91,7 @@ export class PrismaHoldReadStore implements IHoldReadStore {
   private toDTO(row: {
     id: string;
     walletId: string;
-    amountCents: bigint;
+    amountMinor: bigint;
     status: string;
     reference: string | null;
     expiresAt: bigint | null;
@@ -101,7 +101,7 @@ export class PrismaHoldReadStore implements IHoldReadStore {
     return {
       id: row.id,
       wallet_id: row.walletId,
-      amount_cents: toSafeNumber(row.amountCents),
+      amount_minor: toSafeNumber(row.amountMinor),
       status: row.status,
       reference: row.reference,
       expires_at: row.expiresAt !== null ? toNumber(row.expiresAt) : null,

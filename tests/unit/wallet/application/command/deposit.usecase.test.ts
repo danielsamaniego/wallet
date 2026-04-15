@@ -93,7 +93,7 @@ describe("DepositUseCase", () => {
         await sut.handle(ctx, cmd);
 
         const savedWallet = walletRepo.save.mock.calls[0]![1] as Wallet;
-        expect(savedWallet.cachedBalanceCents).toBe(15000n);
+        expect(savedWallet.cachedBalanceMinor).toBe(15000n);
       });
 
       it("Then the system wallet balance is adjusted with negative delta", async () => {
@@ -125,7 +125,7 @@ describe("DepositUseCase", () => {
         expect(tx.walletId).toBe("wallet-1");
         expect(tx.counterpartWalletId).toBe("system-wallet-1");
         expect(tx.type).toBe("deposit");
-        expect(tx.amountCents).toBe(5000n);
+        expect(tx.amountMinor).toBe(5000n);
         expect(tx.status).toBe("completed");
         expect(tx.idempotencyKey).toBe("idem-1");
         expect(tx.reference).toBe("ref-1");
@@ -141,15 +141,15 @@ describe("DepositUseCase", () => {
 
         const creditEntry = entries.find((e) => e.entryType === "CREDIT")!;
         expect(creditEntry.walletId).toBe("wallet-1");
-        expect(creditEntry.amountCents).toBe(5000n);
-        expect(creditEntry.balanceAfterCents).toBe(15000n);
+        expect(creditEntry.amountMinor).toBe(5000n);
+        expect(creditEntry.balanceAfterMinor).toBe(15000n);
         expect(creditEntry.transactionId).toBe("tx-1");
         expect(creditEntry.movementId).toBe("mov-1");
 
         const debitEntry = entries.find((e) => e.entryType === "DEBIT")!;
         expect(debitEntry.walletId).toBe("system-wallet-1");
-        expect(debitEntry.amountCents).toBe(-5000n);
-        expect(debitEntry.balanceAfterCents).toBe(495000n);
+        expect(debitEntry.amountMinor).toBe(-5000n);
+        expect(debitEntry.balanceAfterMinor).toBe(495000n);
         expect(debitEntry.transactionId).toBe("tx-1");
         expect(debitEntry.movementId).toBe("mov-1");
       });
@@ -168,7 +168,7 @@ describe("DepositUseCase", () => {
         await sut.handle(ctx, cmd);
 
         const savedWallet = walletRepo.save.mock.calls[0]![1] as Wallet;
-        expect(savedWallet.cachedBalanceCents).toBe(10001n);
+        expect(savedWallet.cachedBalanceMinor).toBe(10001n);
       });
     });
   });

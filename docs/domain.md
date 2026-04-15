@@ -57,14 +57,14 @@ Internal components and workflows.
 
 | Concept | Description |
 |---------|-------------|
-| **Wallet** | Per-owner, per-platform, per-currency balance container. Holds `cached_balance_cents` and `available_balance` (cached minus active holds). |
+| **Wallet** | Per-owner, per-platform, per-currency balance container. Holds `cached_balance_minor` and `available_balance` (cached minus active holds). |
 | **Movement** | Journal entry that groups all transactions and ledger entries for a single financial operation. The accounting unit of atomicity — entries within a movement must sum to zero. |
 | **Transaction** | Per-wallet record of a financial operation (deposit, withdrawal, transfer, hold capture). Links to a movement and ledger entries; amount always positive. |
-| **LedgerEntry** | Single line in the double-entry ledger. CREDIT or DEBIT with `amount_cents` (signed) and `balance_after_cents`. Belongs to a movement. Append-only, immutable. |
+| **LedgerEntry** | Single line in the double-entry ledger. CREDIT or DEBIT with `amount_minor` (signed) and `balance_after_minor`. Belongs to a movement. Append-only, immutable. |
 | **Hold** | Authorization that reserves funds without moving them. Lifecycle: active → captured \| voided \| expired. |
 | **Platform** | API consumer. Identified by API key; owns wallets for its users. |
 | **System Wallet** | Special wallet (e.g., per-currency omnibus) acting as counterparty for deposits and withdrawals. May have negative balance. |
-| **Amount** | Integer in smallest currency unit per ISO 4217 (e.g., cents for USD, yen for JPY, fils for BHD). No floats; like Stripe. Column names use `_cents` as convention. |
+| **Amount** | Integer in smallest currency unit per ISO 4217 (e.g., cents for USD, yen for JPY, fils for BHD). No floats; like Stripe. Column names use `_minor` as convention. The service supports an explicit currency catalog: USD, EUR, MXN, CLP, KWD. |
 | **Currency** | ISO 4217 code (e.g., USD, EUR). Each wallet has one currency. |
 
 ---
@@ -75,21 +75,21 @@ Internal components and workflows.
 
 1. Platform provides `owner_id`, `platform_id`, `currency_code`.
 2. Service validates uniqueness: one wallet per (owner_id, platform_id, currency_code).
-3. Wallet created with `status=active`, `cached_balance_cents=0`, `version=1`.
+3. Wallet created with `status=active`, `cached_balance_minor=0`, `version=1`.
 
 ### Flow 2: Deposit
 
-1. Platform provides wallet ID, amount in cents, idempotency key.
+1. Platform provides wallet ID, amount in minor units, idempotency key.
 2. Service creates a movement (journal entry), credits wallet and debits system wallet.
 3. Two ledger entries created (CREDIT for user, DEBIT for system) under the same movement.
-4. `cached_balance_cents` updated; transaction recorded with `movement_id`.
+4. `cached_balance_minor` updated; transaction recorded with `movement_id`.
 
 ### Flow 3: Withdraw
 
-1. Platform provides wallet ID, amount in cents, idempotency key.
+1. Platform provides wallet ID, amount in minor units, idempotency key.
 2. Service validates `available_balance >= amount`.
 3. Service debits wallet and credits system wallet.
-4. Two ledger entries; `cached_balance_cents` updated.
+4. Two ledger entries; `cached_balance_minor` updated.
 
 ### Flow 4: Transfer (P2P)
 
@@ -111,7 +111,7 @@ Internal components and workflows.
 1. Platform provides hold ID, idempotency key.
 2. Hold must be `active`.
 3. Hold marked `captured`; debit from wallet, credit to counterpart (e.g., recipient wallet or system).
-4. Ledger entries created; `cached_balance_cents` updated.
+4. Ledger entries created; `cached_balance_minor` updated.
 
 ### Flow 7: Void Hold
 
@@ -138,19 +138,19 @@ Internal components and workflows.
 
 ### Amounts and Currency
 
-- All amounts stored as integers in the smallest currency unit per ISO 4217 (BIGINT). No floating point. The `_cents` column suffix is a naming convention; the actual unit depends on the currency's minor unit exponent (e.g., 2 for USD/EUR, 0 for JPY, 3 for BHD).
+- All amounts stored as integers in the smallest currency unit per ISO 4217 (BIGINT). No floating point. The `_minor` column suffix is a naming convention; the actual unit depends on the currency's minor unit exponent (e.g., 2 for USD/EUR, 0 for JPY, 3 for BHD).
 - Each wallet has exactly one currency (ISO 4217).
-- `currency_code` must be a valid ISO 4217 uppercase code (e.g., USD, EUR). Domain validates against an allowed set; reject unknown codes.
+- `currency_code` must be a valid ISO 4217 uppercase code. The service supports an explicit currency catalog: **USD** (2), **EUR** (2), **MXN** (2), **CLP** (0), **KWD** (3) — the number in parentheses is the minor unit exponent. Domain validates against this allowed set; reject unknown codes.
 - **Cross-currency transfers are not allowed.** Source and target wallets must share the same `currency_code`. The transfer command must validate this before proceeding.
 
 ### Double-Entry Ledger
 
 - Every financial operation creates a **Movement** (journal entry) with exactly one debit and one credit ledger entry.
-- Ledger entries within a movement **must sum to zero** — this is the core audit invariant: `SUM(amount_cents) GROUP BY movement_id = 0`.
+- Ledger entries within a movement **must sum to zero** — this is the core audit invariant: `SUM(amount_minor) GROUP BY movement_id = 0`.
 - For transfers, both sides (transfer_out + transfer_in) share the same `movement_id`, ensuring the transfer balances as a single accounting unit.
 - Ledger entries are append-only and immutable (DB trigger prevents UPDATE/DELETE).
-- `entry_type`: CREDIT or DEBIT; `amount_cents` is signed (+ for credit, - for debit).
-- `balance_after_cents` stores running balance snapshot after each entry.
+- `entry_type`: CREDIT or DEBIT; `amount_minor` is signed (+ for credit, - for debit).
+- `balance_after_minor` stores running balance snapshot after each entry.
 
 ### System Wallet
 
@@ -163,7 +163,7 @@ Internal components and workflows.
 ### Holds
 
 - Holds reserve funds but do not move them.
-- `available_balance = cached_balance_cents - sum(active_holds)`.
+- `available_balance = cached_balance_minor - sum(active_holds)`.
 - Hold lifecycle: `active` → `captured` | `voided` | `expired`.
 - **Expiration strategy**: Expired holds are detected **on-access** (when calculating available_balance or performing operations on the wallet) and **via batch job** (periodic cron that marks expired holds as `expired` and releases reserved funds). Both mechanisms must be implemented for correctness at scale.
 
@@ -175,7 +175,7 @@ Internal components and workflows.
 
 ### Concurrency and Safety
 
-- **Optimistic locking**: User wallets have `version`; mutations must match current version — this includes deposits, withdrawals, transfers, captures, freezes, **PlaceHold**, and **VoidHold** (which call `wallet.touchForHoldChange()` + `walletRepo.save()` to participate in version contention even though they don't mutate balance). On version mismatch (0 rows updated), the command returns `409 Conflict` with code `VERSION_CONFLICT`. The platform (client) retries with the same idempotency key. **Exception: system wallets** use atomic increment (`cached_balance_cents = cached_balance_cents + $delta`) without version check, because they have no balance constraints or business logic depending on a read-before-write. This eliminates the system wallet as a concurrency bottleneck.
+- **Optimistic locking**: User wallets have `version`; mutations must match current version — this includes deposits, withdrawals, transfers, captures, freezes, **PlaceHold**, and **VoidHold** (which call `wallet.touchForHoldChange()` + `walletRepo.save()` to participate in version contention even though they don't mutate balance). On version mismatch (0 rows updated), the command returns `409 Conflict` with code `VERSION_CONFLICT`. The platform (client) retries with the same idempotency key. **Exception: system wallets** use atomic increment (`cached_balance_minor = cached_balance_minor + $delta`) without version check, because they have no balance constraints or business logic depending on a read-before-write. This eliminates the system wallet as a concurrency bottleneck.
 - **No pessimistic locking (SELECT FOR UPDATE)**: We deliberately avoid `SELECT FOR UPDATE` in the domain layer. It is a SQL-specific concept that would leak infrastructure into domain ports, breaking hexagonal architecture. If we switched to MongoDB or DynamoDB, pessimistic row locking doesn't exist. Optimistic locking via `version` is database-agnostic and catches all conflicts. If high-contention scenarios require it, pessimistic locking can be added inside the persistence adapter as an implementation detail, transparent to the domain.
 - **Idempotency keys**: Required for all mutations (deposit, withdraw, transfer, hold capture). Duplicate keys return the cached response without re-executing. See Idempotency section.
 - **DB constraints**: Uniqueness, referential integrity, positive amounts, and balance checks as safety net.

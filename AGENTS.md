@@ -57,7 +57,7 @@ Before any task, read the relevant files below. Do not implement before loading 
 - **Language:** Code and comments in English. Documentation in English. Responses to the user always in Spanish.
 - **Credentials:** Never hardcode credentials; use environment variables.
 - **Timestamps:** Use Unix milliseconds as `number` everywhere. In the DB they are `BigInt`. Keep a single representation end-to-end; no conversions.
-- **Amounts:** Use integer cents as `BigInt`. `$1.99 = 199`. Never use float or decimal. The API sends and receives `amount_cents: number`.
+- **Amounts:** Use integer minor units as `BigInt`. `$1.99 = 199`. Never use float or decimal. The API sends and receives `amount_minor: number`. Supported currencies: USD, EUR, MXN, CLP, KWD.
 - **Entity IDs:** Use UUID v7 only, generated in application code through `IIDGenerator`. The DB never generates IDs. Never use UUID v4.
 - **Currency:** `currency_code` must be valid ISO 4217 uppercase. Cross-currency transfers are not allowed.
 - **System wallets:** One per `(platform, currency)`, with `owner_id = "SYSTEM"` and `is_system = true`. Auto-create on first wallet creation for that platform/currency. System wallets cannot be frozen or closed.

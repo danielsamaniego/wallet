@@ -25,7 +25,7 @@ describe("Idempotency Attacks E2E", () => {
     const depositRes = await app.request(`/v1/wallets/${walletId}/deposit`, {
       method: "POST",
       headers: { "Idempotency-Key": "idemp-setup-deposit" },
-      body: JSON.stringify({ amount_cents: 50000 }),
+      body: JSON.stringify({ amount_minor: 50000 }),
     });
     expect(depositRes.status).toBe(201);
   });
@@ -34,7 +34,7 @@ describe("Idempotency Attacks E2E", () => {
     describe("When replaying the exact same request with the same key and body", () => {
       it("Then it should return the cached response with the same status and body", async () => {
         const idempKey = "idemp-replay-deposit-1";
-        const body = JSON.stringify({ amount_cents: 1000 });
+        const body = JSON.stringify({ amount_minor: 1000 });
 
         // First request
         const res1 = await app.request(`/v1/wallets/${walletId}/deposit`, {
@@ -72,7 +72,7 @@ describe("Idempotency Attacks E2E", () => {
         const res1 = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": idempKey },
-          body: JSON.stringify({ amount_cents: 1000 }),
+          body: JSON.stringify({ amount_minor: 1000 }),
         });
         expect(res1.status).toBe(201);
 
@@ -80,7 +80,7 @@ describe("Idempotency Attacks E2E", () => {
         const res2 = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": idempKey },
-          body: JSON.stringify({ amount_cents: 9999 }),
+          body: JSON.stringify({ amount_minor: 9999 }),
         });
 
         expect(res2.status).toBe(422);
@@ -95,7 +95,7 @@ describe("Idempotency Attacks E2E", () => {
       it("Then it should reject with 400 MISSING_IDEMPOTENCY_KEY", async () => {
         const res = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
-          body: JSON.stringify({ amount_cents: 100 }),
+          body: JSON.stringify({ amount_minor: 100 }),
         });
 
         expect(res.status).toBe(400);
@@ -108,7 +108,7 @@ describe("Idempotency Attacks E2E", () => {
       it("Then it should reject with 400 MISSING_IDEMPOTENCY_KEY", async () => {
         const res = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
-          body: JSON.stringify({ amount_cents: 100 }),
+          body: JSON.stringify({ amount_minor: 100 }),
         });
 
         expect(res.status).toBe(400);
@@ -137,7 +137,7 @@ describe("Idempotency Attacks E2E", () => {
           body: JSON.stringify({
             source_wallet_id: walletId,
             target_wallet_id: walletId,
-            amount_cents: 100,
+            amount_minor: 100,
           }),
         });
 
@@ -190,7 +190,7 @@ describe("Idempotency Attacks E2E", () => {
         const res1 = await app.request(`/v1/wallets/${walletId}/deposit`, {
           method: "POST",
           headers: { "Idempotency-Key": crossKey },
-          body: JSON.stringify({ amount_cents: 100 }),
+          body: JSON.stringify({ amount_minor: 100 }),
         });
         expect(res1.status).toBe(201);
 
@@ -198,7 +198,7 @@ describe("Idempotency Attacks E2E", () => {
         const res2 = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": crossKey },
-          body: JSON.stringify({ amount_cents: 100 }),
+          body: JSON.stringify({ amount_minor: 100 }),
         });
 
         expect(res2.status).toBe(422);

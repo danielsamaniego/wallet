@@ -22,7 +22,7 @@ The marketplace monolith currently handles everything: balances, payouts, payins
 ┌──────────────────────────────────────────────────────────────┐
 │                   Wallet Service (new)                        │
 │                                                               │
-│  - Balance storage (cached_balance_cents)                     │
+│  - Balance storage (cached_balance_minor)                     │
 │  - Double-entry immutable ledger                              │
 │  - Holds (fund reservation)                                   │
 │  - Deposits / Withdrawals / Transfers                         │
@@ -74,7 +74,7 @@ Monolith (Monday cron job)
   │       idempotency-key: settlement-{userId}-{weekISO}  ← e.g. "settlement-user42-2026-W13"
   │     Body:
   │       {
-  │         "amount_cents": 150000,
+  │         "amount_minor": 150000,
   │         "reference": "settlement-2026-W13"
   │       }
   │
@@ -130,7 +130,7 @@ Monolith                                    Wallet Service
   ├─ 2. POST /v1/holds ─────────────────────────►│ Reserve funds
   │     idempotency-key: payout-req-{payoutId}   │
   │     Body: {                                  │
-  │       wallet_id, amount_cents,               │
+  │       wallet_id, amount_minor,               │
   │       reference: "payout:{payoutId}"         │
   │     }                                        │
   │     ◄──────────────────────────── 201 ───────│ { hold_id }
@@ -180,7 +180,7 @@ async requestPayout(userId, amount, bankAccountId) {
   try {
     const result = await this.walletClient.placeHold({
       walletId,
-      amountCents: amount,
+      amountMinor: amount,
       reference: `payout:${payoutId}`,
       idempotencyKey: `payout-req-${payoutId}`,
     });
@@ -197,7 +197,7 @@ async requestPayout(userId, amount, bankAccountId) {
       id: payoutId,
       userId,
       holdId,
-      amountCents: amount,
+      amountMinor: amount,
       bankAccountId,
       status: "pending",
     });
@@ -285,7 +285,7 @@ async approvePayout(payoutId, adminId) {
   });
 
   // Step 3: initiate bank transfer (async, separate concern)
-  await this.bankTransferQueue.enqueue({ payoutId, amount: payout.amountCents });
+  await this.bankTransferQueue.enqueue({ payoutId, amount: payout.amountMinor });
 }
 ```
 
@@ -363,7 +363,7 @@ Monolith                                    Wallet Service
   ├─ 2. POST /v1/wallets/:walletId/withdraw ────►│
   │     idempotency-key: card-load-{operationId} │
   │     Body: {                                  │
-  │       amount_cents: 5000,                    │
+  │       amount_minor: 5000,                    │
   │       reference: "card-load:{cardId}"        │
   │     }                                        │
   │     ◄──────────────────────────── 201 ───────│
@@ -376,7 +376,7 @@ Monolith                                    Wallet Service
   ├─ 3. POST /v1/wallets/:walletId/deposit ─────►│
   │     idempotency-key: card-unload-{opId}      │
   │     Body: {                                  │
-  │       amount_cents: 3000,                    │
+  │       amount_minor: 3000,                    │
   │       reference: "card-unload:{cardId}"      │
   │     }                                        │
   │     ◄──────────────────────────── 201 ───────│
@@ -396,7 +396,7 @@ async loadCard(userId, cardId, amount) {
 
   // Step 1: withdraw from wallet (external call)
   const result = await this.walletClient.withdraw(walletId, {
-    amountCents: amount,
+    amountMinor: amount,
     reference: `card-load:${cardId}`,
     idempotencyKey: `card-load-${operationId}`,
   });
@@ -417,7 +417,7 @@ async loadCard(userId, cardId, amount) {
     // Compensation: deposit back to wallet
     try {
       await this.walletClient.deposit(walletId, {
-        amountCents: amount,
+        amountMinor: amount,
         reference: `card-load-reversal:${operationId}`,
         idempotencyKey: `card-load-rev-${operationId}`,
       });
@@ -446,7 +446,7 @@ async unloadCard(userId, cardId, amount) {
   // Step 2: deposit to wallet (external call)
   try {
     const result = await this.walletClient.deposit(walletId, {
-      amountCents: amount,
+      amountMinor: amount,
       reference: `card-unload:${cardId}`,
       idempotencyKey: `card-unload-${operationId}`,
     });
@@ -496,7 +496,7 @@ Monolith                                    Wallet Service
   │     Body: {                                  │
   │       source_wallet_id,                      │
   │       target_wallet_id,                      │
-  │       amount_cents: 10000,                   │
+  │       amount_minor: 10000,                   │
   │       reference: "p2p-transfer:{transferId}" │
   │     }                                        │
   │     ◄──────────────────────────── 201 ───────│
@@ -515,7 +515,7 @@ async transfer(senderId, receiverId, amount) {
   const result = await this.walletClient.transfer({
     sourceWalletId: senderWalletId,
     targetWalletId: receiverWalletId,
-    amountCents: amount,
+    amountMinor: amount,
     reference: `p2p:${transferId}`,
     idempotencyKey: `transfer-${transferId}`,
   });
@@ -557,7 +557,7 @@ For the reconciliation job to work, the wallet should expose:
 ```
 GET /v1/holds/:holdId
   Auth: required | Status: 200
-  Response: { id, wallet_id, amount_cents, status, reference, expires_at, ... }
+  Response: { id, wallet_id, amount_minor, status, reference, expires_at, ... }
 
 GET /v1/holds
   Auth: required | Status: 200

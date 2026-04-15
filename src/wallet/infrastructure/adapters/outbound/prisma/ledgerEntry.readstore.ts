@@ -75,8 +75,8 @@ export class PrismaLedgerEntryReadStore implements ILedgerEntryReadStore {
     transactionId: string;
     walletId: string;
     entryType: string;
-    amountCents: bigint;
-    balanceAfterCents: bigint;
+    amountMinor: bigint;
+    balanceAfterMinor: bigint;
     createdAt: bigint;
   }): LedgerEntryDTO {
     return {
@@ -84,8 +84,8 @@ export class PrismaLedgerEntryReadStore implements ILedgerEntryReadStore {
       transaction_id: row.transactionId,
       wallet_id: row.walletId,
       entry_type: row.entryType,
-      amount_cents: toSafeNumber(row.amountCents),
-      balance_after_cents: toSafeNumber(row.balanceAfterCents),
+      amount_minor: toSafeNumber(row.amountMinor),
+      balance_after_minor: toSafeNumber(row.balanceAfterMinor),
       created_at: toNumber(row.createdAt),
     };
   }

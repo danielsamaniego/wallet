@@ -28,7 +28,7 @@
 
 | Aspect | Choice |
 |--------|--------|
-| Amounts | Integer cents (BIGINT) — Stripe-style; no floating point |
+| Amounts | Integer minor units (BIGINT) — Stripe-style; no floating point. Supported currencies: USD, EUR, MXN, CLP, KWD |
 | Ledger | Double-entry bookkeeping — every operation produces debit + credit |
 | IDs | UUID v7 (time-ordered), generated in application code |
 | Timestamps | Unix ms (BIGINT) everywhere |
