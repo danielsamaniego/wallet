@@ -35,6 +35,9 @@ services:
       HTTP_PORT: "3000"
       LOG_LEVEL: debug
       CRON_SECRET: ""
+      # TODO(historical-import-temp): Remove this env var together with the
+      # rest of the import-historical-entry feature after migration.
+      HISTORICAL_IMPORT_ENABLED: "true"
     depends_on:
       postgres:
         condition: service_healthy

@@ -15,6 +15,10 @@ import { ExpireHoldsCommand } from "./application/command/expireHolds/command.js
 import { ExpireHoldsUseCase } from "./application/command/expireHolds/usecase.js";
 import { FreezeWalletCommand } from "./application/command/freezeWallet/command.js";
 import { FreezeWalletUseCase } from "./application/command/freezeWallet/usecase.js";
+// TODO(historical-import-temp): Remove these two imports together with the
+// rest of the import-historical-entry feature after migration.
+import { ImportHistoricalEntryCommand } from "./application/command/importHistoricalEntry/command.js";
+import { ImportHistoricalEntryUseCase } from "./application/command/importHistoricalEntry/usecase.js";
 import { PlaceHoldCommand } from "./application/command/placeHold/command.js";
 import { PlaceHoldUseCase } from "./application/command/placeHold/usecase.js";
 import { TransferCommand } from "./application/command/transfer/command.js";
@@ -93,6 +97,18 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
   );
   const freezeWallet = new FreezeWalletUseCase(txManager, walletRepo, logger);
   const unfreezeWallet = new UnfreezeWalletUseCase(txManager, walletRepo, logger);
+  // TODO(historical-import-temp): Remove this use case instantiation together
+  // with the rest of the import-historical-entry feature after migration.
+  const importHistoricalEntry = new ImportHistoricalEntryUseCase(
+    txManager,
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    movementRepo,
+    idGen,
+    logger,
+  );
   const closeWallet = new CloseWalletUseCase(txManager, walletRepo, holdRepo, logger);
   const getWallet = new GetWalletUseCase(walletReadStore, logger);
   const listWallets = new ListWalletsUseCase(walletReadStore, logger);
@@ -127,6 +143,9 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
   return {
     commands: [
       { type: AdjustBalanceCommand.TYPE, handler: adjustBalance },
+      // TODO(historical-import-temp): Remove this registration together with
+      // the rest of the import-historical-entry feature after migration.
+      { type: ImportHistoricalEntryCommand.TYPE, handler: importHistoricalEntry },
       { type: CreateWalletCommand.TYPE, handler: createWallet },
       { type: DepositCommand.TYPE, handler: deposit },
       { type: WithdrawCommand.TYPE, handler: withdraw },

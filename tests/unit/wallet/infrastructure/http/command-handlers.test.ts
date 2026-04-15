@@ -1,10 +1,14 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { Hono } from "hono";
 import type { HonoVariables } from "@/utils/infrastructure/hono.context.js";
 import { CanonicalAccumulator } from "@/utils/kernel/observability/canonical.js";
 import type { ICommandBus, IQueryBus } from "@/utils/application/cqrs.js";
 
 import { adjustBalanceRoute } from "@/wallet/infrastructure/adapters/inbound/http/adjustBalance/handler.js";
+// TODO(historical-import-temp): Remove these imports together with the tests
+// below once the import-historical-entry feature is removed.
+import { importHistoricalEntryRoute } from "@/wallet/infrastructure/adapters/inbound/http/importHistoricalEntry/handler.js";
+import { historicalImportGate } from "@/wallet/infrastructure/adapters/inbound/http/wallets.routes.js";
 import { captureHoldRoute } from "@/wallet/infrastructure/adapters/inbound/http/captureHold/handler.js";
 import { closeWalletRoute } from "@/wallet/infrastructure/adapters/inbound/http/closeWallet/handler.js";
 import { createWalletRoute } from "@/wallet/infrastructure/adapters/inbound/http/createWallet/handler.js";
@@ -49,6 +53,154 @@ describe("Wallet command HTTP handlers", () => {
       expect(res.status).toBe(201);
       const body = await res.json();
       expect(body).toEqual({ transaction_id: "txn-adj", movement_id: "mov-adj" });
+    });
+  });
+
+  // ── historicalImportGate ───────────────────────────────────────
+  // TODO(historical-import-temp): Remove this describe block together with
+  // the rest of the import-historical-entry feature after migration.
+  describe("historicalImportGate", () => {
+    const originalEnv = process.env.HISTORICAL_IMPORT_ENABLED;
+
+    afterEach(() => {
+      if (originalEnv === undefined) {
+        delete process.env.HISTORICAL_IMPORT_ENABLED;
+      } else {
+        process.env.HISTORICAL_IMPORT_ENABLED = originalEnv;
+      }
+    });
+
+    it("Given HISTORICAL_IMPORT_ENABLED is unset, When the gate runs, Then returns 404", async () => {
+      delete process.env.HISTORICAL_IMPORT_ENABLED;
+      const app = new Hono<{ Variables: HonoVariables }>();
+      app.use("*", historicalImportGate);
+      app.post("/guarded", (c) => c.json({ ok: true }));
+
+      const res = await app.request("/guarded", { method: "POST" });
+
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body).toEqual({ error: "NOT_FOUND", message: "resource not found" });
+    });
+
+    it("Given HISTORICAL_IMPORT_ENABLED = 'false', When the gate runs, Then returns 404", async () => {
+      process.env.HISTORICAL_IMPORT_ENABLED = "false";
+      const app = new Hono<{ Variables: HonoVariables }>();
+      app.use("*", historicalImportGate);
+      app.post("/guarded", (c) => c.json({ ok: true }));
+
+      const res = await app.request("/guarded", { method: "POST" });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("Given HISTORICAL_IMPORT_ENABLED = 'true', When the gate runs, Then calls next()", async () => {
+      process.env.HISTORICAL_IMPORT_ENABLED = "true";
+      const app = new Hono<{ Variables: HonoVariables }>();
+      app.use("*", historicalImportGate);
+      app.post("/guarded", (c) => c.json({ ok: true }));
+
+      const res = await app.request("/guarded", { method: "POST" });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toEqual({ ok: true });
+    });
+  });
+
+  // ── importHistoricalEntry ──────────────────────────────────────
+  // TODO(historical-import-temp): Remove this describe block together with
+  // the rest of the import-historical-entry feature after migration.
+  describe("importHistoricalEntryRoute", () => {
+    it("Given a valid walletId and body, When POST is called, Then dispatches ImportHistoricalEntryCommand and returns 201", async () => {
+      const commandBus: ICommandBus = {
+        dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-hist", movementId: "mov-hist" }),
+      };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      const handlers = importHistoricalEntryRoute(commandBus);
+      app.post("/wallets/:walletId/import-historical-entry", ...handlers);
+
+      const res = await app.request("/wallets/wallet-1/import-historical-entry", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "idem-hist" },
+        body: JSON.stringify({
+          amount_minor: 5000,
+          reason: "Legacy promotional credit",
+          reference: "Venta producto X",
+          historical_created_at: Date.now() - 60_000,
+          metadata: { migratedFrom: "legacy-system" },
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body).toEqual({ transaction_id: "txn-hist", movement_id: "mov-hist" });
+    });
+
+    it("Given no idempotency-key header, When POST is called, Then the command is dispatched with empty idempotencyKey", async () => {
+      const dispatch = vi
+        .fn()
+        .mockResolvedValue({ transactionId: "txn-hist", movementId: "mov-hist" });
+      const commandBus: ICommandBus = { dispatch };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      const handlers = importHistoricalEntryRoute(commandBus);
+      app.post("/wallets/:walletId/import-historical-entry", ...handlers);
+
+      await app.request("/wallets/wallet-1/import-historical-entry", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          amount_minor: 100,
+          reason: "reason",
+          reference: "ref",
+          historical_created_at: Date.now() - 1000,
+        }),
+      });
+
+      const dispatchedCommand = dispatch.mock.calls[0]![1];
+      expect(dispatchedCommand.idempotencyKey).toBe("");
+    });
+
+    it("Given a future historical_created_at, When POST is called, Then returns 400 INVALID_REQUEST", async () => {
+      const commandBus: ICommandBus = { dispatch: vi.fn() };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      const handlers = importHistoricalEntryRoute(commandBus);
+      app.post("/wallets/:walletId/import-historical-entry", ...handlers);
+
+      const res = await app.request("/wallets/wallet-1/import-historical-entry", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "idem-hist" },
+        body: JSON.stringify({
+          amount_minor: 5000,
+          reason: "future",
+          reference: "ref",
+          historical_created_at: Date.now() + 60_000,
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(commandBus.dispatch).not.toHaveBeenCalled();
+    });
+
+    it("Given amount_minor = 0, When POST is called, Then returns 400 INVALID_REQUEST", async () => {
+      const commandBus: ICommandBus = { dispatch: vi.fn() };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      const handlers = importHistoricalEntryRoute(commandBus);
+      app.post("/wallets/:walletId/import-historical-entry", ...handlers);
+
+      const res = await app.request("/wallets/wallet-1/import-historical-entry", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "idem-hist" },
+        body: JSON.stringify({
+          amount_minor: 0,
+          reason: "zero",
+          reference: "ref",
+          historical_created_at: Date.now() - 1000,
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(commandBus.dispatch).not.toHaveBeenCalled();
     });
   });
 

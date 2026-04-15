@@ -39,6 +39,16 @@ Wallet bounded context fully implemented and audited. Major architectural refact
 - HTTP handlers receive `commandBus`/`queryBus` instead of individual handler instances
 - Handler dispatch uses static TYPE for bus dispatch instead of constructor.name
 
+## Temporary: Historical Import Endpoint
+
+> **TODO(historical-import-temp)**: Remove this entire feature once all legacy consumers have completed their one-off backfill of pre-Wallet history.
+
+`POST /v1/wallets/:walletId/import-historical-entry` creates a Transaction + Movement + paired LedgerEntries with a caller-supplied `historical_created_at` in the past, so a legacy system's journal can be replayed into the Wallet ledger preserving the original event times and human references. Semantics match `POST /:walletId/adjust` (same signed `amount_minor`, same system-wallet counterpart, same idempotency contract) — the only difference is that all journal entities get the historical timestamp instead of `Date.now()`.
+
+- **Gate**: the endpoint is mounted behind a middleware that returns `404 NOT_FOUND` unless `HISTORICAL_IMPORT_ENABLED=true` is set on the app process. Default is off.
+- **Validation**: `historical_created_at` must be a positive integer (Unix ms) strictly in the past; `reference` is required (unlike regular `adjust` where it is optional) so the imported history carries a user-facing description end-to-end.
+- **Removal**: grep for `TODO(historical-import-temp)` to list every file and line that needs deleting. The marker is consistent across command, use case, handler, schemas, route registration, middleware, module wiring, tests, and docker-compose env vars.
+
 ## Next Steps
 
 1. **Platform BC**: Implement Platform bounded context (API key management, registration)
