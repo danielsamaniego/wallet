@@ -1,2 +1,2 @@
-echo "🔍 Pre-push: lint + typecheck + unit tests (full src/)..."
-pnpm lint && pnpm tsc --noEmit && pnpm test
+echo "🔍 Pre-push: lint + typecheck + unit tests with coverage..."
+pnpm lint && pnpm tsc --noEmit && pnpm test:coverage
