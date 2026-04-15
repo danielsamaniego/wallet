@@ -17,6 +17,7 @@
     "postinstall": "prisma generate --config prisma/prisma.config.ts",
     "fmt": "biome format --write src/",
     "dev:docker": "bash scripts/dev-docker.sh",
+    "dev:docker:reset": "docker compose -f docker-compose.dev.yml down -v && pnpm dev:docker",
     "dev:docker:down": "docker compose -f docker-compose.dev.yml down",
     "dev:docker:logs": "docker compose -f docker-compose.dev.yml logs -f app",
     "docker:up": "docker compose up -d",

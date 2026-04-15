@@ -68,7 +68,8 @@ pnpm dev              # tsx watch on http://localhost:3000
 ### Reset (wipe all data and start fresh)
 
 ```bash
-pnpm reset:local      # docker down -v → full start:local
+pnpm dev:docker:reset # Full Docker reset (down -v + dev:docker)
+pnpm reset:local      # Docker DB only reset (down -v + start:local)
 ```
 
 ### Schema or constraint changes
@@ -135,6 +136,7 @@ See `test/docs/` for AI agent and developer testing guides:
 # Development
 pnpm dev              # Local server with hot reload (requires DB running)
 pnpm dev:docker       # Full Docker dev (PostgreSQL + App with hot reload)
+pnpm dev:docker:reset # Nuclear Docker dev reset (down -v + dev:docker)
 pnpm dev:docker:down  # Stop Docker dev environment
 pnpm dev:docker:logs  # Tail app logs
 
