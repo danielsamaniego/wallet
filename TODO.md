@@ -61,15 +61,9 @@ Referencia completa: [AUDIT_REPORT.md](AUDIT_REPORT.md)
 
 ---
 
-### 4. Body size limit
+### ~~4. Body size limit~~ ✅
 
-**Fuente:** R3
-**Riesgo:** Sin límite de tamaño en el body, un payload gigante puede agotar memoria del proceso.
-
-**Plan:**
-- Agregar `bodyLimit` middleware de Hono. Ejemplo: `app.use('*', bodyLimit({ maxSize: 64 * 1024 }))` (64KB — más que suficiente para cualquier request válido).
-
-**Esfuerzo:** 15 min
+**Estado:** Completado. `bodyLimit({ maxSize: 64 * 1024 })` en `app.ts` con `onError` que devuelve 413 `PAYLOAD_TOO_LARGE`.
 
 ---
 
@@ -110,25 +104,9 @@ process.on('SIGTERM', async () => {
 
 ---
 
-### 7. Status CHECK constraints en DB
+### ~~7. Status CHECK constraints en DB~~ ✅
 
-**Fuente:** HARDENING-4
-**Riesgo:** Un bug que setee `status = "actve"` (typo) pasa silenciosamente. No hay constraint a nivel DB.
-
-**Plan:** Agregar a `prisma/immutable_ledger.sql`:
-```sql
-ALTER TABLE wallets ADD CONSTRAINT wallets_valid_status
-  CHECK (status IN ('active', 'frozen', 'closed'));
-ALTER TABLE holds ADD CONSTRAINT holds_valid_status
-  CHECK (status IN ('active', 'captured', 'voided', 'expired'));
-ALTER TABLE transactions ADD CONSTRAINT transactions_valid_type
-  CHECK (type IN ('deposit', 'withdrawal', 'transfer_in', 'transfer_out', 'hold_capture'));
-ALTER TABLE ledger_entries ADD CONSTRAINT ledger_entries_valid_entry_type
-  CHECK (entry_type IN ('CREDIT', 'DEBIT'));
-```
-Actualizar `verifyDatabaseSafetyNets()` para verificar los nuevos constraints.
-
-**Esfuerzo:** 30 min
+**Estado:** Completado. 4 CHECK constraints añadidos a `immutable_ledger.sql` (`wallets_valid_status`, `holds_valid_status`, `transactions_valid_type`, `ledger_entries_valid_entry_type`). `verifyDatabaseSafetyNets()` actualizado para verificarlos al arrancar.
 
 ---
 
@@ -189,9 +167,9 @@ Si hay discrepancias, loguear como error crítico (alertable).
 
 | Estado | Cantidad |
 |--------|----------|
-| Completados en esta auditoría | **8** (BUG-1, DISEÑO-1, DISEÑO-3, DISEÑO-4, HARDENING-2, HARDENING-3, HARDENING-5, +backoff) |
-| Alta prioridad pendiente | **4** (#1-#4) |
-| Media prioridad pendiente | **4** (#5-#8) |
+| Completados en esta auditoría | **10** (BUG-1, DISEÑO-1, DISEÑO-3, DISEÑO-4, HARDENING-2, HARDENING-3, HARDENING-5, +backoff, #4 body limit, #7 status constraints) |
+| Alta prioridad pendiente | **3** (#1-#3) |
+| Media prioridad pendiente | **3** (#5, #6, #8) |
 | Baja prioridad pendiente | **3** (#9-#11) |
 
 ---

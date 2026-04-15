@@ -248,3 +248,20 @@ ALTER TABLE transactions
 ALTER TABLE wallets
   DROP CONSTRAINT IF EXISTS wallets_supported_currency,
   ADD CONSTRAINT wallets_supported_currency CHECK (currency_code IN ('USD', 'EUR', 'MXN', 'CLP', 'KWD'));
+
+-- Status CHECK constraints — prevent typos and invalid values at DB level.
+ALTER TABLE wallets
+  DROP CONSTRAINT IF EXISTS wallets_valid_status,
+  ADD CONSTRAINT wallets_valid_status CHECK (status IN ('active', 'frozen', 'closed'));
+
+ALTER TABLE holds
+  DROP CONSTRAINT IF EXISTS holds_valid_status,
+  ADD CONSTRAINT holds_valid_status CHECK (status IN ('active', 'captured', 'voided', 'expired'));
+
+ALTER TABLE transactions
+  DROP CONSTRAINT IF EXISTS transactions_valid_type,
+  ADD CONSTRAINT transactions_valid_type CHECK (type IN ('deposit', 'withdrawal', 'transfer_in', 'transfer_out', 'hold_capture', 'adjustment_credit', 'adjustment_debit'));
+
+ALTER TABLE ledger_entries
+  DROP CONSTRAINT IF EXISTS ledger_entries_valid_entry_type,
+  ADD CONSTRAINT ledger_entries_valid_entry_type CHECK (entry_type IN ('CREDIT', 'DEBIT'));

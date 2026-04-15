@@ -180,6 +180,49 @@ describe("createApp", () => {
     });
   });
 
+  // ── body size limit ─────────────────────────────────────────────────
+
+  describe("body size limit", () => {
+    it("Given a request body exceeding 64KB, When sent, Then returns 413", async () => {
+      // Given
+      const deps = buildDeps();
+      const app = createApp(deps);
+      app.post("/test-body-limit", (c) => c.json({ ok: true }));
+      const oversizedBody = "x".repeat(65 * 1024);
+
+      // When
+      const res = await app.request("/test-body-limit", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(oversizedBody.length),
+        },
+        body: oversizedBody,
+      });
+
+      // Then
+      expect(res.status).toBe(413);
+    });
+
+    it("Given a request body within 64KB, When sent, Then passes through", async () => {
+      // Given
+      const deps = buildDeps();
+      const app = createApp(deps);
+      app.post("/test-body-ok", (c) => c.json({ ok: true }));
+      const normalBody = JSON.stringify({ data: "x".repeat(1000) });
+
+      // When
+      const res = await app.request("/test-body-ok", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: normalBody,
+      });
+
+      // Then
+      expect(res.status).toBe(200);
+    });
+  });
+
   // ── Internal cron routes ────────────────────────────────────────────
 
   describe("GET /internal/cron/expire-holds", () => {

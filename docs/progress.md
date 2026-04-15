@@ -67,9 +67,15 @@
 
 - [ ] Platform bounded context: domain, app, infrastructure adapters
 - [ ] Platform API (endpoints auto-documented via hono-openapi once implemented)
-- [ ] Rate limiting middleware
+- [ ] Body size limit middleware (64KB)
+- [ ] Status CHECK constraints in PostgreSQL (wallets, holds, transactions, ledger_entries)
+- [ ] Idempotency keys scoped by platform — UNIQUE(idempotencyKey, platformId)
+- [ ] Rate limiting middleware per platformId
+- [ ] Graceful shutdown (SIGTERM cleanup)
+- [ ] Wallet lookup by owner endpoint — `GET /v1/wallets?owner_id=...&currency_code=...`
+- [ ] Metadata field on mutation endpoints (deposit, withdraw, transfer, adjust)
 - [ ] Hash chain tamper detection (ledger entries)
-- [ ] Reconciliation background job
+- [ ] Reconciliation background job (Wallet internal: cached_balance vs SUM(ledger))
 - [x] Server-side retry for VERSION_CONFLICT (3 attempts + exponential backoff in PrismaTransactionManager)
 - [ ] Production deploy configuration (managed PostgreSQL + Node.js process)
 - [ ] Integration tests

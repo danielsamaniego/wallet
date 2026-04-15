@@ -1,5 +1,6 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { openAPIRouteHandler } from "hono-openapi";
@@ -50,10 +51,17 @@ export function createApp(deps: Dependencies) {
     return errorResponse(c, "NOT_FOUND", `${c.req.method} ${c.req.path} not found`, 404);
   });
 
-  // Global middleware chain (order matters: tracking → security → logging → handler)
+  // Global middleware chain (order matters: tracking → security → body limit → logging → handler)
   app.use("*", trackingCanonical(deps.idGen, deps.logger));
   app.use("*", cors());
   app.use("*", secureHeaders());
+  app.use(
+    "*",
+    bodyLimit({
+      maxSize: 64 * 1024,
+      onError: (c) => errorResponse(c, "PAYLOAD_TOO_LARGE", "request body exceeds 64KB limit", 413),
+    }),
+  );
   app.use("*", requestResponseLog(deps.logger));
 
   // Health check — verifies DB connectivity before reporting healthy.

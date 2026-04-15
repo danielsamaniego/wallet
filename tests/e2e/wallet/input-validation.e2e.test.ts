@@ -215,6 +215,39 @@ describe("Input Validation Attacks E2E", () => {
     });
   });
 
+  // ── Oversized request body (body limit) ─────────────────────────────────
+
+  describe("Given the server enforces a 64KB body size limit", () => {
+    describe("When sending a request body exceeding 64KB", () => {
+      it("Then it should reject with 413 PAYLOAD_TOO_LARGE", async () => {
+        const oversizedBody = JSON.stringify({ owner_id: "x".repeat(66 * 1024), currency_code: "USD" });
+        const res = await app.request("/v1/wallets", {
+          method: "POST",
+          headers: { "Idempotency-Key": "val-oversized-body-1" },
+          body: oversizedBody,
+        });
+
+        expect(res.status).toBe(413);
+        const body = await res.json();
+        expect(body.error).toBe("PAYLOAD_TOO_LARGE");
+      });
+    });
+
+    describe("When sending a request body within 64KB", () => {
+      it("Then the request should pass through to normal validation", async () => {
+        const normalBody = JSON.stringify({ owner_id: "normal-user", currency_code: "USD" });
+        const res = await app.request("/v1/wallets", {
+          method: "POST",
+          headers: { "Idempotency-Key": "val-normal-body-1" },
+          body: normalBody,
+        });
+
+        // 201 = created successfully (body was accepted, not blocked by size limit)
+        expect(res.status).toBe(201);
+      });
+    });
+  });
+
   // ── Malformed JSON ─────────────────────────────────────────────────────
 
   describe("Given a client sending malformed JSON", () => {

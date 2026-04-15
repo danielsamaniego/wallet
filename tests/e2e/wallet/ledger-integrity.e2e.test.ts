@@ -1042,4 +1042,128 @@ describe("Ledger Integrity E2E", () => {
       });
     });
   });
+
+  // ── Status CHECK constraints — invalid values rejected by DB ──────────
+
+  describe("Given the wallets_valid_status CHECK constraint", () => {
+    describe("When attempting to set an invalid wallet status via direct SQL", () => {
+      it("Then the database should reject the operation with a constraint violation", async () => {
+        const prisma = getTestPrisma();
+        const walletId = await createWallet("owner-status-check");
+
+        try {
+          await prisma.$executeRaw`
+            UPDATE wallets SET status = 'invalid_status' WHERE id = ${walletId}
+          `;
+          expect.fail("UPDATE with invalid status should have been blocked by CHECK constraint");
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          expect(message).toMatch(/wallets_valid_status|violates check constraint/i);
+        }
+      });
+    });
+  });
+
+  describe("Given the holds_valid_status CHECK constraint", () => {
+    describe("When attempting to set an invalid hold status via direct SQL", () => {
+      it("Then the database should reject the operation via state machine trigger or CHECK constraint", async () => {
+        const prisma = getTestPrisma();
+        const walletId = await createWallet("owner-hold-status-check");
+        await deposit(walletId, 50000);
+
+        // Create a hold via API
+        const holdRes = await app.request("/v1/holds", {
+          method: "POST",
+          headers: { "Idempotency-Key": nextKey() },
+          body: JSON.stringify({ wallet_id: walletId, amount_minor: 1000, reference: "hold-status-check" }),
+        });
+        expect(holdRes.status).toBe(201);
+        const holdBody = await holdRes.json();
+        const holdId = holdBody.hold_id;
+
+        // The state machine trigger rejects invalid target statuses for active holds.
+        // The CHECK constraint is defense-in-depth if the trigger is ever removed.
+        try {
+          await prisma.$executeRaw`
+            UPDATE holds SET status = 'invalid_status' WHERE id = ${holdId}
+          `;
+          expect.fail("UPDATE with invalid hold status should have been blocked");
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          expect(message).toMatch(/holds_valid_status|INVALID_TRANSITION|violates check constraint/i);
+        }
+      });
+    });
+  });
+
+  describe("Given the transactions_valid_type CHECK constraint", () => {
+    describe("When attempting to insert a transaction with an invalid type via direct SQL", () => {
+      it("Then the database should reject the operation with a constraint violation", async () => {
+        const prisma = getTestPrisma();
+        const walletId = await createWallet("owner-tx-type-check");
+        await deposit(walletId, 10000);
+
+        // Get a real movement_id from the deposit we just made
+        const txRow = await prisma.$queryRaw<{ movement_id: string }[]>`
+          SELECT movement_id FROM transactions WHERE wallet_id = ${walletId} LIMIT 1
+        `;
+        const movementId = txRow[0]!.movement_id;
+
+        try {
+          await prisma.$executeRaw`
+            INSERT INTO transactions (id, wallet_id, type, amount_minor, movement_id, created_at)
+            VALUES (
+              gen_random_uuid()::text,
+              ${walletId},
+              'invalid_type',
+              1000,
+              ${movementId},
+              ${BigInt(Date.now())}
+            )
+          `;
+          expect.fail("INSERT with invalid transaction type should have been blocked by CHECK constraint");
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          expect(message).toMatch(/transactions_valid_type|violates check constraint/i);
+        }
+      });
+    });
+  });
+
+  describe("Given the ledger_entries_valid_entry_type CHECK constraint", () => {
+    describe("When attempting to insert a ledger entry with an invalid entry_type via direct SQL", () => {
+      it("Then the database should reject the operation with a constraint violation", async () => {
+        const prisma = getTestPrisma();
+        const walletId = await createWallet("owner-entry-type-check");
+        await deposit(walletId, 10000);
+
+        // Get real IDs from the deposit
+        const txRow = await prisma.$queryRaw<{ id: string; movement_id: string }[]>`
+          SELECT id, movement_id FROM transactions WHERE wallet_id = ${walletId} LIMIT 1
+        `;
+        const txId = txRow[0]!.id;
+        const movementId = txRow[0]!.movement_id;
+
+        try {
+          await prisma.$executeRaw`
+            INSERT INTO ledger_entries (id, transaction_id, wallet_id, entry_type, amount_minor, balance_after_minor, movement_id, created_at)
+            VALUES (
+              gen_random_uuid()::text,
+              ${txId},
+              ${walletId},
+              'INVALID',
+              1000,
+              11000,
+              ${movementId},
+              (SELECT MAX(created_at) + 1 FROM ledger_entries WHERE wallet_id = ${walletId})
+            )
+          `;
+          expect.fail("INSERT with invalid entry_type should have been blocked by CHECK constraint");
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          expect(message).toMatch(/ledger_entries_valid_entry_type|violates check constraint/i);
+        }
+      });
+    });
+  });
 });

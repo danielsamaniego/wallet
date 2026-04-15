@@ -48,19 +48,29 @@ async function verifyDatabaseSafetyNets(prisma: PrismaClient): Promise<void> {
     );
   }
 
+  const expectedConstraints = [
+    "wallets_positive_balance",
+    "holds_positive_amount",
+    "transactions_positive_amount",
+    "wallets_valid_status",
+    "holds_valid_status",
+    "transactions_valid_type",
+    "ledger_entries_valid_entry_type",
+  ];
+
   const constraints = await prisma.$queryRaw<{ conname: string }[]>`
     SELECT conname FROM pg_constraint
-    WHERE conname IN ('wallets_positive_balance', 'holds_positive_amount', 'transactions_positive_amount')`;
+    WHERE conname IN (
+      'wallets_positive_balance', 'holds_positive_amount', 'transactions_positive_amount',
+      'wallets_valid_status', 'holds_valid_status', 'transactions_valid_type', 'ledger_entries_valid_entry_type'
+    )`;
 
-  if (constraints.length < 3) {
-    const found = constraints.map((c) => c.conname);
-    const missing = [
-      "wallets_positive_balance",
-      "holds_positive_amount",
-      "transactions_positive_amount",
-    ].filter((name) => !found.includes(name));
+  const foundConstraints = constraints.map((c) => c.conname);
+  const missingConstraints = expectedConstraints.filter((name) => !foundConstraints.includes(name));
+
+  if (missingConstraints.length > 0) {
     throw new Error(
-      `FATAL: missing DB safety constraints: ${missing.join(", ")}. ` +
+      `FATAL: missing DB safety constraints: ${missingConstraints.join(", ")}. ` +
         "Run: cat prisma/immutable_ledger.sql | docker exec -i <container> psql -U wallet -d wallet",
     );
   }

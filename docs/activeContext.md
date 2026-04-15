@@ -42,9 +42,11 @@ Wallet bounded context fully implemented and audited. Major architectural refact
 ## Next Steps
 
 1. **Platform BC**: Implement Platform bounded context (API key management, registration)
-2. **Rate limiting**: Add rate limiting middleware
-3. **Deploy**: Production configuration (managed PostgreSQL + Node.js process)
-4. **Tests**: Integration tests
+2. **Production hardening**: Body size limit, status CHECK constraints, rate limiting, graceful shutdown
+3. **Wallet lookup by owner**: `GET /v1/wallets?owner_id=...&currency_code=...` endpoint for platform integration
+4. **Metadata on mutations**: Accept optional JSON metadata on deposit/withdraw/transfer/adjust
+5. **Deploy**: Production configuration (managed PostgreSQL + Node.js process)
+6. **Integration tests**
 
 ## Active Decisions
 
