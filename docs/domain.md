@@ -201,7 +201,7 @@ Internal components and workflows.
 
 Platforms may need to record debts in wallets even when the balance is insufficient — dispute resolutions, chargebacks, or penalty fees where the merchant has already withdrawn funds.
 
-**Rule**: When `Platform.allow_negative_balance = true`, the `adjust` command may push a wallet's balance below zero. All other operations (withdraw, transfer, placeHold, captureHold) are **not** affected by this flag and continue to enforce `available_balance >= amount`.
+**Rule**: When `Platform.allow_negative_balance = true`, the `adjust` command may push a wallet's balance below zero. All other operations (withdraw, charge, transfer, placeHold, captureHold) are **not** affected by this flag and continue to enforce `available_balance >= amount`.
 
 **Scope**: Administrative adjustment only. The flag is a platform-level configuration, not per-wallet.
 

@@ -150,6 +150,39 @@ describe("Negative Balance E2E", () => {
       });
     });
 
+    describe("When trying to charge with zero balance (even with flag=true)", () => {
+      it("Then fails with INSUFFICIENT_FUNDS (charge is unaffected by the flag)", async () => {
+        const walletId = await createNegativeWallet("neg-owner-charge-zero");
+
+        const res = await app.negativeBalanceRequest(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": nextKey("charge") },
+          body: JSON.stringify({ amount_minor: 100 }),
+        });
+
+        expect(res.status).toBe(422);
+        const body = await res.json();
+        expect(body.error).toBe("INSUFFICIENT_FUNDS");
+      });
+    });
+
+    describe("When trying to charge a wallet that already has negative balance", () => {
+      it("Then fails with INSUFFICIENT_FUNDS (charge cannot push further into debt)", async () => {
+        const walletId = await createNegativeWallet("neg-owner-charge-neg");
+        await adjust(walletId, -500, "Initial debt");
+
+        const res = await app.negativeBalanceRequest(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": nextKey("charge-neg") },
+          body: JSON.stringify({ amount_minor: 100 }),
+        });
+
+        expect(res.status).toBe(422);
+        const body = await res.json();
+        expect(body.error).toBe("INSUFFICIENT_FUNDS");
+      });
+    });
+
     describe("When trying to adjust negative beyond available balance due to active holds", () => {
       it("Then fails with ADJUST_WOULD_BREAK_ACTIVE_HOLDS", async () => {
         const walletId = await createNegativeWallet("neg-owner-7");
