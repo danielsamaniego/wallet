@@ -289,7 +289,7 @@ ALTER TABLE holds
 
 ALTER TABLE transactions
   DROP CONSTRAINT IF EXISTS transactions_valid_type,
-  ADD CONSTRAINT transactions_valid_type CHECK (type IN ('deposit', 'withdrawal', 'transfer_in', 'transfer_out', 'hold_capture', 'adjustment_credit', 'adjustment_debit'));
+  ADD CONSTRAINT transactions_valid_type CHECK (type IN ('deposit', 'withdrawal', 'transfer_in', 'transfer_out', 'hold_capture', 'adjustment_credit', 'adjustment_debit', 'charge'));
 
 ALTER TABLE ledger_entries
   DROP CONSTRAINT IF EXISTS ledger_entries_valid_entry_type,

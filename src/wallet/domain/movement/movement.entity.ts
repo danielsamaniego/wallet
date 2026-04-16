@@ -1,4 +1,10 @@
-export type MovementType = "deposit" | "withdrawal" | "transfer" | "hold_capture" | "adjustment";
+export type MovementType =
+  | "deposit"
+  | "withdrawal"
+  | "transfer"
+  | "hold_capture"
+  | "adjustment"
+  | "charge";
 
 export class Movement {
   private readonly _id: string;

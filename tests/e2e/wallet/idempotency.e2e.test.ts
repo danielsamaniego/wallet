@@ -148,6 +148,97 @@ describe("Idempotency Attacks E2E", () => {
     });
   });
 
+  // ── Charge idempotency ─────────────────────────────────────────────────
+
+  describe("Given a successful charge with a specific idempotency key", () => {
+    describe("When replaying the exact same charge request with the same key and body", () => {
+      it("Then it should return the cached response with the same status and body", async () => {
+        const idempKey = "idemp-replay-charge-1";
+        const body = JSON.stringify({ amount_minor: 1500, reference: "FEE" });
+
+        const res1 = await app.request(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": idempKey },
+          body,
+        });
+        expect(res1.status).toBe(201);
+        const body1 = await res1.json();
+
+        const res2 = await app.request(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": idempKey },
+          body,
+        });
+        expect(res2.status).toBe(201);
+        const body2 = await res2.json();
+
+        expect(body2.transaction_id).toBe(body1.transaction_id);
+        expect(body2.movement_id).toBe(body1.movement_id);
+      });
+    });
+  });
+
+  describe("Given a charge completed with a specific idempotency key", () => {
+    describe("When reusing the same key with a different request body", () => {
+      it("Then it should reject with 422 IDEMPOTENCY_PAYLOAD_MISMATCH", async () => {
+        const idempKey = "idemp-charge-mismatch-1";
+
+        await app.request(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": idempKey },
+          body: JSON.stringify({ amount_minor: 1000 }),
+        });
+
+        const res2 = await app.request(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": idempKey },
+          body: JSON.stringify({ amount_minor: 9999 }),
+        });
+
+        expect(res2.status).toBe(422);
+        expect((await res2.json()).error).toBe("IDEMPOTENCY_PAYLOAD_MISMATCH");
+      });
+    });
+  });
+
+  describe("Given a mutation endpoint that requires an idempotency key", () => {
+    describe("When sending a charge request without an Idempotency-Key header", () => {
+      it("Then it should reject with 400 MISSING_IDEMPOTENCY_KEY", async () => {
+        const res = await app.request(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          body: JSON.stringify({ amount_minor: 100 }),
+        });
+
+        expect(res.status).toBe(400);
+        expect((await res.json()).error).toBe("MISSING_IDEMPOTENCY_KEY");
+      });
+    });
+  });
+
+  describe("Given a deposit completed with a specific idempotency key", () => {
+    describe("When reusing the same key on the charge endpoint", () => {
+      it("Then it should reject with 422 because method:path differs in hash", async () => {
+        const crossKey = "idemp-deposit-charge-cross-1";
+
+        const res1 = await app.request(`/v1/wallets/${walletId}/deposit`, {
+          method: "POST",
+          headers: { "Idempotency-Key": crossKey },
+          body: JSON.stringify({ amount_minor: 100 }),
+        });
+        expect(res1.status).toBe(201);
+
+        const res2 = await app.request(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": crossKey },
+          body: JSON.stringify({ amount_minor: 100 }),
+        });
+
+        expect(res2.status).toBe(422);
+        expect((await res2.json()).error).toBe("IDEMPOTENCY_PAYLOAD_MISMATCH");
+      });
+    });
+  });
+
   describe("Given two different platforms using the same idempotency key", () => {
     describe("When both platforms create wallets with the same key value", () => {
       it("Then both requests should succeed because idempotency is scoped per platform", async () => {

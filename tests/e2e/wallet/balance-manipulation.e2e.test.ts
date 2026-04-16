@@ -56,6 +56,20 @@ describe("Balance Manipulation E2E", () => {
       });
     });
 
+    describe("When attempting to charge more than the balance", () => {
+      it("Then it should reject with 422 INSUFFICIENT_FUNDS", async () => {
+        const res = await app.request(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": "bm-overdraft-charge-1" },
+          body: JSON.stringify({ amount_minor: 99999 }),
+        });
+
+        expect(res.status).toBe(422);
+        const body = await res.json();
+        expect(body.error).toBe("INSUFFICIENT_FUNDS");
+      });
+    });
+
     describe("When attempting to transfer more than the balance to another wallet", () => {
       it("Then it should reject with 422 INSUFFICIENT_FUNDS", async () => {
         const res = await app.request("/v1/transfers", {
@@ -108,6 +122,20 @@ describe("Balance Manipulation E2E", () => {
         const res = await app.request(`/v1/wallets/${walletId}/withdraw`, {
           method: "POST",
           headers: { "Idempotency-Key": "bm-frozen-withdraw-1" },
+          body: JSON.stringify({ amount_minor: 100 }),
+        });
+
+        expect(res.status).toBe(422);
+        const body = await res.json();
+        expect(body.error).toBe("WALLET_NOT_ACTIVE");
+      });
+    });
+
+    describe("When attempting to charge the frozen wallet", () => {
+      it("Then it should reject with 422 WALLET_NOT_ACTIVE", async () => {
+        const res = await app.request(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": "bm-frozen-charge-1" },
           body: JSON.stringify({ amount_minor: 100 }),
         });
 

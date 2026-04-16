@@ -159,7 +159,7 @@ Journal entry that groups all transactions and ledger entries for a single finan
 | Field | Type | Notes |
 |-------|------|-------|
 | id | UUID | Primary key; app generates UUID v7 |
-| type | string | deposit, withdrawal, transfer, hold_capture |
+| type | string | deposit, withdrawal, transfer, hold_capture, charge |
 | created_at | BIGINT | Unix ms |
 
 **Audit invariant:** `SUM(amount_minor) GROUP BY movement_id = 0` for all movements.
@@ -179,7 +179,7 @@ Record of a financial operation per wallet. `amount_minor` is always positive (i
 | id | UUID | Primary key; app generates UUID v7 |
 | wallet_id | UUID | FK → Wallet (primary wallet) |
 | counterpart_wallet_id | UUID? | FK → Wallet (for transfers) |
-| type | string | deposit, withdrawal, transfer_in, transfer_out, hold_capture |
+| type | string | deposit, withdrawal, transfer_in, transfer_out, hold_capture, charge |
 | amount_minor | BIGINT | Always positive; smallest currency unit |
 | status | string | completed, failed, reversed |
 | idempotency_key | string? | Unique; for safe retries |

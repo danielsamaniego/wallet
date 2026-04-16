@@ -83,6 +83,82 @@ describe("Input Validation Attacks E2E", () => {
     });
   });
 
+  // ── Charge amount validation ───────────────────────────────────────────
+
+  describe("Given a wallet exists", () => {
+    describe("When charging a negative amount", () => {
+      it("Then it should reject with 400 or 422", async () => {
+        const res = await app.request(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": "val-negative-charge-1" },
+          body: JSON.stringify({ amount_minor: -500 }),
+        });
+
+        expect([400, 422]).toContain(res.status);
+      });
+    });
+
+    describe("When charging zero amount", () => {
+      it("Then it should reject with 400 or 422", async () => {
+        const res = await app.request(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": "val-zero-charge-1" },
+          body: JSON.stringify({ amount_minor: 0 }),
+        });
+
+        expect([400, 422]).toContain(res.status);
+      });
+    });
+
+    describe("When charging a float amount", () => {
+      it("Then it should reject with 400 or 422 because amount_minor must be an integer", async () => {
+        const res = await app.request(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": "val-float-charge-1" },
+          body: JSON.stringify({ amount_minor: 100.5 }),
+        });
+
+        expect([400, 422]).toContain(res.status);
+      });
+    });
+
+    describe("When charging a string amount", () => {
+      it("Then it should reject with 400 or 422 because amount_minor must be a number", async () => {
+        const res = await app.request(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": "val-string-charge-1" },
+          body: JSON.stringify({ amount_minor: "1000" }),
+        });
+
+        expect([400, 422]).toContain(res.status);
+      });
+    });
+
+    describe("When charging with an empty body", () => {
+      it("Then it should reject with 400 or 422", async () => {
+        const res = await app.request(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": "val-empty-charge-1" },
+          body: JSON.stringify({}),
+        });
+
+        expect([400, 422]).toContain(res.status);
+      });
+    });
+
+    describe("When charging with a reference exceeding 500 characters", () => {
+      it("Then it should reject with 400 or 422", async () => {
+        const res = await app.request(`/v1/wallets/${walletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": "val-oversized-ref-charge-1" },
+          body: JSON.stringify({ amount_minor: 100, reference: "A".repeat(600) }),
+        });
+
+        expect([400, 422]).toContain(res.status);
+      });
+    });
+  });
+
   // ── Currency code validation ───────────────────────────────────────────
 
   describe("Given a client creating a wallet", () => {

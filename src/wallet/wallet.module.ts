@@ -5,6 +5,8 @@ import { AdjustBalanceUseCase } from "./application/command/adjustBalance/usecas
 import { CaptureHoldCommand } from "./application/command/captureHold/command.js";
 // Use cases
 import { CaptureHoldUseCase } from "./application/command/captureHold/usecase.js";
+import { ChargeCommand } from "./application/command/charge/command.js";
+import { ChargeUseCase } from "./application/command/charge/usecase.js";
 import { CloseWalletCommand } from "./application/command/closeWallet/command.js";
 import { CloseWalletUseCase } from "./application/command/closeWallet/usecase.js";
 import { CreateWalletCommand } from "./application/command/createWallet/command.js";
@@ -95,6 +97,16 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
     idGen,
     logger,
   );
+  const charge = new ChargeUseCase(
+    txManager,
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    movementRepo,
+    idGen,
+    logger,
+  );
   const freezeWallet = new FreezeWalletUseCase(txManager, walletRepo, logger);
   const unfreezeWallet = new UnfreezeWalletUseCase(txManager, walletRepo, logger);
   // TODO(historical-import-temp): Remove this use case instantiation together
@@ -149,6 +161,7 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
       { type: CreateWalletCommand.TYPE, handler: createWallet },
       { type: DepositCommand.TYPE, handler: deposit },
       { type: WithdrawCommand.TYPE, handler: withdraw },
+      { type: ChargeCommand.TYPE, handler: charge },
       { type: TransferCommand.TYPE, handler: transfer },
       { type: FreezeWalletCommand.TYPE, handler: freezeWallet },
       { type: UnfreezeWalletCommand.TYPE, handler: unfreezeWallet },

@@ -132,6 +132,14 @@ Internal components and workflows.
 3. `status` set to `closed`.
 4. Wallet cannot be used for further operations.
 
+### Flow 10: Charge
+
+1. Platform provides wallet ID, amount in minor units, idempotency key, optional reference and metadata.
+2. Service validates `available_balance >= amount`.
+3. Service debits wallet and credits system wallet.
+4. Two ledger entries; `cached_balance_minor` updated.
+5. Semantically distinct from withdrawal: charge represents a platform-initiated fee or commission, not an external egress. The funds stay within the platform ecosystem (system wallet).
+
 ---
 
 ## Business Rules
@@ -216,6 +224,7 @@ Platforms may need to record debts in wallets even when the balance is insuffici
 | `transfer_in` | Funds received from another wallet |
 | `transfer_out` | Funds sent to another wallet |
 | `hold_capture` | Hold converted to actual debit (e.g., payment completion) |
+| `charge` | Platform-initiated fee or commission debited from wallet (credit: system wallet) |
 
 ---
 

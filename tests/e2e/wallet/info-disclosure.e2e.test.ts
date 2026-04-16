@@ -87,6 +87,29 @@ describe("Information Disclosure E2E", () => {
     });
   });
 
+  describe("Given a charge request that triggers a 422 domain error", () => {
+    describe("When reading the error response body", () => {
+      it("Then it should not contain stack traces or internal technology names", async () => {
+        const createRes = await app.request("/v1/wallets", {
+          method: "POST",
+          headers: { "Idempotency-Key": nextKey() },
+          body: JSON.stringify({ owner_id: "info-disc-charge-owner", currency_code: "USD" }),
+        });
+        const { wallet_id } = await createRes.json();
+
+        const res = await app.request(`/v1/wallets/${wallet_id}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": nextKey() },
+          body: JSON.stringify({ amount_minor: 9999 }),
+        });
+
+        expect(res.status).toBe(422);
+        const body = await res.json();
+        assertNoLeakedInternals(body);
+      });
+    });
+  });
+
   describe("Given a request to a completely undefined route", () => {
     describe("When reading the 404 error response body", () => {
       it("Then it should not contain stack traces or internal technology names", async () => {

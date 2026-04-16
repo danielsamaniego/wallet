@@ -90,6 +90,22 @@ describe("Cross-Tenant Isolation E2E", () => {
     });
   });
 
+  // ── Charge isolation ───────────────────────────────────────────────────
+
+  describe("Given a wallet owned by the victim platform", () => {
+    describe("When the attacker tries to charge the victim wallet", () => {
+      it("Then it should return 404", async () => {
+        const res = await app.attackerRequest(`/v1/wallets/${victimWalletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": "tenant-attack-charge-1" },
+          body: JSON.stringify({ amount_minor: 1000 }),
+        });
+
+        expect(res.status).toBe(404);
+      });
+    });
+  });
+
   // ── Transfer isolation ─────────────────────────────────────────────────
 
   describe("Given wallets on different platforms", () => {

@@ -19,6 +19,7 @@ import { placeHoldRoute } from "@/wallet/infrastructure/adapters/inbound/http/pl
 import { transferRoute } from "@/wallet/infrastructure/adapters/inbound/http/transfer/handler.js";
 import { unfreezeWalletRoute } from "@/wallet/infrastructure/adapters/inbound/http/unfreezeWallet/handler.js";
 import { voidHoldRoute } from "@/wallet/infrastructure/adapters/inbound/http/voidHold/handler.js";
+import { chargeRoute } from "@/wallet/infrastructure/adapters/inbound/http/charge/handler.js";
 import { withdrawRoute } from "@/wallet/infrastructure/adapters/inbound/http/withdraw/handler.js";
 
 /** Injects tracking context + platformId (simulating trackingCanonical + apiKeyAuth). */
@@ -426,6 +427,28 @@ describe("Wallet command HTTP handlers", () => {
     });
   });
 
+  // ── charge ─────────────────────────────────────────────────────
+  describe("chargeRoute", () => {
+    it("Given a valid walletId and body, When POST is called, Then dispatches ChargeCommand and returns 201", async () => {
+      const commandBus: ICommandBus = {
+        dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-ch", movementId: "mov-ch" }),
+      };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      const handlers = chargeRoute(commandBus);
+      app.post("/wallets/:walletId/charge", ...handlers);
+
+      const res = await app.request("/wallets/wallet-1/charge", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "idem-1" },
+        body: JSON.stringify({ amount_minor: 3000, reference: "COMMISSION" }),
+      });
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body).toEqual({ transaction_id: "txn-ch", movement_id: "mov-ch" });
+    });
+  });
+
   // ── withdraw ───────────────────────────────────────────────────
   describe("withdrawRoute", () => {
     it("Given a valid walletId and body, When POST is called, Then dispatches WithdrawCommand and returns 201", async () => {
@@ -525,6 +548,26 @@ describe("Wallet command HTTP handlers", () => {
           target_wallet_id: "wallet-2",
           amount_minor: 1000,
         }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(commandBus.dispatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ idempotencyKey: "" }),
+      );
+    });
+
+    it("Given charge called without idempotency-key header, When POST is called, Then dispatches command with empty string idempotency key", async () => {
+      const commandBus: ICommandBus = {
+        dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-ch", movementId: "mov-ch" }),
+      };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      app.post("/wallets/:walletId/charge", ...chargeRoute(commandBus));
+
+      const res = await app.request("/wallets/wallet-1/charge", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ amount_minor: 3000 }),
       });
 
       expect(res.status).toBe(201);

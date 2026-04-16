@@ -336,6 +336,17 @@ describe("Edge Cases E2E", () => {
       });
     });
 
+    describe("When charging the closed wallet", () => {
+      it("Then it should reject with 422", async () => {
+        const res = await app.request(`/v1/wallets/${closedWalletId}/charge`, {
+          method: "POST",
+          headers: { "Idempotency-Key": nextKey() },
+          body: JSON.stringify({ amount_minor: 100 }),
+        });
+        expect(res.status).toBe(422);
+      });
+    });
+
     describe("When transferring to the closed wallet", () => {
       it("Then it should reject with 422", async () => {
         const res = await app.request("/v1/transfers", {
