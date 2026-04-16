@@ -34,6 +34,7 @@ const listingConfig: ListingConfig = {
   sortableFields: [
     { apiName: "created_at", prismaName: "createdAt" },
     { apiName: "owner_id", prismaName: "ownerId" },
+    { apiName: "balance_minor", prismaName: "cachedBalanceMinor" },
   ],
   defaultSort: [{ field: "createdAt", direction: "desc" }],
   maxLimit: 100,

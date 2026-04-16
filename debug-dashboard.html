@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wallet Debug Dashboard — Admin View</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-body: #080a0f;
+            --bg-card: rgba(17, 24, 39, 0.7);
+            --bg-side: #0d1117;
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.3);
+            --secondary: #8b5cf6;
+            --accent: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --text-main: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border: rgba(255, 255, 255, 0.1);
+            --font-main: 'Inter', system-ui, -apple-system, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            font-family: var(--font-main);
+            line-height: 1.5;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Ambient background glow */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -10%;
+            right: -10%;
+            width: 40%;
+            height: 40%;
+            background: radial-gradient(circle, var(--primary-glow) 0%, transparent 70%);
+            z-index: -1;
+            filter: blur(80px);
+        }
+
+        /* Scrollbar styles */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Header */
+        header {
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            background: rgba(8, 10, 15, 0.8);
+            backdrop-filter: blur(12px);
+            z-index: 100;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 700;
+            font-size: 1.25rem;
+            letter-spacing: -0.025em;
+            color: #fff;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        .auth-form {
+            display: flex;
+            gap: 0.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 0.4rem;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            transition: all 0.3s ease;
+        }
+
+        .auth-form:focus-within {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px var(--primary-glow);
+        }
+
+        input {
+            background: transparent;
+            border: none;
+            color: #fff;
+            padding: 0.5rem 1rem;
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            width: 320px;
+            outline: none;
+        }
+
+        button {
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            padding: 0.5rem 1.25rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        button:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+        }
+
+        button.secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        /* Main Layout */
+        main {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        aside {
+            width: 380px;
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-side);
+        }
+
+        .search-area {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .wallet-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
+        .wallet-item {
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .wallet-item:hover {
+            background: rgba(255, 255, 255, 0.03);
+            border-color: var(--border);
+        }
+
+        .wallet-item.active {
+            background: rgba(59, 130, 246, 0.1);
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+
+        .wallet-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 20%;
+            bottom: 20%;
+            width: 4px;
+            background: var(--primary);
+            border-radius: 0 4px 4px 0;
+        }
+
+        .wallet-id {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 0.25rem;
+        }
+
+        .wallet-owner {
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .wallet-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8125rem;
+        }
+
+        .balance {
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .status-pill {
+            padding: 2px 8px;
+            border-radius: 99px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .status-active { background: rgba(16, 185, 129, 0.15); color: var(--accent); }
+        .status-frozen { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+        .status-closed { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+
+        /* Content Area */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            position: relative;
+        }
+
+        .empty-state {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 1.5rem;
+            opacity: 0.3;
+        }
+
+        /* Wallet Header */
+        .wallet-detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .title-group h1 {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            padding: 1.5rem;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: var(--font-mono);
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            margin-top: 1rem;
+        }
+
+        .tab {
+            padding: 1rem 0.5rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.2s;
+        }
+
+        .tab:hover {
+            color: var(--text-main);
+        }
+
+        .tab.active {
+            color: var(--primary);
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--primary);
+            box-shadow: 0 0 10px var(--primary-glow);
+        }
+
+        /* Data Table */
+        .table-container {
+            background: var(--bg-card);
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.875rem;
+        }
+
+        th {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 1rem 1.5rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .mono { font-family: var(--font-mono); font-size: 0.8rem; }
+        .amount-pos { color: var(--accent); font-weight: 600; }
+        .amount-neg { color: var(--danger); font-weight: 600; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Loader */
+        .loader {
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(8, 10, 15, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            backdrop-filter: blur(2px);
+        }
+
+        .badge {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.65rem;
+            font-weight: 800;
+            background: var(--border);
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <div class="logo-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="5" width="20" height="14" rx="2" ry="2"/>
+                    <line x1="2" y1="10" x2="22" y2="10"/>
+                </svg>
+            </div>
+            Wallet Debug
+        </div>
+        <div class="auth-form" id="authForm">
+            <input type="password" id="apiKeyInput" placeholder="Ingresa tu API Key de Plataforma..." autocomplete="current-password">
+            <button id="connectBtn">Conectar</button>
+        </div>
+    </header>
+
+    <main>
+        <aside>
+            <div class="search-area">
+                <h3 style="margin-bottom: 1rem; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Tus Wallets</h3>
+                <div class="auth-form">
+                    <input type="text" id="walletSearch" placeholder="Buscar por owner_id..." style="width: 100%;">
+                </div>
+            </div>
+            <div id="systemWalletSlot" style="border-bottom: 1px solid var(--border); padding: 0.5rem 1rem; display: none;"></div>
+            <div class="wallet-list" id="walletList">
+                <div class="empty-state">
+                    <p>Conéctate primero para ver tus wallets</p>
+                </div>
+            </div>
+        </aside>
+
+        <section class="content" id="mainContent">
+            <div class="empty-state">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+                </svg>
+                <h2>Bienvenido al Debug Dashboard</h2>
+                <p>Selecciona una wallet de la izquierda para ver su detalle operativo.</p>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // --- State Management ---
+        const state = {
+            apiKey: localStorage.getItem('wallet_debug_api_key') || '',
+            systemWallets: [],
+            wallets: [],
+            walletsCursor: null,
+            walletsLoading: false,
+            selectedWallet: null,
+            activeTab: 'transactions',
+            currencies: {},
+            loading: false,
+            apiBase: window.location.origin === 'null' || window.location.protocol === 'file:' ? 'http://localhost:3000' : '',
+            searchQuery: '',
+            searchDebounceTimer: null,
+            tabData: {
+                transactions: { items: [], cursor: null, loading: false },
+                ledger: { items: [], cursor: null, loading: false },
+                holds: { items: [], cursor: null, loading: false }
+            }
+        };
+
+        // --- DOM Elements ---
+        const els = {
+            apiKeyInput: document.getElementById('apiKeyInput'),
+            connectBtn: document.getElementById('connectBtn'),
+            systemWalletSlot: document.getElementById('systemWalletSlot'),
+            walletList: document.getElementById('walletList'),
+            walletSearch: document.getElementById('walletSearch'),
+            mainContent: document.getElementById('mainContent'),
+        };
+
+        // --- Utils ---
+        const formatAmount = (minor, code) => {
+            const currency = state.currencies[code] || { minor_unit: 2 };
+            const amount = Number(minor) / Math.pow(10, currency.minor_unit);
+            return new Intl.NumberFormat('es-EC', {
+                style: 'currency',
+                currency: code
+            }).format(amount);
+        };
+
+        const apiFetch = async (path, options = {}) => {
+            const res = await fetch(`${state.apiBase}${path}`, {
+                ...options,
+                headers: {
+                    'x-api-key': state.apiKey,
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                }
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ message: 'Unknown error' }));
+                throw new Error(err.message || 'API Error');
+            }
+            return res.json();
+        };
+
+        // --- Actions ---
+        const loadWallets = async (append = false) => {
+            if (state.walletsLoading) return;
+            state.walletsLoading = true;
+
+            try {
+                const params = new URLSearchParams({ limit: '50', sort: '-balance_minor' });
+                if (append && state.walletsCursor) {
+                    params.set('cursor', state.walletsCursor);
+                }
+                if (state.searchQuery.trim()) {
+                    params.set('filter[owner_id]', state.searchQuery.trim());
+                }
+
+                const res = await apiFetch(`/v1/wallets?${params.toString()}`);
+                const incoming = (res.wallets || []).filter(w => !w.is_system);
+
+                if (append) {
+                    state.wallets = [...state.wallets, ...incoming];
+                } else {
+                    state.wallets = incoming;
+                }
+                state.walletsCursor = res.next_cursor || null;
+                renderWalletList();
+            } catch (err) {
+                if (!append) throw err;
+                alert('Error cargando más wallets: ' + err.message);
+            } finally {
+                state.walletsLoading = false;
+                renderWalletList();
+            }
+        };
+
+        const loadSystemWallets = async () => {
+            const res = await apiFetch('/v1/wallets?filter[owner_id]=SYSTEM&limit=50');
+            state.systemWallets = res.wallets || [];
+        };
+
+        const loadInitialData = async () => {
+            if (!state.apiKey) return;
+            try {
+                showLoading(true);
+                state.searchQuery = '';
+                els.walletSearch.value = '';
+                const [_, __, currenciesRes] = await Promise.all([
+                    loadWallets(),
+                    loadSystemWallets(),
+                    apiFetch('/v1/currencies')
+                ]);
+
+                state.currencies = (currenciesRes.currencies || []).reduce((acc, c) => ({ ...acc, [c.code]: c }), {});
+                renderWalletList();
+            } catch (err) {
+                alert('Error al conectar: ' + err.message);
+                state.apiKey = '';
+                localStorage.removeItem('wallet_debug_api_key');
+            } finally {
+                showLoading(false);
+            }
+        };
+
+        const selectWallet = async (id) => {
+            state.selectedWallet = state.systemWallets.find(w => w.id === id) || state.wallets.find(w => w.id === id);
+            state.activeTab = 'transactions';
+            // Reset pagination state for all tabs
+            Object.keys(state.tabData).forEach(tab => {
+                state.tabData[tab] = { items: [], cursor: null, loading: false };
+            });
+            renderWalletDetail();
+            loadTabData();
+        };
+
+        const loadTabData = async (append = false) => {
+            if (!state.selectedWallet) return;
+            const tab = state.activeTab;
+            const tabState = state.tabData[tab];
+            
+            if (tabState.loading) return;
+            
+            const tabEl = document.getElementById('tabContent');
+            if (!append) {
+                tabEl.innerHTML = '<div style="padding: 2rem; text-align: center;"><div class="loader" style="margin: 0 auto;"></div></div>';
+            }
+            
+            tabState.loading = true;
+            if (append) renderTabContent(); // Show loading in the button
+
+            try {
+                const id = state.selectedWallet.id;
+                const limit = 50;
+                let path = '';
+                
+                if (tab === 'transactions') path = `/v1/wallets/${id}/transactions`;
+                else if (tab === 'ledger') path = `/v1/wallets/${id}/ledger`;
+                else if (tab === 'holds') path = `/v1/holds/wallet/${id}`;
+                
+                const queryParams = new URLSearchParams({ limit });
+                if (append && tabState.cursor) {
+                    queryParams.set('cursor', tabState.cursor);
+                }
+                
+                const res = await apiFetch(`${path}?${queryParams.toString()}`);
+                
+                let items = [];
+                let nextCursor = res.next_cursor;
+                
+                if (tab === 'transactions') items = res.transactions || [];
+                else if (tab === 'ledger') items = res.ledger_entries || [];
+                else if (tab === 'holds') items = res.holds || [];
+                
+                if (append) {
+                    tabState.items = [...tabState.items, ...items];
+                } else {
+                    tabState.items = items;
+                }
+                tabState.cursor = nextCursor;
+                
+                renderTabContent();
+            } catch (err) {
+                if (!append) {
+                    tabEl.innerHTML = `<div style="padding: 2rem; color: var(--danger);">Error cargando datos: ${err.message}</div>`;
+                } else {
+                    alert('Error cargando más datos: ' + err.message);
+                }
+            } finally {
+                tabState.loading = false;
+                renderTabContent();
+            }
+        };
+
+        const renderTabContent = () => {
+            const tab = state.activeTab;
+            const data = state.tabData[tab].items;
+            const hasMore = !!state.tabData[tab].cursor;
+            const loading = state.tabData[tab].loading;
+
+            if (tab === 'transactions') renderTransactions(data, hasMore, loading);
+            else if (tab === 'ledger') renderLedger(data, hasMore, loading);
+            else if (tab === 'holds') renderHolds(data, hasMore, loading);
+        };
+
+        // --- Rendering ---
+        const showLoading = (show) => {
+            state.loading = show;
+            els.connectBtn.disabled = show;
+            els.connectBtn.innerHTML = show ? '<div class="loader" style="width: 16px; height: 16px;"></div>' : 'Conectar';
+        };
+
+        const renderWalletCard = (w) => {
+            const isTotalNeg = Number(w.balance_minor) < 0;
+            const isAvailNeg = Number(w.available_balance_minor) < 0;
+            return `
+                <div class="wallet-item ${state.selectedWallet?.id === w.id ? 'active' : ''}" onclick="selectWallet('${w.id}')">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div class="wallet-id">${w.id.substring(0, 18)}...</div>
+                        ${w.is_system ? '<span class="badge" style="font-size: 0.6rem; background: var(--secondary); color: #fff; padding: 1px 4px;">SYSTEM</span>' : ''}
+                    </div>
+                    <div class="wallet-owner">${w.owner_id}</div>
+                    <div class="wallet-meta" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.75rem;">
+                            <span style="color: var(--text-muted)">Total:</span>
+                            <span style="font-weight: 700; color: ${isTotalNeg ? 'var(--danger)' : 'var(--accent)'}">${formatAmount(w.balance_minor, w.currency_code)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.75rem;">
+                            <span style="color: var(--text-muted)">Disp:</span>
+                            <span style="font-weight: 700; color: ${isAvailNeg ? 'var(--danger)' : 'var(--accent)'}">${formatAmount(w.available_balance_minor, w.currency_code)}</span>
+                        </div>
+                        <span class="status-pill status-${w.status}" style="margin-top: 4px;">${w.status}</span>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderWalletList = () => {
+            // Pinned system wallets
+            if (state.systemWallets.length > 0) {
+                els.systemWalletSlot.style.display = 'block';
+                els.systemWalletSlot.innerHTML = state.systemWallets.map(renderWalletCard).join('');
+            } else {
+                els.systemWalletSlot.style.display = 'none';
+                els.systemWalletSlot.innerHTML = '';
+            }
+
+            // Regular wallets
+            const wallets = state.wallets;
+
+            if (wallets.length === 0 && !state.walletsLoading) {
+                els.walletList.innerHTML = '<div class="empty-state" style="padding: 2rem;"><p>No se encontraron wallets</p></div>';
+                return;
+            }
+
+            const cards = wallets.map(renderWalletCard).join('');
+
+            const loadMoreBtn = state.walletsCursor ? `
+                <div style="padding: 1rem; text-align: center;">
+                    <button class="secondary" onclick="loadMoreWallets()" style="width: 100%; justify-content: center;" ${state.walletsLoading ? 'disabled' : ''}>
+                        ${state.walletsLoading ? '<div class="loader" style="width: 16px; height: 16px;"></div>' : 'Cargar más wallets'}
+                    </button>
+                </div>
+            ` : '';
+
+            els.walletList.innerHTML = cards + loadMoreBtn;
+        };
+
+        const renderWalletDetail = () => {
+            const w = state.selectedWallet;
+            els.mainContent.innerHTML = `
+                <div class="wallet-detail-header">
+                    <div class="title-group">
+                        <div class="wallet-id" style="font-size: 0.875rem;">ID de Wallet: ${w.id}</div>
+                        <h1>${w.owner_id}</h1>
+                        <span class="status-pill status-${w.status}">${w.status}</span>
+                        ${w.is_system ? '<span class="badge" style="margin-left: 0.5rem; background: var(--secondary); color: #fff;">SYSTEM</span>' : ''}
+                    </div>
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="secondary" onclick="loadInitialData()">Refrescar</button>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Balance Total</div>
+                        <div class="stat-value" style="color: ${Number(w.balance_minor) < 0 ? 'var(--danger)' : 'var(--accent)'};">${formatAmount(w.balance_minor, w.currency_code)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Balance Disponible</div>
+                        <div class="stat-value" style="color: ${Number(w.available_balance_minor) < 0 ? 'var(--danger)' : 'var(--accent)'};">${formatAmount(w.available_balance_minor, w.currency_code)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Moneda</div>
+                        <div class="stat-value">${w.currency_code}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Creada el</div>
+                        <div class="stat-value" style="font-size: 1rem;">${new Date(Number(w.created_at)).toLocaleString()}</div>
+                    </div>
+                </div>
+
+                <div class="tabs">
+                    <div class="tab ${state.activeTab === 'transactions' ? 'active' : ''}" onclick="switchTab('transactions')">TRANSACCIONES</div>
+                    <div class="tab ${state.activeTab === 'ledger' ? 'active' : ''}" onclick="switchTab('ledger')">LIBRO MAYOR (LEDGER)</div>
+                    <div class="tab ${state.activeTab === 'holds' ? 'active' : ''}" onclick="switchTab('holds')">RETENCIONES (HOLDS)</div>
+                </div>
+
+                <div id="tabContent"></div>
+            `;
+        };
+
+        const renderTransactions = (data, hasMore, loading) => {
+            if (data.length === 0) {
+                document.getElementById('tabContent').innerHTML = '<div class="empty-state" style="padding: 4rem;"><p>No hay transacciones registradas</p></div>';
+                return;
+            }
+
+            document.getElementById('tabContent').innerHTML = `
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>Monto</th>
+                                <th>Referencia</th>
+                                <th>Estado</th>
+                                <th>ID Movimiento</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.map(tx => `
+                                <tr>
+                                    <td class="mono">${new Date(Number(tx.created_at)).toLocaleString()}</td>
+                                    <td><span class="badge">${tx.type}</span></td>
+                                    <td class="mono ${tx.type.includes('out') || tx.type === 'withdrawal' || tx.type === 'adjustment_debit' ? 'amount-neg' : 'amount-pos'}">
+                                        ${formatAmount(tx.amount_minor, state.selectedWallet.currency_code)}
+                                    </td>
+                                    <td>${tx.reference || '-'}</td>
+                                    <td><span class="status-pill status-${tx.status === 'completed' ? 'active' : 'closed'}">${tx.status}</span></td>
+                                    <td class="mono">${tx.id.substring(0, 13)}...</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    ${hasMore ? `
+                        <div style="padding: 1.5rem; text-align: center; border-top: 1px solid var(--border);">
+                            <button class="secondary" onclick="loadTabData(true)" ${loading ? 'disabled' : ''}>
+                                ${loading ? '<div class="loader" style="width: 16px; height: 16px;"></div>' : 'Ver más transacciones'}
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        };
+
+        const renderLedger = (data, hasMore, loading) => {
+            if (data.length === 0) {
+                document.getElementById('tabContent').innerHTML = '<div class="empty-state" style="padding: 4rem;"><p>No hay entradas en el ledger</p></div>';
+                return;
+            }
+
+            document.getElementById('tabContent').innerHTML = `
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Entrada</th>
+                                <th>Monto</th>
+                                <th>Balance Resultante</th>
+                                <th>ID Transacción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.map(le => `
+                                <tr>
+                                    <td class="mono">${new Date(Number(le.created_at)).toLocaleString()}</td>
+                                    <td><span class="badge" style="background: ${le.entry_type === 'CREDIT' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}; color: ${le.entry_type === 'CREDIT' ? 'var(--accent)' : 'var(--danger)'}">
+                                        ${le.entry_type}
+                                    </span></td>
+                                    <td class="mono ${le.entry_type === 'DEBIT' ? 'amount-neg' : 'amount-pos'}">
+                                        ${formatAmount(le.amount_minor, state.selectedWallet.currency_code)}
+                                    </td>
+                                    <td class="mono" style="font-weight: 600;">${formatAmount(le.balance_after_minor, state.selectedWallet.currency_code)}</td>
+                                    <td class="mono">${le.transaction_id.substring(0, 13)}...</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    ${hasMore ? `
+                        <div style="padding: 1.5rem; text-align: center; border-top: 1px solid var(--border);">
+                            <button class="secondary" onclick="loadTabData(true)" ${loading ? 'disabled' : ''}>
+                                ${loading ? '<div class="loader" style="width: 16px; height: 16px;"></div>' : 'Ver más entradas del ledger'}
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        };
+
+        const renderHolds = (data, hasMore, loading) => {
+            if (data.length === 0) {
+                document.getElementById('tabContent').innerHTML = '<div class="empty-state" style="padding: 4rem;"><p>No hay retenciones activas o pasadas</p></div>';
+                return;
+            }
+
+            document.getElementById('tabContent').innerHTML = `
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Creado</th>
+                                <th>Monto</th>
+                                <th>Estado</th>
+                                <th>Referencia</th>
+                                <th>Expiración</th>
+                                <th>ID</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.map(h => `
+                                <tr>
+                                    <td class="mono">${new Date(Number(h.created_at)).toLocaleString()}</td>
+                                    <td class="mono" style="color: var(--warning); font-weight: 600;">
+                                        ${formatAmount(h.amount_minor, state.selectedWallet.currency_code)}
+                                    </td>
+                                    <td><span class="status-pill status-${h.status === 'active' ? 'active' : (h.status === 'captured' ? 'active' : 'closed')}">
+                                        ${h.status}
+                                    </span></td>
+                                    <td>${h.reference || '-'}</td>
+                                    <td class="mono">${h.expires_at ? new Date(Number(h.expires_at)).toLocaleString() : 'N/A'}</td>
+                                    <td class="mono">${h.id.substring(0, 13)}...</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    ${hasMore ? `
+                        <div style="padding: 1.5rem; text-align: center; border-top: 1px solid var(--border);">
+                            <button class="secondary" onclick="loadTabData(true)" ${loading ? 'disabled' : ''}>
+                                ${loading ? '<div class="loader" style="width: 16px; height: 16px;"></div>' : 'Ver más retenciones'}
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        };
+
+        // --- Interaction ---
+        const switchTab = (tab) => {
+            state.activeTab = tab;
+            renderWalletDetail();
+            // Only load if no data exists yet for this tab
+            if (state.tabData[tab].items.length === 0) {
+                loadTabData();
+            } else {
+                renderTabContent();
+            }
+        };
+
+        const loadMoreWallets = () => loadWallets(true);
+
+        const searchWallets = () => {
+            state.walletsCursor = null;
+            loadWallets();
+        };
+
+        window.selectWallet = selectWallet;
+        window.switchTab = switchTab;
+        window.loadInitialData = loadInitialData;
+        window.loadMoreWallets = loadMoreWallets;
+
+        els.connectBtn.onclick = () => {
+            const key = els.apiKeyInput.value.trim();
+            if (!key) return;
+            state.apiKey = key;
+            localStorage.setItem('wallet_debug_api_key', key);
+            loadInitialData();
+        };
+
+        els.walletSearch.oninput = (e) => {
+            state.searchQuery = e.target.value;
+            clearTimeout(state.searchDebounceTimer);
+            state.searchDebounceTimer = setTimeout(searchWallets, 400);
+        };
+
+        // Initialize
+        if (state.apiKey) {
+            els.apiKeyInput.value = state.apiKey;
+            loadInitialData();
+        }
+    </script>
+</body>
+</html>
