@@ -67,8 +67,8 @@
 
 - [x] `allow_negative_balance` per-platform flag: Platform aggregate field + DB trigger (`trg_enforce_positive_balance`) replacing CHECK constraint + `PATCH /v1/platforms/config` endpoint + available balance sign-correct readstore
 - [x] `AdjustBalanceCommand` carries `allowNegativeBalance: boolean`; use case passes to domain; HTTP handler reads from HonoVariables (not AppContext)
-- [x] `ImportHistoricalEntry` always passes `allowNegativeBalance=true` (privileged migration op)
-- [x] E2E test suite expanded: 216 tests passing (`negative-balance.e2e.test.ts`, `config.e2e.test.ts`, third test platform seeded)
+- [x] `ImportHistoricalEntry` computes real available balance via `holdRepo.sumActiveHolds()` for negative adjustments; domain receives `allowNegativeBalance=true` to allow negative push, but hold-zombie check still runs (zombie hold = capture permanently fails because `cached < holdAmount` post-import)
+- [x] E2E test suite expanded: 221 tests passing (`negative-balance.e2e.test.ts`, `config.e2e.test.ts`, third test platform seeded)
 
 ## What's Left to Build
 

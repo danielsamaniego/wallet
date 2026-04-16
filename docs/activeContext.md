@@ -13,8 +13,8 @@
 - `wallet.adjust()`: accepts `allowNegativeBalance` param; skips INSUFFICIENT_FUNDS guard when flag is true (system wallets always bypass)
 - `wallet.readstore.ts`: removed available balance clamp (`max(0)`) — negative values now surfaced correctly in API
 - `UpdatePlatformConfig`: full CQRS slice (command + usecase + handler + schemas + route) at `PATCH /v1/platforms/config`
-- `ImportHistoricalEntry` use case: always passes `allowNegativeBalance=true` (privileged migration op)
-- 216 E2E tests passing (including new `negative-balance.e2e.test.ts` and `config.e2e.test.ts`)
+- `ImportHistoricalEntry` use case: computes real available balance via `holdRepo.sumActiveHolds()` for negative adjustments — prevents zombie holds (a hold whose capture becomes permanently impossible because `cached < holdAmount` after import). Negative balance bypass is implicit: the domain's `adjust()` receives `allowNegativeBalance=true` so historical imports can push below zero, but the available-balance check still gates whether present-day holds would be broken.
+- 221 E2E tests passing (including new `negative-balance.e2e.test.ts` and `config.e2e.test.ts`)
 - `src/index.ts` DB safety net check updated: validates `trg_enforce_positive_balance` trigger; removed `wallets_positive_balance` constraint check
 
 **Previously completed:**
@@ -64,7 +64,7 @@
 
 ## Next Steps
 
-1. **Platform BC**: Implement Platform bounded context (API key management, registration)
+1. **Platform BC**: Complete remaining platform management features (suspend, revoke, API key rotation) — `UpdatePlatformConfig` CQRS slice already done
 2. **Production hardening**: Body size limit, status CHECK constraints, rate limiting, graceful shutdown
 3. **Wallet lookup by owner**: `GET /v1/wallets?owner_id=...&currency_code=...` endpoint for platform integration
 4. **Metadata on mutations**: Accept optional JSON metadata on deposit/withdraw/transfer/adjust
