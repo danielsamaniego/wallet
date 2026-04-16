@@ -26,11 +26,13 @@ async function seedPlatform({
   name,
   apiKeyId,
   secret,
+  allowNegativeBalance = false,
 }: {
   id: string;
   name: string;
   apiKeyId: string;
   secret: string;
+  allowNegativeBalance?: boolean;
 }) {
   const apiKeyHash = createHash("sha256").update(secret).digest("hex");
   const fullApiKey = `${apiKeyId}.${secret}`;
@@ -38,13 +40,14 @@ async function seedPlatform({
 
   const platform = await prisma.platform.upsert({
     where: { apiKeyId },
-    update: {},
+    update: { allowNegativeBalance },
     create: {
       id,
       name,
       apiKeyHash,
       apiKeyId,
       status: "active",
+      allowNegativeBalance,
       createdAt: now,
       updatedAt: now,
     },
@@ -81,6 +84,7 @@ async function main() {
     name: DEV_CONSUMER_PLATFORM_NAME,
     apiKeyId: DEV_CONSUMER_API_KEY_ID,
     secret: DEV_CONSUMER_SECRET,
+    allowNegativeBalance: true,
   });
 
   console.log("");
