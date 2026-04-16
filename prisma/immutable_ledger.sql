@@ -232,10 +232,39 @@ CREATE TRIGGER trg_movement_zero_sum
   AFTER INSERT ON ledger_entries
   FOR EACH ROW EXECUTE FUNCTION validate_movement_zero_sum();
 
--- Safety constraints
-ALTER TABLE wallets
-  DROP CONSTRAINT IF EXISTS wallets_positive_balance,
-  ADD CONSTRAINT wallets_positive_balance CHECK (cached_balance_minor >= 0 OR is_system = true);
+-- Balance constraint: regular wallets cannot go negative unless their platform allows it.
+-- Implemented as a trigger (not a CHECK) because it must reference the platforms table.
+-- Fast path: positive balance or system wallet exits immediately with no extra query.
+-- The SELECT on platforms only fires when cached_balance_minor < 0 AND NOT is_system.
+ALTER TABLE wallets DROP CONSTRAINT IF EXISTS wallets_positive_balance;
+
+CREATE OR REPLACE FUNCTION enforce_wallet_positive_balance()
+RETURNS trigger AS $$
+DECLARE
+  v_allow_negative BOOLEAN;
+BEGIN
+  -- Fast path: balance is non-negative or system wallet — always valid.
+  IF NEW.cached_balance_minor >= 0 OR NEW.is_system THEN
+    RETURN NEW;
+  END IF;
+
+  -- Balance is negative on a non-system wallet: check platform configuration.
+  SELECT allow_negative_balance INTO v_allow_negative
+  FROM platforms WHERE id = NEW.platform_id;
+
+  IF NOT COALESCE(v_allow_negative, false) THEN
+    RAISE EXCEPTION 'NEGATIVE_BALANCE_NOT_ALLOWED: wallet % balance % violates platform constraint',
+      NEW.id, NEW.cached_balance_minor;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_enforce_positive_balance ON wallets;
+CREATE TRIGGER trg_enforce_positive_balance
+  BEFORE INSERT OR UPDATE ON wallets
+  FOR EACH ROW EXECUTE FUNCTION enforce_wallet_positive_balance();
 
 ALTER TABLE holds
   DROP CONSTRAINT IF EXISTS holds_positive_amount,

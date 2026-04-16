@@ -62,7 +62,7 @@ Internal components and workflows.
 | **Transaction** | Per-wallet record of a financial operation (deposit, withdrawal, transfer, hold capture). Links to a movement and ledger entries; amount always positive. |
 | **LedgerEntry** | Single line in the double-entry ledger. CREDIT or DEBIT with `amount_minor` (signed) and `balance_after_minor`. Belongs to a movement. Append-only, immutable. |
 | **Hold** | Authorization that reserves funds without moving them. Lifecycle: active → captured \| voided \| expired. |
-| **Platform** | API consumer. Identified by API key; owns wallets for its users. |
+| **Platform** | API consumer. Identified by API key; owns wallets for its users. May have `allow_negative_balance=true` to permit administrative adjustments below zero. |
 | **System Wallet** | Special wallet (e.g., per-currency omnibus) acting as counterparty for deposits and withdrawals. May have negative balance. |
 | **Amount** | Integer in smallest currency unit per ISO 4217 (e.g., cents for USD, yen for JPY, fils for BHD). No floats; like Stripe. Column names use `_minor` as convention. The service supports an explicit currency catalog: USD, EUR, MXN, CLP, KWD. |
 | **Currency** | ISO 4217 code (e.g., USD, EUR). Each wallet has one currency. |
@@ -188,6 +188,22 @@ Internal components and workflows.
 - **Payload mismatch detection**: A SHA-256 hash of `method:path:body` is stored alongside the idempotency record. Including the HTTP method and path ensures the same key used on a different endpoint is rejected (per IETF draft recommendation). If a retry arrives with the same key but a different hash, the middleware returns `422 IDEMPOTENCY_PAYLOAD_MISMATCH` instead of the cached response.
 - Idempotency records have a 48h TTL (`expires_at`).
 - **Cleanup**: A background job (`common/idempotency/infrastructure/adapters/inbound/scheduler/cleanupIdempotency.job.ts`) dispatches a `CleanupIdempotencyCommand` via the CommandBus every 60s. The use case deletes records where `expires_at < now()`. At scale (1M+ tx/day), consider partitioning by `created_at` via `pg_partman`.
+
+### Negative Balance (allow_negative_balance)
+
+Platforms may need to record debts in wallets even when the balance is insufficient — dispute resolutions, chargebacks, or penalty fees where the merchant has already withdrawn funds.
+
+**Rule**: When `Platform.allow_negative_balance = true`, the `adjust` command may push a wallet's balance below zero. All other operations (withdraw, transfer, placeHold, captureHold) are **not** affected by this flag and continue to enforce `available_balance >= amount`.
+
+**Scope**: Administrative adjustment only. The flag is a platform-level configuration, not per-wallet.
+
+**System wallets**: System wallets may always go negative regardless of this flag (they are omnibus accounts acting as counterparty).
+
+**Ledger invariant**: The zero-sum invariant (`SUM(amount_minor) GROUP BY movement_id = 0`) is maintained regardless of balance sign — negative balances do not affect double-entry bookkeeping.
+
+**DB enforcement**: A `BEFORE INSERT OR UPDATE` trigger (`trg_enforce_positive_balance`) on `wallets` enforces the constraint. It fast-paths for non-negative balances and system wallets; only when `cached_balance_minor < 0` AND `is_system = false` does it query `platforms.allow_negative_balance` to decide whether to raise an error.
+
+**Configuring**: Platforms toggle the flag via `PATCH /v1/platforms/config` using their own API key. Toggling to `false` does not change existing negative balances, but future adjustments will be blocked again.
 
 ---
 

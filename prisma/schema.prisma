@@ -13,10 +13,11 @@ model Platform {
   name       String
   apiKeyHash String   @map("api_key_hash")
   apiKeyId   String   @unique @map("api_key_id") /// Public key identifier
-  status     String   @default("active") /// active | suspended | revoked
-  createdAt  BigInt   @map("created_at") /// Unix ms
-  updatedAt  BigInt   @map("updated_at") /// Unix ms
-  wallets    Wallet[]
+  status               String   @default("active") /// active | suspended | revoked
+  allowNegativeBalance Boolean  @default(false) @map("allow_negative_balance") /// When true, adjust can push wallet balance below zero
+  createdAt            BigInt   @map("created_at") /// Unix ms
+  updatedAt            BigInt   @map("updated_at") /// Unix ms
+  wallets              Wallet[]
 
   @@map("platforms")
 }

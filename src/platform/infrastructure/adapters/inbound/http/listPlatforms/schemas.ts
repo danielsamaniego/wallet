@@ -37,6 +37,7 @@ const PlatformSchema = z.object({
   id: z.string(),
   name: z.string(),
   status: z.string(),
+  allow_negative_balance: z.boolean(),
   created_at: z.number(),
   updated_at: z.number(),
 });

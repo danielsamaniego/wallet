@@ -8,51 +8,45 @@ import {
   ErrorResponseSchema,
   validationHook,
 } from "../../../../../../utils/infrastructure/hono.error.js";
-import { AdjustBalanceCommand } from "../../../../../application/command/adjustBalance/command.js";
-import { BodySchema, ParamSchema, ResponseSchema } from "./schemas.js";
+import { UpdatePlatformConfigCommand } from "../../../../../application/command/updatePlatformConfig/command.js";
+import { BodySchema, ResponseSchema } from "./schemas.js";
 
-export function adjustBalanceRoute(commandBus: ICommandBus) {
+export function updatePlatformConfigRoute(commandBus: ICommandBus) {
   return handlerFactory.createHandlers(
     describeRoute({
-      tags: ["Wallets"],
-      summary: "Adjust wallet balance (positive or negative)",
+      tags: ["Platforms"],
+      summary: "Update platform configuration",
+      description: "Update configuration flags for the authenticated platform.",
       responses: {
-        201: {
-          description: "Adjustment completed",
+        200: {
+          description: "Configuration updated",
           content: { "application/json": { schema: resolver(ResponseSchema) } },
         },
         400: {
           description: "Validation error",
           content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
         },
+        401: {
+          description: "Authentication error",
+          content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
+        },
         404: {
-          description: "Wallet not found",
+          description: "Platform not found",
           content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
         },
       },
     }),
-    zValidator("param", ParamSchema, validationHook),
     zValidator("json", BodySchema, validationHook),
     async (c) => {
-      const { walletId } = c.req.valid("param");
       const data = c.req.valid("json");
       const ctx = buildAuthenticatedAppContext(c);
 
       const result = await commandBus.dispatch(
         ctx,
-        new AdjustBalanceCommand(
-          walletId,
-          ctx.platformId,
-          BigInt(data.amount_minor),
-          data.reason,
-          c.req.header("idempotency-key") ?? "",
-          c.get("allowNegativeBalance") ?? false,
-          data.reference,
-          data.metadata,
-        ),
+        new UpdatePlatformConfigCommand(ctx.platformId, data.allow_negative_balance),
       );
 
-      return c.json({ transaction_id: result.transactionId, movement_id: result.movementId }, 201);
+      return c.json({ platform_id: result.platformId }, 200);
     },
   );
 }

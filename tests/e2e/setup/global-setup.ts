@@ -102,6 +102,22 @@ export async function setup() {
         updatedAt: now,
       },
     });
+
+    const negativeSecret = "negative-balance-secret-long-enough-for-validation";
+    await prisma.platform.upsert({
+      where: { apiKeyId: "wk_test_negative" },
+      update: {},
+      create: {
+        id: "019560a0-0000-7000-8000-e2e000000003",
+        name: "Negative Balance Platform",
+        apiKeyHash: createHash("sha256").update(negativeSecret).digest("hex"),
+        apiKeyId: "wk_test_negative",
+        status: "active",
+        allowNegativeBalance: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
   } finally {
     await prisma.$disconnect();
   }

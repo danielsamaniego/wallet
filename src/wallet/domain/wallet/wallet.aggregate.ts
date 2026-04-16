@@ -1,6 +1,10 @@
 import { AppError } from "../../../utils/kernel/appError.js";
 import { isSupportedCurrency } from "../../../utils/kernel/currency.js";
-import { ErrInvalidCurrency, ErrUnsupportedCurrency } from "./wallet.errors.js";
+import {
+  ErrAdjustWouldBreakActiveHolds,
+  ErrInvalidCurrency,
+  ErrUnsupportedCurrency,
+} from "./wallet.errors.js";
 
 export type WalletStatus = "active" | "frozen" | "closed";
 
@@ -191,18 +195,34 @@ export class Wallet {
   }
 
   /** Administrative balance adjustment. Allowed on active and frozen wallets (not closed). */
-  adjust(amountMinor: bigint, availableBalanceMinor: bigint, now: number): void {
+  adjust(
+    amountMinor: bigint,
+    availableBalanceMinor: bigint,
+    allowNegativeBalance: boolean,
+    now: number,
+  ): void {
     if (this._status === "closed") {
       throw AppError.domainRule("WALLET_CLOSED", `wallet ${this._id} is closed`);
     }
     if (amountMinor === 0n) {
       throw AppError.validation("INVALID_AMOUNT", "adjustment amount must not be zero");
     }
-    if (amountMinor < 0n && !this._isSystem && availableBalanceMinor < -amountMinor) {
-      throw AppError.domainRule(
-        "INSUFFICIENT_FUNDS",
-        `wallet ${this._id} has insufficient available funds`,
-      );
+    if (amountMinor < 0n && !this._isSystem) {
+      const wouldBeAvailable = availableBalanceMinor + amountMinor;
+      if (wouldBeAvailable < 0n) {
+        // Derive whether holds exist: available = cached - holds → holds = cached - available
+        const activeHoldsMinor = this._cachedBalanceMinor - availableBalanceMinor;
+        if (allowNegativeBalance && activeHoldsMinor > 0n) {
+          throw ErrAdjustWouldBreakActiveHolds(this._id);
+        }
+        if (!allowNegativeBalance) {
+          throw AppError.domainRule(
+            "INSUFFICIENT_FUNDS",
+            `wallet ${this._id} has insufficient available funds`,
+          );
+        }
+        // allowNegativeBalance=true and no active holds: balance may go negative
+      }
     }
     this._cachedBalanceMinor += amountMinor;
     this.touch(now);

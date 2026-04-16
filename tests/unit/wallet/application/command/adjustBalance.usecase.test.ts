@@ -85,6 +85,7 @@ describe("AdjustBalanceUseCase", () => {
         5000n,
         "Promotional credit",
         "idem-1",
+        false,
         "ref-1",
       );
 
@@ -179,6 +180,7 @@ describe("AdjustBalanceUseCase", () => {
         -3000n,
         "Error correction",
         "idem-2",
+        false,
       );
 
       it("Then it returns the transactionId and movementId", async () => {
@@ -249,12 +251,83 @@ describe("AdjustBalanceUseCase", () => {
         -15000n,
         "Large correction",
         "idem-3",
+        false,
       );
 
       it("Then throws INSUFFICIENT_FUNDS", async () => {
         await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
           return err.kind === ErrorKind.DomainRule && err.code === "INSUFFICIENT_FUNDS";
         });
+      });
+    });
+
+    // ── Negative adjustment with allowNegativeBalance=true, no holds ───
+    describe("When adjusting -15000 cents with allowNegativeBalance=true and no active holds", () => {
+      beforeEach(() => {
+        holdRepo.sumActiveHolds.mockResolvedValue(0n);
+      });
+
+      const cmd = new AdjustBalanceCommand(
+        "wallet-1",
+        "platform-1",
+        -15000n,
+        "Dispute chargeback",
+        "idem-neg",
+        true,
+      );
+
+      it("Then it succeeds and results in a negative balance", async () => {
+        const result = await sut.handle(ctx, cmd);
+
+        expect(result).toEqual({ transactionId: "tx-1", movementId: "mov-1" });
+        const savedWallet = walletRepo.save.mock.calls[0]![1] as any;
+        expect(savedWallet.cachedBalanceMinor).toBe(-5000n); // 10000 - 15000
+      });
+    });
+
+    // ── Negative adjustment with allowNegativeBalance=true, active holds ─
+    describe("When adjusting -15000 cents with allowNegativeBalance=true but active holds exist", () => {
+      beforeEach(() => {
+        holdRepo.sumActiveHolds.mockResolvedValue(2000n); // available = 8000
+      });
+
+      const cmd = new AdjustBalanceCommand(
+        "wallet-1",
+        "platform-1",
+        -15000n,
+        "Dispute chargeback",
+        "idem-holds",
+        true,
+      );
+
+      it("Then it fails with ADJUST_WOULD_BREAK_ACTIVE_HOLDS", async () => {
+        await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
+          return err.kind === ErrorKind.DomainRule && err.code === "ADJUST_WOULD_BREAK_ACTIVE_HOLDS";
+        });
+      });
+    });
+
+    // ── Negative adjustment within available despite holds ───────────
+    describe("When adjusting -1000 cents with allowNegativeBalance=true and holds within available", () => {
+      beforeEach(() => {
+        holdRepo.sumActiveHolds.mockResolvedValue(2000n); // available = 8000
+      });
+
+      const cmd = new AdjustBalanceCommand(
+        "wallet-1",
+        "platform-1",
+        -1000n,
+        "Fee within available",
+        "idem-within",
+        true,
+      );
+
+      it("Then it succeeds and balance decreases correctly", async () => {
+        const result = await sut.handle(ctx, cmd);
+
+        expect(result).toEqual({ transactionId: "tx-1", movementId: "mov-1" });
+        const savedWallet = walletRepo.save.mock.calls[0]![1] as any;
+        expect(savedWallet.cachedBalanceMinor).toBe(9000n); // 10000 - 1000
       });
     });
   });
@@ -293,6 +366,7 @@ describe("AdjustBalanceUseCase", () => {
         1000n,
         "Admin correction on frozen wallet",
         "idem-frozen",
+        false,
       );
 
       it("Then it succeeds (adjustments allowed on frozen wallets)", async () => {
@@ -316,6 +390,7 @@ describe("AdjustBalanceUseCase", () => {
         1000n,
         "reason",
         "idem-4",
+        false,
       );
 
       it("Then it throws WALLET_NOT_FOUND", async () => {
@@ -346,6 +421,7 @@ describe("AdjustBalanceUseCase", () => {
         1000n,
         "reason",
         "idem-5",
+        false,
       );
 
       it("Then it throws SYSTEM_WALLET_NOT_FOUND", async () => {
@@ -375,6 +451,7 @@ describe("AdjustBalanceUseCase", () => {
         1000n,
         "reason",
         "idem-6",
+        false,
       );
 
       it("Then it throws WALLET_NOT_FOUND (platform mismatch)", async () => {

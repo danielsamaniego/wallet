@@ -93,7 +93,11 @@ export class ImportHistoricalEntryUseCase
       // normal live operations.
       const historicalAt = cmd.historicalCreatedAt;
 
-      // For negative adjustments, compute available balance (cached - active holds)
+      // Compute real available balance (cached minus present-day active holds).
+      // Even though the historical event pre-dates today's holds, allowing the import to
+      // reduce the balance below the sum of active holds would make those holds permanently
+      // uncapturable (zombie holds: capture calls wallet.withdraw which requires cached >= hold).
+      // The operator must void active holds before importing entries that would break them.
       let availableBalance = wallet.cachedBalanceMinor;
       if (cmd.amountMinor < 0n) {
         const activeHolds = await this.holdRepo.sumActiveHolds(txCtx, wallet.id);
@@ -117,7 +121,8 @@ export class ImportHistoricalEntryUseCase
       });
 
       // Mutate user wallet aggregate at historical timestamp
-      wallet.adjust(cmd.amountMinor, availableBalance, historicalAt);
+      // Historical import is a privileged migration operation; negative balances are always allowed.
+      wallet.adjust(cmd.amountMinor, availableBalance, true, historicalAt);
 
       // Direction for transaction type and ledger entries
       const isCredit = cmd.amountMinor > 0n;

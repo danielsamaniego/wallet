@@ -91,8 +91,7 @@ export class PrismaWalletReadStore implements IWalletReadStore {
     });
 
     const activeHolds = holdSum._sum.amountMinor ?? 0n;
-    const rawAvailable = row.cachedBalanceMinor - activeHolds;
-    const availableBalance = rawAvailable < 0n ? 0n : rawAvailable;
+    const availableBalance = row.cachedBalanceMinor - activeHolds;
 
     return {
       id: row.id,

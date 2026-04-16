@@ -30,6 +30,7 @@ erDiagram
         string api_key_hash
         string api_key_id UK
         string status
+        boolean allow_negative_balance
         bigint created_at
         bigint updated_at
     }
@@ -111,6 +112,7 @@ API consumer that integrates the Wallet Service. Authenticates via API key.
 | api_key_hash | string | Hashed API key (never store plain) |
 | api_key_id | string | Public key identifier (unique) |
 | status | string | active, suspended, revoked |
+| allow_negative_balance | boolean | Default false. When true, the `adjust` command may push wallet balances below zero. All other operations (withdraw, transfer, holds) are unaffected. |
 | created_at | BIGINT | Unix ms |
 | updated_at | BIGINT | Unix ms |
 
@@ -139,6 +141,8 @@ Per-owner, per-platform, per-currency balance container. Uses optimistic locking
 **Unique constraint:** (owner_id, platform_id, currency_code)
 
 **CHECK constraint:** `wallets_supported_currency` ensures `currency_code` is one of the supported currencies (USD, EUR, MXN, CLP, KWD).
+
+**Trigger:** `trg_enforce_positive_balance` (BEFORE INSERT OR UPDATE) prevents non-system wallet balances from going negative unless `platforms.allow_negative_balance = true`. Fast-path for non-negative or system wallets; only queries Platform when balance would go negative.
 
 **Relationships:**
 - Belongs to Platform

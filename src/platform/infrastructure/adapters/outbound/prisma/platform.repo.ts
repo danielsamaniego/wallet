@@ -31,12 +31,14 @@ export class PrismaPlatformRepo implements IPlatformRepository {
         apiKeyHash: platform.apiKeyHash,
         apiKeyId: platform.apiKeyId,
         status: platform.status,
+        allowNegativeBalance: platform.allowNegativeBalance,
         createdAt: BigInt(platform.createdAt),
         updatedAt: BigInt(platform.updatedAt),
       },
       update: {
         name: platform.name,
         status: platform.status,
+        allowNegativeBalance: platform.allowNegativeBalance,
         updatedAt: BigInt(platform.updatedAt),
       },
     });
@@ -68,6 +70,7 @@ export class PrismaPlatformRepo implements IPlatformRepository {
     apiKeyHash: string;
     apiKeyId: string;
     status: string;
+    allowNegativeBalance: boolean;
     createdAt: bigint;
     updatedAt: bigint;
   }): Platform {
@@ -77,6 +80,7 @@ export class PrismaPlatformRepo implements IPlatformRepository {
       row.apiKeyHash,
       row.apiKeyId,
       row.status as PlatformStatus,
+      row.allowNegativeBalance,
       Number(row.createdAt),
       Number(row.updatedAt),
     );

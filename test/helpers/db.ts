@@ -105,3 +105,32 @@ export async function seedAttackerPlatform(): Promise<void> {
     },
   });
 }
+
+/**
+ * Platform with allowNegativeBalance=true for negative balance E2E tests.
+ */
+export const NEGATIVE_API_KEY_ID = "wk_test_negative";
+export const NEGATIVE_API_KEY_SECRET = "negative-balance-secret-long-enough-for-validation";
+export const NEGATIVE_API_KEY_HASH = createHash("sha256").update(NEGATIVE_API_KEY_SECRET).digest("hex");
+export const NEGATIVE_API_KEY = `${NEGATIVE_API_KEY_ID}.${NEGATIVE_API_KEY_SECRET}`;
+export const NEGATIVE_PLATFORM_ID = "019560a0-0000-7000-8000-e2e000000003";
+
+export async function seedNegativeBalancePlatform(): Promise<void> {
+  const prisma = getTestPrisma();
+  const now = BigInt(Date.now());
+
+  await prisma.platform.upsert({
+    where: { apiKeyId: NEGATIVE_API_KEY_ID },
+    update: {},
+    create: {
+      id: NEGATIVE_PLATFORM_ID,
+      name: "Negative Balance Platform",
+      apiKeyHash: NEGATIVE_API_KEY_HASH,
+      apiKeyId: NEGATIVE_API_KEY_ID,
+      status: "active",
+      allowNegativeBalance: true,
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+}

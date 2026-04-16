@@ -2,9 +2,22 @@
 
 ## Current Focus
 
-Wallet bounded context fully implemented and audited. Major architectural refactoring completed: `shared/` replaced by `utils/` + `common/`, `src/api/` eliminated (routes colocated with BC), `src/jobs/` replaced by scheduled jobs as inbound adapters dispatching commands via bus. CQRS bus (CommandBus/QueryBus) with middleware pipeline fully operational.
+`allow_negative_balance` per-platform feature complete. Platforms can now configure their own instance to permit administrative adjustments (`POST /v1/wallets/:id/adjust`) that push wallet balances below zero — enabling dispute resolution, chargeback, and penalty fee workflows. The `PATCH /v1/platforms/config` endpoint allows platforms to toggle this flag using their own API key.
 
-**Completed:**
+**allow_negative_balance feature (completed):**
+- `Platform` aggregate: `allowNegativeBalance` field, getter, `setAllowNegativeBalance()` method
+- Prisma schema: `allow_negative_balance BOOLEAN DEFAULT false` on `platforms` table
+- DB constraint replaced: `wallets_positive_balance` CHECK removed; replaced by `trg_enforce_positive_balance` BEFORE INSERT OR UPDATE trigger that queries `platforms.allow_negative_balance` at runtime
+- `apiKeyAuth` middleware: propagates `allowNegativeBalance` flag into `HonoVariables` (HTTP layer only, not AppContext)
+- `AdjustBalanceCommand`: carries `allowNegativeBalance: boolean` through application layer
+- `wallet.adjust()`: accepts `allowNegativeBalance` param; skips INSUFFICIENT_FUNDS guard when flag is true (system wallets always bypass)
+- `wallet.readstore.ts`: removed available balance clamp (`max(0)`) — negative values now surfaced correctly in API
+- `UpdatePlatformConfig`: full CQRS slice (command + usecase + handler + schemas + route) at `PATCH /v1/platforms/config`
+- `ImportHistoricalEntry` use case: always passes `allowNegativeBalance=true` (privileged migration op)
+- 216 E2E tests passing (including new `negative-balance.e2e.test.ts` and `config.e2e.test.ts`)
+- `src/index.ts` DB safety net check updated: validates `trg_enforce_positive_balance` trigger; removed `wallets_positive_balance` constraint check
+
+**Previously completed:**
 - Hono app with middleware chain (trackingCanonical → cors → secureHeaders → requestResponseLog global; apiKeyAuth → idempotency per route group)
 - Utils infrastructure: AppError, IIDGenerator (UUID v7), Logger chain (Pino -> SensitiveKeysFilter -> SafeLogger)
 - CQRS bus: ICommandBus/IQueryBus interfaces (`utils/application/cqrs.ts`) and implementations (`utils/infrastructure/cqrs.ts`) with middleware pipeline
@@ -59,6 +72,8 @@ Wallet bounded context fully implemented and audited. Major architectural refact
 6. **Integration tests**
 
 ## Active Decisions
+
+- **allow_negative_balance**: Per-platform flag. Flows through HonoVariables → AdjustBalanceCommand (not through AppContext, which is cross-cutting infra context only). DB enforcement via trigger (not CHECK) because triggers can reference other tables at runtime. Available balance no longer clamped to 0 in readstore. Withdraw, transfer, and holds are unaffected by the flag.
 
 - **Amounts**: Integer in smallest currency unit per ISO 4217 (BigInt) — `_minor` suffix is convention
 - **Concurrency**: Optimistic locking (version field) for ALL wallet mutations including PlaceHold/VoidHold — no SELECT FOR UPDATE in domain (see systemPatterns.md)

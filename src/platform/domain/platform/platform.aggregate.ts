@@ -8,6 +8,7 @@ export class Platform {
   private readonly _apiKeyHash: string;
   private readonly _apiKeyId: string;
   private _status: PlatformStatus;
+  private _allowNegativeBalance: boolean;
   private _createdAt: number;
   private _updatedAt: number;
 
@@ -17,6 +18,7 @@ export class Platform {
     this._apiKeyHash = "";
     this._apiKeyId = "";
     this._status = "active";
+    this._allowNegativeBalance = false;
     this._createdAt = 0;
     this._updatedAt = 0;
   }
@@ -45,6 +47,7 @@ export class Platform {
       _apiKeyHash: apiKeyHash,
       _apiKeyId: apiKeyId,
       _status: "active" as PlatformStatus,
+      _allowNegativeBalance: false,
       _createdAt: now,
       _updatedAt: now,
     });
@@ -57,6 +60,7 @@ export class Platform {
     apiKeyHash: string,
     apiKeyId: string,
     status: PlatformStatus,
+    allowNegativeBalance: boolean,
     createdAt: number,
     updatedAt: number,
   ): Platform {
@@ -67,6 +71,7 @@ export class Platform {
       _apiKeyHash: apiKeyHash,
       _apiKeyId: apiKeyId,
       _status: status,
+      _allowNegativeBalance: allowNegativeBalance,
       _createdAt: createdAt,
       _updatedAt: updatedAt,
     });
@@ -93,6 +98,9 @@ export class Platform {
   }
   get updatedAt(): number {
     return this._updatedAt;
+  }
+  get allowNegativeBalance(): boolean {
+    return this._allowNegativeBalance;
   }
 
   rename(newName: string, now: number): void {
@@ -145,6 +153,17 @@ export class Platform {
       );
     }
     this._status = "revoked";
+    this._updatedAt = now;
+  }
+
+  setAllowNegativeBalance(value: boolean, now: number): void {
+    if (this._status === "revoked") {
+      throw AppError.domainRule(
+        "PLATFORM_REVOKED",
+        `platform ${this._id} is revoked and cannot be configured`,
+      );
+    }
+    this._allowNegativeBalance = value;
     this._updatedAt = now;
   }
 }

@@ -36,6 +36,7 @@ export class PrismaPlatformReadStore implements IPlatformReadStore {
         id: true,
         name: true,
         status: true,
+        allowNegativeBalance: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -67,6 +68,7 @@ export class PrismaPlatformReadStore implements IPlatformReadStore {
     id: string;
     name: string;
     status: string;
+    allowNegativeBalance: boolean;
     createdAt: bigint;
     updatedAt: bigint;
   }): PlatformDTO {
@@ -74,6 +76,7 @@ export class PrismaPlatformReadStore implements IPlatformReadStore {
       id: row.id,
       name: row.name,
       status: row.status,
+      allow_negative_balance: row.allowNegativeBalance,
       created_at: toNumber(row.createdAt),
       updated_at: toNumber(row.updatedAt),
     };

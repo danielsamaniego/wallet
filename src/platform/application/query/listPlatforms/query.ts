@@ -5,6 +5,7 @@ export interface PlatformDTO {
   id: string;
   name: string;
   status: string;
+  allow_negative_balance: boolean;
   created_at: number;
   updated_at: number;
 }

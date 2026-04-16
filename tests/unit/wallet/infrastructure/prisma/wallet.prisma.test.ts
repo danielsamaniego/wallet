@@ -1207,8 +1207,8 @@ describe("PrismaWalletReadStore", () => {
     return { store, wallet, hold, logger };
   }
 
-  describe("getById — available balance clamped to zero", () => {
-    it("Given active holds exceed cached balance, When getById is called, Then available_balance_minor is 0", async () => {
+  describe("getById — available balance when holds exceed cached balance", () => {
+    it("Given active holds exceed cached balance, When getById is called, Then available_balance_minor reflects the actual negative available amount", async () => {
       const { store, wallet, hold } = buildReadStore();
 
       wallet.findFirst.mockResolvedValue({
@@ -1223,13 +1223,13 @@ describe("PrismaWalletReadStore", () => {
         updatedAt: 1700000000000n,
       });
 
-      // Active holds exceed balance: 8000 > 5000
+      // Active holds exceed balance: 8000 > 5000, so available = -3000
       hold.aggregate.mockResolvedValue({ _sum: { amountMinor: 8000n } });
 
       const result = await store.getById(ctx, "wallet-1", "platform-1");
 
       expect(result).not.toBeNull();
-      expect(result!.available_balance_minor).toBe(0);
+      expect(result!.available_balance_minor).toBe(-3000);
       expect(result!.balance_minor).toBe(5000);
     });
   });

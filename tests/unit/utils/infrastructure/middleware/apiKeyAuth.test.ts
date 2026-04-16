@@ -15,7 +15,9 @@ function buildApp(prisma: any) {
   });
 
   app.use("*", apiKeyAuth(prisma));
-  app.get("/test", (c) => c.json({ platformId: c.get("platformId") }));
+  app.get("/test", (c) =>
+    c.json({ platformId: c.get("platformId"), allowNegativeBalance: c.get("allowNegativeBalance") }),
+  );
 
   return app;
 }
@@ -103,6 +105,7 @@ describe("apiKeyAuth middleware", () => {
             apiKeyId: "key-id",
             apiKeyHash: secretHash,
             status: "active",
+            allowNegativeBalance: false,
           }),
         },
       };
@@ -115,6 +118,33 @@ describe("apiKeyAuth middleware", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.platformId).toBe("plat-1");
+      expect(body.allowNegativeBalance).toBe(false);
+    });
+
+    it("Then sets allowNegativeBalance=true when platform has it enabled", async () => {
+      const { createHash } = await import("node:crypto");
+      const secretHash = createHash("sha256").update("secret123").digest("hex");
+
+      const prisma = {
+        platform: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "plat-neg",
+            apiKeyId: "key-neg",
+            apiKeyHash: secretHash,
+            status: "active",
+            allowNegativeBalance: true,
+          }),
+        },
+      };
+      const app = buildApp(prisma);
+
+      const res = await app.request("/test", {
+        headers: { "x-api-key": "key-neg.secret123" },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.allowNegativeBalance).toBe(true);
     });
   });
 

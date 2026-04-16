@@ -24,6 +24,12 @@ export const ErrVersionConflict = () =>
 export const ErrInsufficientFunds = (walletId: string) =>
   AppError.domainRule("INSUFFICIENT_FUNDS", `wallet ${walletId} has insufficient available funds`);
 
+export const ErrAdjustWouldBreakActiveHolds = (walletId: string) =>
+  AppError.domainRule(
+    "ADJUST_WOULD_BREAK_ACTIVE_HOLDS",
+    `adjustment on wallet ${walletId} would reduce balance below active holds; void holds first`,
+  );
+
 export const ErrInvalidAmount = () =>
   AppError.validation("INVALID_AMOUNT", "amount must be positive");
 

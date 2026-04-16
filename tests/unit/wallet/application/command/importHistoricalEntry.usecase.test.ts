@@ -11,8 +11,8 @@ import { WalletBuilder } from "@test/helpers/builders/wallet.builder.js";
 import { createTestContext } from "@test/helpers/builders/context.builder.js";
 import { ImportHistoricalEntryUseCase } from "@/wallet/application/command/importHistoricalEntry/usecase.js";
 import { ImportHistoricalEntryCommand } from "@/wallet/application/command/importHistoricalEntry/command.js";
-import type { IWalletRepository } from "@/wallet/domain/ports/wallet.repository.js";
 import type { IHoldRepository } from "@/wallet/domain/ports/hold.repository.js";
+import type { IWalletRepository } from "@/wallet/domain/ports/wallet.repository.js";
 import type { ITransactionRepository } from "@/wallet/domain/ports/transaction.repository.js";
 import type { ILedgerEntryRepository } from "@/wallet/domain/ports/ledgerEntry.repository.js";
 import type { IMovementRepository } from "@/wallet/domain/ports/movement.repository.js";
@@ -82,6 +82,8 @@ describe("ImportHistoricalEntryUseCase", () => {
       transactionRepo.save.mockResolvedValue(undefined);
       ledgerEntryRepo.saveMany.mockResolvedValue(undefined);
       movementRepo.save.mockResolvedValue(undefined);
+      // Default: no active holds — negative adjustments go through freely.
+      holdRepo.sumActiveHolds.mockResolvedValue(0n);
     });
 
     describe("When importing +5000 cents with a historical timestamp", () => {
@@ -166,11 +168,6 @@ describe("ImportHistoricalEntryUseCase", () => {
         expect(debitEntry.createdAt).toBe(HISTORICAL_AT);
       });
 
-      it("Then holdRepo.sumActiveHolds is NOT called (positive import)", async () => {
-        await sut.handle(ctx, cmd);
-
-        expect(holdRepo.sumActiveHolds).not.toHaveBeenCalled();
-      });
     });
 
     // ── Optional metadata omitted ──────────────────────────────────
@@ -194,10 +191,8 @@ describe("ImportHistoricalEntryUseCase", () => {
     });
 
     // ── Negative historical entry ──────────────────────────────────────
-    describe("When importing -3000 cents with no active holds", () => {
-      beforeEach(() => {
-        holdRepo.sumActiveHolds.mockResolvedValue(0n);
-      });
+    describe("When importing -3000 cents", () => {
+      beforeEach(() => {});
 
       const cmd = new ImportHistoricalEntryCommand(
         "wallet-1",
@@ -261,18 +256,11 @@ describe("ImportHistoricalEntryUseCase", () => {
         expect(creditEntry.createdAt).toBe(HISTORICAL_AT);
       });
 
-      it("Then holdRepo.sumActiveHolds IS called (negative import)", async () => {
-        await sut.handle(ctx, cmd);
-
-        expect(holdRepo.sumActiveHolds).toHaveBeenCalledWith(expect.anything(), "wallet-1");
-      });
     });
 
-    // ── Negative with insufficient funds ───────────────────────────────
-    describe("When importing -15000 cents (more than available with holds)", () => {
-      beforeEach(() => {
-        holdRepo.sumActiveHolds.mockResolvedValue(2000n);
-      });
+    // ── Negative beyond cached balance but no active holds ────────────────────────
+    describe("When importing -15000 cents (more than cached balance) with no active holds", () => {
+      // holdRepo.sumActiveHolds = 0n inherited from outer beforeEach
 
       const cmd = new ImportHistoricalEntryCommand(
         "wallet-1",
@@ -284,10 +272,62 @@ describe("ImportHistoricalEntryUseCase", () => {
         HISTORICAL_AT,
       );
 
-      it("Then throws INSUFFICIENT_FUNDS", async () => {
+      it("Then succeeds and balance goes negative (no holds to protect)", async () => {
+        const result = await sut.handle(ctx, cmd);
+        expect(result).toEqual({ transactionId: "tx-1", movementId: "mov-1" });
+      });
+    });
+
+    // ── Negative import that would break active holds ──────────────────────────
+    // Allowing such an import would create zombie holds: captureHold calls
+    // wallet.withdraw(hold.amountMinor, cachedBalance) — if cached < holdAmount the
+    // capture fails with INSUFFICIENT_FUNDS and the hold can never be resolved.
+    // The operator must void active holds before importing entries that break them.
+    describe("When importing a negative amount that would reduce balance below active holds", () => {
+      beforeEach(() => {
+        // Wallet: cached=10000, holds=700 → available=9300
+        // Import -9400: wouldBeAvailable = 9300 - 9400 = -100 < 0, and holds=700 > 0
+        holdRepo.sumActiveHolds.mockResolvedValue(700n);
+      });
+
+      const cmd = new ImportHistoricalEntryCommand(
+        "wallet-1",
+        "platform-1",
+        -9400n,
+        "Correction that would break holds",
+        "ref",
+        "idem-hold-break",
+        HISTORICAL_AT,
+      );
+
+      it("Then fails with ADJUST_WOULD_BREAK_ACTIVE_HOLDS (void holds first)", async () => {
         await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
-          return err.kind === ErrorKind.DomainRule && err.code === "INSUFFICIENT_FUNDS";
+          return err.kind === ErrorKind.DomainRule && err.code === "ADJUST_WOULD_BREAK_ACTIVE_HOLDS";
         });
+      });
+    });
+
+    // ── Negative import within available balance despite active holds ──────────
+    describe("When importing a negative amount within available balance (holds exist but not broken)", () => {
+      beforeEach(() => {
+        // Wallet: cached=10000, holds=700 → available=9300
+        // Import -5000: wouldBeAvailable = 9300 - 5000 = 4300 >= 0 → allowed
+        holdRepo.sumActiveHolds.mockResolvedValue(700n);
+      });
+
+      const cmd = new ImportHistoricalEntryCommand(
+        "wallet-1",
+        "platform-1",
+        -5000n,
+        "Correction within available",
+        "ref",
+        "idem-within-available",
+        HISTORICAL_AT,
+      );
+
+      it("Then succeeds (adjustment stays within available balance)", async () => {
+        const result = await sut.handle(ctx, cmd);
+        expect(result).toEqual({ transactionId: "tx-1", movementId: "mov-1" });
       });
     });
   });

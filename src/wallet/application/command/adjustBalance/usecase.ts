@@ -101,7 +101,7 @@ export class AdjustBalanceUseCase
       });
 
       // Mutate user wallet aggregate
-      wallet.adjust(cmd.amountMinor, availableBalance, now);
+      wallet.adjust(cmd.amountMinor, availableBalance, cmd.allowNegativeBalance, now);
 
       // Determine direction for transaction type and ledger entries
       const isCredit = cmd.amountMinor > 0n;

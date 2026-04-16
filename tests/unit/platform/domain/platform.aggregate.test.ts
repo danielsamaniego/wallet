@@ -23,6 +23,11 @@ describe("Platform aggregate", () => {
       expect(p.updatedAt).toBe(NOW);
     });
 
+    it("Given valid params, When create is called, Then allowNegativeBalance defaults to false", () => {
+      const p = createDefault();
+      expect(p.allowNegativeBalance).toBe(false);
+    });
+
     it("Given a name with leading/trailing spaces, When create is called, Then name is trimmed", () => {
       const p = Platform.create("p-2", "  Trimmed  ", "hash", "kid", NOW);
       expect(p.name).toBe("Trimmed");
@@ -75,14 +80,20 @@ describe("Platform aggregate", () => {
 
   describe("reconstruct", () => {
     it("Given stored values, When reconstruct is called, Then returns a Platform with those exact values", () => {
-      const p = Platform.reconstruct("p-10", "OldName", "h", "k", "suspended", 100, 200);
+      const p = Platform.reconstruct("p-10", "OldName", "h", "k", "suspended", false, 100, 200);
       expect(p.id).toBe("p-10");
       expect(p.name).toBe("OldName");
       expect(p.apiKeyHash).toBe("h");
       expect(p.apiKeyId).toBe("k");
       expect(p.status).toBe("suspended");
+      expect(p.allowNegativeBalance).toBe(false);
       expect(p.createdAt).toBe(100);
       expect(p.updatedAt).toBe(200);
+    });
+
+    it("Given allowNegativeBalance=true, When reconstruct is called, Then getter returns true", () => {
+      const p = Platform.reconstruct("p-11", "Name", "h", "k", "active", true, 100, 200);
+      expect(p.allowNegativeBalance).toBe(true);
     });
   });
 
@@ -132,7 +143,7 @@ describe("Platform aggregate", () => {
     });
 
     it("Given a revoked platform, When suspended, Then throws PLATFORM_REVOKED", () => {
-      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", NOW, NOW);
+      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", false, NOW, NOW);
       expect(() => p.suspend(NOW + 1)).toThrowAppError(ErrorKind.DomainRule, "PLATFORM_REVOKED");
     });
 
@@ -158,7 +169,7 @@ describe("Platform aggregate", () => {
     });
 
     it("Given a revoked platform, When activated, Then throws PLATFORM_REVOKED", () => {
-      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", NOW, NOW);
+      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", false, NOW, NOW);
       expect(() => p.activate(NOW + 1)).toThrowAppError(ErrorKind.DomainRule, "PLATFORM_REVOKED");
     });
 
@@ -190,11 +201,44 @@ describe("Platform aggregate", () => {
     });
 
     it("Given an already revoked platform, When revoked again, Then throws PLATFORM_ALREADY_REVOKED", () => {
-      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", NOW, NOW);
+      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", false, NOW, NOW);
       expect(() => p.revoke(NOW + 1)).toThrowAppError(
         ErrorKind.DomainRule,
         "PLATFORM_ALREADY_REVOKED",
       );
+    });
+  });
+
+  // ── setAllowNegativeBalance ──────────────────────────────────────────
+
+  describe("setAllowNegativeBalance", () => {
+    it("Given an active platform, When setting allowNegativeBalance to true, Then getter returns true and updatedAt changes", () => {
+      const p = createDefault();
+      const later = NOW + 1000;
+      p.setAllowNegativeBalance(true, later);
+      expect(p.allowNegativeBalance).toBe(true);
+      expect(p.updatedAt).toBe(later);
+    });
+
+    it("Given an active platform with allowNegativeBalance=true, When setting to false, Then getter returns false", () => {
+      const p = Platform.reconstruct("p-1", "X", "h", "k", "active", true, NOW, NOW);
+      p.setAllowNegativeBalance(false, NOW + 1);
+      expect(p.allowNegativeBalance).toBe(false);
+    });
+
+    it("Given a revoked platform, When setting allowNegativeBalance, Then throws PLATFORM_REVOKED", () => {
+      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", false, NOW, NOW);
+      expect(() => p.setAllowNegativeBalance(true, NOW + 1)).toThrowAppError(
+        ErrorKind.DomainRule,
+        "PLATFORM_REVOKED",
+      );
+    });
+
+    it("Given a suspended platform, When setting allowNegativeBalance to true, Then succeeds", () => {
+      const p = createDefault();
+      p.suspend(NOW + 1);
+      p.setAllowNegativeBalance(true, NOW + 2);
+      expect(p.allowNegativeBalance).toBe(true);
     });
   });
 });

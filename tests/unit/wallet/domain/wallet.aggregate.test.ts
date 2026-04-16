@@ -304,19 +304,19 @@ describe("Wallet Aggregate", () => {
       describe("When adjusting +500 cents (positive)", () => {
         it("Then balance becomes 1500 cents", () => {
           const w = activeWallet(1000n);
-          w.adjust(500n, 1000n, LATER);
+          w.adjust(500n, 1000n, false, LATER);
           expect(w.cachedBalanceMinor).toBe(1500n);
         });
 
         it("Then version increments", () => {
           const w = activeWallet(1000n);
-          w.adjust(500n, 1000n, LATER);
+          w.adjust(500n, 1000n, false, LATER);
           expect(w.version).toBe(2);
         });
 
         it("Then updatedAt changes", () => {
           const w = activeWallet(1000n);
-          w.adjust(500n, 1000n, LATER);
+          w.adjust(500n, 1000n, false, LATER);
           expect(w.updatedAt).toBe(LATER);
         });
       });
@@ -324,7 +324,7 @@ describe("Wallet Aggregate", () => {
       describe("When adjusting -500 cents (negative) with available balance 1000", () => {
         it("Then balance becomes 500 cents", () => {
           const w = activeWallet(1000n);
-          w.adjust(-500n, 1000n, LATER);
+          w.adjust(-500n, 1000n, false, LATER);
           expect(w.cachedBalanceMinor).toBe(500n);
         });
       });
@@ -332,7 +332,7 @@ describe("Wallet Aggregate", () => {
       describe("When adjusting -1000 cents (exact available balance)", () => {
         it("Then balance becomes 0", () => {
           const w = activeWallet(1000n);
-          w.adjust(-1000n, 1000n, LATER);
+          w.adjust(-1000n, 1000n, false, LATER);
           expect(w.cachedBalanceMinor).toBe(0n);
         });
       });
@@ -340,7 +340,7 @@ describe("Wallet Aggregate", () => {
       describe("When adjusting -1500 cents (more than available)", () => {
         it("Then throws INSUFFICIENT_FUNDS", () => {
           const w = activeWallet(1000n);
-          expect(() => w.adjust(-1500n, 1000n, LATER))
+          expect(() => w.adjust(-1500n, 1000n, false, LATER))
             .toThrowAppError(ErrorKind.DomainRule, "INSUFFICIENT_FUNDS");
         });
       });
@@ -348,7 +348,7 @@ describe("Wallet Aggregate", () => {
       describe("When adjusting 0 cents", () => {
         it("Then throws INVALID_AMOUNT", () => {
           const w = activeWallet(1000n);
-          expect(() => w.adjust(0n, 1000n, LATER))
+          expect(() => w.adjust(0n, 1000n, false, LATER))
             .toThrowAppError(ErrorKind.Validation, "INVALID_AMOUNT");
         });
       });
@@ -358,7 +358,7 @@ describe("Wallet Aggregate", () => {
       describe("When adjusting +500 cents (positive)", () => {
         it("Then allows adjustment (admin operation)", () => {
           const w = frozenWallet(1000n);
-          w.adjust(500n, 1000n, LATER);
+          w.adjust(500n, 1000n, false, LATER);
           expect(w.cachedBalanceMinor).toBe(1500n);
         });
       });
@@ -366,7 +366,7 @@ describe("Wallet Aggregate", () => {
       describe("When adjusting -500 cents (negative)", () => {
         it("Then allows adjustment (admin operation)", () => {
           const w = frozenWallet(1000n);
-          w.adjust(-500n, 1000n, LATER);
+          w.adjust(-500n, 1000n, false, LATER);
           expect(w.cachedBalanceMinor).toBe(500n);
         });
       });
@@ -376,7 +376,7 @@ describe("Wallet Aggregate", () => {
       describe("When adjusting", () => {
         it("Then throws WALLET_CLOSED", () => {
           const w = closedWallet();
-          expect(() => w.adjust(100n, 0n, LATER))
+          expect(() => w.adjust(100n, 0n, false, LATER))
             .toThrowAppError(ErrorKind.DomainRule, "WALLET_CLOSED");
         });
       });
@@ -386,8 +386,135 @@ describe("Wallet Aggregate", () => {
       describe("When adjusting negative more than balance (system bypasses funds check)", () => {
         it("Then allows negative balance", () => {
           const w = systemWallet(1000n);
-          w.adjust(-5000n, 1000n, LATER);
+          w.adjust(-5000n, 1000n, false, LATER);
           expect(w.cachedBalanceMinor).toBe(-4000n);
+        });
+      });
+    });
+
+    describe("Given a non-system wallet and allowNegativeBalance=true", () => {
+      describe("When adjusting negative beyond cached balance with no active holds", () => {
+        it("Then allows negative balance", () => {
+          const w = activeWallet(1000n);
+          // available = cached = 1000 (no holds)
+          w.adjust(-1500n, 1000n, true, LATER);
+          expect(w.cachedBalanceMinor).toBe(-500n);
+        });
+      });
+
+      describe("When adjusting to exactly zero from positive balance with no active holds", () => {
+        it("Then balance becomes zero", () => {
+          const w = activeWallet(1000n);
+          w.adjust(-1000n, 1000n, true, LATER);
+          expect(w.cachedBalanceMinor).toBe(0n);
+        });
+      });
+
+      describe("When adjusting positive with active holds", () => {
+        it("Then allows the adjustment (positive never checks holds)", () => {
+          const w = activeWallet(1000n);
+          // cached=1000, holds=800, available=200 — positive adjust is unaffected by holds
+          w.adjust(500n, 200n, true, LATER);
+          expect(w.cachedBalanceMinor).toBe(1500n);
+        });
+      });
+
+      describe("When adjusting negative that stays above active holds", () => {
+        it("Then allows the adjustment", () => {
+          const w = activeWallet(1000n);
+          // cached=1000, holds=800, available=200 — adjust -200 leaves balance=800 >= holds
+          w.adjust(-200n, 200n, true, LATER);
+          expect(w.cachedBalanceMinor).toBe(800n);
+        });
+      });
+
+      describe("When adjusting negative exactly equal to available balance (holds exist)", () => {
+        it("Then allows the adjustment and available balance becomes zero", () => {
+          const w = activeWallet(1000n);
+          // cached=1000, holds=800, available=200 — adjust -200 leaves balance=800 = holds exactly
+          w.adjust(-200n, 200n, true, LATER);
+          expect(w.cachedBalanceMinor).toBe(800n); // 800 == holds (available=0)
+        });
+      });
+
+      describe("When adjusting negative by 1 cent with available=0 and active holds", () => {
+        it("Then throws ADJUST_WOULD_BREAK_ACTIVE_HOLDS (boundary: no room at all)", () => {
+          const w = activeWallet(800n);
+          // cached=800, holds=800, available=0 — even -1 breaks the hold
+          expect(() => w.adjust(-1n, 0n, true, LATER))
+            .toThrowAppError(ErrorKind.DomainRule, "ADJUST_WOULD_BREAK_ACTIVE_HOLDS");
+        });
+      });
+
+      describe("When adjusting negative that would go below active holds", () => {
+        it("Then throws ADJUST_WOULD_BREAK_ACTIVE_HOLDS", () => {
+          const w = activeWallet(1000n);
+          // cached=1000, holds=800, available=200 — adjust -500 would break holds
+          expect(() => w.adjust(-500n, 200n, true, LATER))
+            .toThrowAppError(ErrorKind.DomainRule, "ADJUST_WOULD_BREAK_ACTIVE_HOLDS");
+        });
+      });
+
+      describe("When already at negative balance with no active holds and adjusting further negative", () => {
+        it("Then allows going more negative", () => {
+          const w = activeWallet(-500n);
+          // cached=-500, available=-500 (no holds), adjust -100
+          w.adjust(-100n, -500n, true, LATER);
+          expect(w.cachedBalanceMinor).toBe(-600n);
+        });
+      });
+
+      describe("When adjusting by -1 cent with available=0 and no active holds", () => {
+        it("Then allows going to -1 (no holds to break)", () => {
+          const w = activeWallet(0n);
+          // cached=0, available=0, holds=0 — no holds, going negative is fine
+          w.adjust(-1n, 0n, true, LATER);
+          expect(w.cachedBalanceMinor).toBe(-1n);
+        });
+      });
+    });
+
+    describe("Given a non-system wallet and allowNegativeBalance=false", () => {
+      describe("When adjusting negative beyond available balance", () => {
+        it("Then throws INSUFFICIENT_FUNDS", () => {
+          const w = activeWallet(500n);
+          expect(() => w.adjust(-1000n, 500n, false, LATER))
+            .toThrowAppError(ErrorKind.DomainRule, "INSUFFICIENT_FUNDS");
+        });
+      });
+
+      describe("When adjusting negative by 1 cent with available=0 and no holds", () => {
+        it("Then throws INSUFFICIENT_FUNDS (boundary: minimum overdraft)", () => {
+          const w = activeWallet(0n);
+          expect(() => w.adjust(-1n, 0n, false, LATER))
+            .toThrowAppError(ErrorKind.DomainRule, "INSUFFICIENT_FUNDS");
+        });
+      });
+
+      describe("When adjusting negative beyond available balance due to active holds", () => {
+        it("Then throws INSUFFICIENT_FUNDS (same error regardless of holds)", () => {
+          const w = activeWallet(1000n);
+          // cached=1000, holds=800, available=200 — adjust -500 fails same as before
+          expect(() => w.adjust(-500n, 200n, false, LATER))
+            .toThrowAppError(ErrorKind.DomainRule, "INSUFFICIENT_FUNDS");
+        });
+      });
+
+      describe("When adjusting negative by 1 cent with available=0 due to active holds", () => {
+        it("Then throws INSUFFICIENT_FUNDS (boundary with holds, flag=false)", () => {
+          const w = activeWallet(800n);
+          // cached=800, holds=800, available=0
+          expect(() => w.adjust(-1n, 0n, false, LATER))
+            .toThrowAppError(ErrorKind.DomainRule, "INSUFFICIENT_FUNDS");
+        });
+      });
+
+      describe("When adjusting positive with active holds", () => {
+        it("Then allows the adjustment (positive never blocked)", () => {
+          const w = activeWallet(1000n);
+          // cached=1000, holds=800, available=200 — positive unaffected
+          w.adjust(500n, 200n, false, LATER);
+          expect(w.cachedBalanceMinor).toBe(1500n);
         });
       });
     });

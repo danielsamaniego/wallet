@@ -7,9 +7,11 @@ import { resolve } from "node:path";
 import {
   TEST_API_KEY,
   ATTACKER_API_KEY,
+  NEGATIVE_API_KEY,
   truncateAll,
   seedTestPlatform,
   seedAttackerPlatform,
+  seedNegativeBalancePlatform,
   getTestPrisma,
 } from "@test/helpers/db.js";
 
@@ -29,9 +31,11 @@ export interface TestApp {
   request: (path: string, init?: RequestInit) => Promise<Response>;
   /** Make an authenticated request as the attacker platform */
   attackerRequest: (path: string, init?: RequestInit) => Promise<Response>;
+  /** Make an authenticated request as the negative-balance platform */
+  negativeBalanceRequest: (path: string, init?: RequestInit) => Promise<Response>;
   /** Make an unauthenticated request (no API key) */
   unauthenticatedRequest: (path: string, init?: RequestInit) => Promise<Response>;
-  /** Reset DB state: truncate all + re-seed both platforms */
+  /** Reset DB state: truncate all + re-seed all platforms */
   reset: () => Promise<void>;
 }
 
@@ -57,6 +61,7 @@ export async function createTestApp(): Promise<TestApp> {
     await truncateAll();
     await seedTestPlatform();
     await seedAttackerPlatform();
+    await seedNegativeBalancePlatform();
   };
 
   return {
@@ -64,6 +69,7 @@ export async function createTestApp(): Promise<TestApp> {
     prisma,
     request: makeRequest(TEST_API_KEY),
     attackerRequest: makeRequest(ATTACKER_API_KEY),
+    negativeBalanceRequest: makeRequest(NEGATIVE_API_KEY),
     unauthenticatedRequest: makeRequest(),
     reset,
   };

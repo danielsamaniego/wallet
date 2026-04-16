@@ -22,6 +22,7 @@ export function apiKeyAuth(prisma: PrismaClient): MiddlewareHandler<{ Variables:
     }
 
     c.set("platformId", result.platformId);
+    c.set("allowNegativeBalance", result.allowNegativeBalance);
     await next();
   };
 }
@@ -29,7 +30,7 @@ export function apiKeyAuth(prisma: PrismaClient): MiddlewareHandler<{ Variables:
 async function validateApiKey(
   prisma: PrismaClient,
   apiKey: string,
-): Promise<{ platformId: string } | null> {
+): Promise<{ platformId: string; allowNegativeBalance: boolean } | null> {
   // apiKey format: "<api_key_id>.<secret>"
   const dotIndex = apiKey.indexOf(".");
   if (dotIndex === -1) return null;
@@ -52,5 +53,5 @@ async function validateApiKey(
     return null;
   }
 
-  return { platformId: platform.id };
+  return { platformId: platform.id, allowNegativeBalance: platform.allowNegativeBalance };
 }

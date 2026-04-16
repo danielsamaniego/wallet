@@ -63,9 +63,16 @@
 - [x] Multi-currency support: explicit currency catalog (USD, EUR, MXN, CLP, KWD) with `wallets_supported_currency` CHECK constraint in PostgreSQL
 - [x] Renamed all `_cents` fields to `_minor` across domain, application, infrastructure, API, and documentation to accurately reflect multi-currency minor unit semantics
 
+## Implemented (continued)
+
+- [x] `allow_negative_balance` per-platform flag: Platform aggregate field + DB trigger (`trg_enforce_positive_balance`) replacing CHECK constraint + `PATCH /v1/platforms/config` endpoint + available balance sign-correct readstore
+- [x] `AdjustBalanceCommand` carries `allowNegativeBalance: boolean`; use case passes to domain; HTTP handler reads from HonoVariables (not AppContext)
+- [x] `ImportHistoricalEntry` always passes `allowNegativeBalance=true` (privileged migration op)
+- [x] E2E test suite expanded: 216 tests passing (`negative-balance.e2e.test.ts`, `config.e2e.test.ts`, third test platform seeded)
+
 ## What's Left to Build
 
-- [ ] Platform bounded context: domain, app, infrastructure adapters
+- [ ] Platform bounded context: remaining platform management features (suspend, revoke, API key rotation)
 - [ ] Platform API (endpoints auto-documented via hono-openapi once implemented)
 - [ ] Body size limit middleware (64KB)
 - [ ] Status CHECK constraints in PostgreSQL (wallets, holds, transactions, ledger_entries)

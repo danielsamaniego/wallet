@@ -10,6 +10,7 @@ import type { CanonicalAccumulator } from "../kernel/observability/canonical.js"
 export type HonoVariables = {
   trackingId: string;
   platformId: string | undefined;
+  allowNegativeBalance: boolean | undefined;
   startTs: number;
   canonical: CanonicalAccumulator;
 };

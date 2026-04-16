@@ -23,7 +23,8 @@ async function verifyDatabaseSafetyNets(prisma: PrismaClient): Promise<void> {
       'trg_prevent_wallet_deletion',
       'trg_wallet_status_machine',
       'trg_hold_status_machine',
-      'trg_movement_zero_sum'
+      'trg_movement_zero_sum',
+      'trg_enforce_positive_balance'
     )`;
 
   const expectedTriggers = [
@@ -37,6 +38,7 @@ async function verifyDatabaseSafetyNets(prisma: PrismaClient): Promise<void> {
     "trg_wallet_status_machine",
     "trg_hold_status_machine",
     "trg_movement_zero_sum",
+    "trg_enforce_positive_balance",
   ];
   const foundTriggers = triggers.map((t) => t.tgname);
   const missingTriggers = expectedTriggers.filter((name) => !foundTriggers.includes(name));
@@ -49,7 +51,6 @@ async function verifyDatabaseSafetyNets(prisma: PrismaClient): Promise<void> {
   }
 
   const expectedConstraints = [
-    "wallets_positive_balance",
     "holds_positive_amount",
     "transactions_positive_amount",
     "wallets_valid_status",
@@ -61,7 +62,7 @@ async function verifyDatabaseSafetyNets(prisma: PrismaClient): Promise<void> {
   const constraints = await prisma.$queryRaw<{ conname: string }[]>`
     SELECT conname FROM pg_constraint
     WHERE conname IN (
-      'wallets_positive_balance', 'holds_positive_amount', 'transactions_positive_amount',
+      'holds_positive_amount', 'transactions_positive_amount',
       'wallets_valid_status', 'holds_valid_status', 'transactions_valid_type', 'ledger_entries_valid_entry_type'
     )`;
 

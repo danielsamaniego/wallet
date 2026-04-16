@@ -13,6 +13,7 @@ export class AdjustBalanceCommand extends ICommand<AdjustBalanceResult> {
     public readonly amountMinor: bigint,
     public readonly reason: string,
     public readonly idempotencyKey: string,
+    public readonly allowNegativeBalance: boolean,
     public readonly reference?: string,
     public readonly metadata?: Record<string, unknown>,
   ) {
