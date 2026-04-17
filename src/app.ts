@@ -64,6 +64,9 @@ export function createApp(deps: Dependencies) {
   );
   app.use("*", requestResponseLog(deps.logger));
 
+  // Root redirects to the interactive API docs.
+  app.get("/", (c) => c.redirect("/docs"));
+
   // Health check — verifies DB connectivity before reporting healthy.
   app.get("/health", async (c) => {
     let db: "connected" | "disconnected" = "disconnected";

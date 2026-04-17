@@ -131,6 +131,20 @@ describe("createApp", () => {
     });
   });
 
+  // ── root redirect ───────────────────────────────────────────────────
+
+  describe("root redirect", () => {
+    it("Given a request to /, When called, Then redirects to /docs", async () => {
+      const deps = buildDeps();
+      const app = createApp(deps);
+
+      const res = await app.request("/");
+
+      expect(res.status).toBe(302);
+      expect(res.headers.get("location")).toBe("/docs");
+    });
+  });
+
   // ── health check ───────────────────────────────────────────────────
 
   describe("health check", () => {
