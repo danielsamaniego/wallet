@@ -69,6 +69,8 @@
 - [x] `AdjustBalanceCommand` carries `allowNegativeBalance: boolean`; use case passes to domain; HTTP handler reads from HonoVariables (not AppContext)
 - [x] `ImportHistoricalEntry` computes real available balance via `holdRepo.sumActiveHolds()` for negative adjustments; domain receives `allowNegativeBalance=true` to allow negative push, but hold-zombie check still runs (zombie hold = capture permanently fails because `cached < holdAmount` post-import)
 - [x] E2E test suite expanded: 221 tests passing (`negative-balance.e2e.test.ts`, `config.e2e.test.ts`, third test platform seeded)
+- [x] `Charge` endpoint: `POST /v1/wallets/:walletId/charge` for platform-initiated fees and commissions with optional memo
+- [x] Root path redirects to `/docs` for interactive API discovery
 
 ## What's Left to Build
 
