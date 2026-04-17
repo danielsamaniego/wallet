@@ -88,6 +88,7 @@ async function main() {
 
   // Preflight: verify DB safety nets before accepting traffic
   await verifyDatabaseSafetyNets(deps.prisma);
+  deps.logger.info("✓ Database safety nets verified");
 
   const app = createApp(deps);
 
