@@ -2,7 +2,9 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp, type TestApp } from "../setup/test-app.js";
 import { TEST_PLATFORM_ID } from "@test/helpers/db.js";
 
-describe("Platform Config E2E", () => {
+// Platform config routes are temporarily disabled in platforms.routes.ts until
+// proper admin authentication is implemented. Re-enable once the route is back.
+describe.skip("Platform Config E2E", () => {
   let app: TestApp;
   let idempCounter = 0;
 
