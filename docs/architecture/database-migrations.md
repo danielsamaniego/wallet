@@ -42,14 +42,16 @@ Prisma generates:
 prisma migrate deploy
 ```
 
-### Schema-only sync (dev prototyping)
+### Schema-only sync (dev prototyping) — DANGEROUS
 
 ```bash
 pnpm db:push
 # or: prisma db push
 ```
 
-Use for rapid prototyping; does **not** create migration history. Prefer `migrate dev` for auditable changes.
+⚠️ **DO NOT use `db push` for any schema change that must reach production.** `db push` syncs the local database without generating a migration file. Since production only applies changes via `prisma migrate deploy`, any column/table/index added with `db push` alone will **never exist in production** — causing runtime errors like "column does not exist". This has caused production incidents.
+
+**Rule: every `schema.prisma` change must have a matching migration committed alongside it.** If the local DB was previously synced with `db push` and has drift, run `prisma migrate reset` first to realign, then `prisma migrate dev` to generate the new migration.
 
 ### Generate client
 

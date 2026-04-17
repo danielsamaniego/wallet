@@ -101,7 +101,12 @@ Before any task, read the relevant files below. Do not implement before loading 
 1. For domain changes, update `docs/domain.md` and `docs/datamodel.md` before or with the code change.
 2. After significant work, update `docs/activeContext.md` and `docs/progress.md`.
 3. Follow `docs/architecture/backend-architecture.md` and `docs/architecture/systemPatterns.md`; domain and application depend only on interfaces.
-4. Use Prisma Migrate for schema changes. Local flow: `pnpm db:update`. Production flow: `prisma migrate deploy` and then `psql $DATABASE_URL -f prisma/immutable_ledger.sql`.
+4. **CRITICAL — Schema changes require a migration.** Every modification to `prisma/schema.prisma` (new column, renamed field, new model, index change, etc.) MUST be accompanied by a Prisma migration in the same commit. The flow is:
+   1. Edit `prisma/schema.prisma`
+   2. Run `npx prisma migrate dev --name <descriptive_name> --config prisma/prisma.config.ts` against the local Docker DB
+   3. Verify the generated SQL in `prisma/migrations/<timestamp>_<name>/migration.sql`
+   4. Commit both the schema change AND the migration file together
+   **NEVER use `db push` as a substitute for `migrate dev`.** `db push` syncs the local DB without creating a migration file — production only applies migrations via `prisma migrate deploy`, so schema changes made with `db push` alone will never reach production. This has caused production outages. If the local DB has drift (was previously synced with `db push`), run `prisma migrate reset` first to realign it with the migration history, then generate the new migration. Production flow: `prisma migrate deploy` and then `psql $DATABASE_URL -f prisma/immutable_ledger.sql`.
 5. For a new endpoint: create `schemas.ts`, create `handler.ts` with `describeRoute()` and validators, then register the route in the appropriate routes file.
 6. Before every commit, run `pnpm test` and `pnpm test:e2e`. Both suites must pass at 100% with zero failures. Never commit with broken tests.
 7. Husky hooks are mandatory. Never bypass them with `--no-verify`.
