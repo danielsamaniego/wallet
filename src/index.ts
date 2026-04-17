@@ -79,8 +79,8 @@ async function verifyDatabaseSafetyNets(prisma: PrismaClient): Promise<void> {
 
 /**
  * Local development entry point.
- * Starts a long-running Node.js server with scheduled jobs and DB verification.
- * For Vercel deployment, see api/index.ts instead.
+ * Starts a long-running Node.js server with scheduled jobs and database safety verification.
+ * For Vercel serverless deployment, see api/index.ts instead.
  */
 async function main() {
   const config = loadConfig();
@@ -88,7 +88,6 @@ async function main() {
 
   // Preflight: verify DB safety nets before accepting traffic
   await verifyDatabaseSafetyNets(deps.prisma);
-  deps.logger.info("✓ Database safety nets verified");
 
   const app = createApp(deps);
 
