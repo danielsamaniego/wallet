@@ -63,7 +63,7 @@ Internal components and workflows.
 | **LedgerEntry** | Single line in the double-entry ledger. CREDIT or DEBIT with `amount_minor` (signed) and `balance_after_minor`. Belongs to a movement. Append-only, immutable. |
 | **Hold** | Authorization that reserves funds without moving them. Lifecycle: active → captured \| voided \| expired. |
 | **Platform** | API consumer. Identified by API key; owns wallets for its users. May have `allow_negative_balance=true` to permit administrative adjustments below zero. |
-| **System Wallet** | Special wallet (e.g., per-currency omnibus) acting as counterparty for deposits and withdrawals. May have negative balance. |
+| **System Wallet** | Special wallet (per `(platform, currency)`) acting as counterparty for deposits and withdrawals. May have negative balance. Physically sharded into N rows (default 32, configurable per platform, only-increase) to avoid hot-row contention; a deterministic hash of the user wallet id picks the shard for each movement. Transparent to API consumers — balances and lookups aggregate across shards. See architecture/systemPatterns.md § "System Wallet Sharding". |
 | **Amount** | Integer in smallest currency unit per ISO 4217 (e.g., cents for USD, yen for JPY, fils for BHD). No floats; like Stripe. Column names use `_minor` as convention. The service supports an explicit currency catalog: USD, EUR, MXN, CLP, KWD. |
 | **Currency** | ISO 4217 code (e.g., USD, EUR). Each wallet has one currency. |
 

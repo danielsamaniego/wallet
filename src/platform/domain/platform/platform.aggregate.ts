@@ -2,6 +2,11 @@ import { AppError } from "../../../utils/kernel/appError.js";
 
 export type PlatformStatus = "active" | "suspended" | "revoked";
 
+/** Default number of shards for a brand-new platform's system wallets. */
+export const DEFAULT_SYSTEM_WALLET_SHARD_COUNT = 32;
+/** Inclusive upper bound; enforced both here and by the DB CHECK `ck_platform_shard_count_bounds`. */
+export const MAX_SYSTEM_WALLET_SHARD_COUNT = 1024;
+
 export class Platform {
   private readonly _id: string;
   private _name: string;
@@ -9,6 +14,7 @@ export class Platform {
   private readonly _apiKeyId: string;
   private _status: PlatformStatus;
   private _allowNegativeBalance: boolean;
+  private _systemWalletShardCount: number;
   private _createdAt: number;
   private _updatedAt: number;
 
@@ -19,6 +25,7 @@ export class Platform {
     this._apiKeyId = "";
     this._status = "active";
     this._allowNegativeBalance = false;
+    this._systemWalletShardCount = DEFAULT_SYSTEM_WALLET_SHARD_COUNT;
     this._createdAt = 0;
     this._updatedAt = 0;
   }
@@ -48,6 +55,7 @@ export class Platform {
       _apiKeyId: apiKeyId,
       _status: "active" as PlatformStatus,
       _allowNegativeBalance: false,
+      _systemWalletShardCount: DEFAULT_SYSTEM_WALLET_SHARD_COUNT,
       _createdAt: now,
       _updatedAt: now,
     });
@@ -61,6 +69,7 @@ export class Platform {
     apiKeyId: string,
     status: PlatformStatus,
     allowNegativeBalance: boolean,
+    systemWalletShardCount: number,
     createdAt: number,
     updatedAt: number,
   ): Platform {
@@ -72,6 +81,7 @@ export class Platform {
       _apiKeyId: apiKeyId,
       _status: status,
       _allowNegativeBalance: allowNegativeBalance,
+      _systemWalletShardCount: systemWalletShardCount,
       _createdAt: createdAt,
       _updatedAt: updatedAt,
     });
@@ -101,6 +111,9 @@ export class Platform {
   }
   get allowNegativeBalance(): boolean {
     return this._allowNegativeBalance;
+  }
+  get systemWalletShardCount(): number {
+    return this._systemWalletShardCount;
   }
 
   rename(newName: string, now: number): void {
@@ -164,6 +177,44 @@ export class Platform {
       );
     }
     this._allowNegativeBalance = value;
+    this._updatedAt = now;
+  }
+
+  /**
+   * Updates the system wallet shard count. Can only increase (decreasing would
+   * orphan balance in higher shards). Bounded at [1, MAX_SYSTEM_WALLET_SHARD_COUNT]
+   * to match the DB CHECK constraint `ck_platform_shard_count_bounds`.
+   *
+   * Callers should invoke `ensureSystemWalletShards` on the wallet repository
+   * for every currency already in use by this platform after persisting the
+   * new count, so the new shards are eagerly materialised.
+   */
+  setSystemWalletShardCount(newCount: number, now: number): void {
+    if (this._status === "revoked") {
+      throw AppError.domainRule(
+        "PLATFORM_REVOKED",
+        `platform ${this._id} is revoked and cannot be configured`,
+      );
+    }
+    if (!Number.isInteger(newCount)) {
+      throw AppError.validation(
+        "INVALID_SHARD_COUNT",
+        `system_wallet_shard_count must be an integer, got ${newCount}`,
+      );
+    }
+    if (newCount < 1 || newCount > MAX_SYSTEM_WALLET_SHARD_COUNT) {
+      throw AppError.validation(
+        "INVALID_SHARD_COUNT",
+        `system_wallet_shard_count must be between 1 and ${MAX_SYSTEM_WALLET_SHARD_COUNT}, got ${newCount}`,
+      );
+    }
+    if (newCount < this._systemWalletShardCount) {
+      throw AppError.domainRule(
+        "SHARD_COUNT_DECREASE_NOT_ALLOWED",
+        `system_wallet_shard_count can only be increased (current ${this._systemWalletShardCount}, requested ${newCount})`,
+      );
+    }
+    this._systemWalletShardCount = newCount;
     this._updatedAt = now;
   }
 }

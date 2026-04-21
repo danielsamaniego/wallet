@@ -101,7 +101,7 @@ CREATE TRIGGER trg_reconcile_after_ledger
   FOR EACH ROW EXECUTE FUNCTION reconcile_balance_after_ledger();
 
 -- Field lock: identity fields of a wallet are immutable after creation.
--- Blocks direct SQL changes to owner_id, platform_id, currency_code, is_system, created_at.
+-- Blocks direct SQL changes to owner_id, platform_id, currency_code, is_system, shard_index, created_at.
 -- Only cached_balance_minor, status, version, and updated_at are allowed to change.
 CREATE OR REPLACE FUNCTION prevent_wallet_field_tampering()
 RETURNS trigger AS $$
@@ -117,6 +117,9 @@ BEGIN
   END IF;
   IF OLD.is_system IS DISTINCT FROM NEW.is_system THEN
     RAISE EXCEPTION 'FIELD_LOCK: wallets.is_system is immutable';
+  END IF;
+  IF OLD.shard_index IS DISTINCT FROM NEW.shard_index THEN
+    RAISE EXCEPTION 'FIELD_LOCK: wallets.shard_index is immutable';
   END IF;
   IF OLD.created_at IS DISTINCT FROM NEW.created_at THEN
     RAISE EXCEPTION 'FIELD_LOCK: wallets.created_at is immutable';

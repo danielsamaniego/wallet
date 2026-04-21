@@ -41,14 +41,14 @@ Command handlers use a `TransactionManager` port to execute multiple repository 
 
 ### Server-side retry (internal to TransactionManager)
 
-The `PrismaTransactionManager` includes an **internal retry loop** (up to 3 attempts with exponential backoff: 30ms, 60ms, 120ms) for retryable errors:
+The `PrismaTransactionManager` includes an **internal retry loop** (up to 5 attempts with full-jitter exponential backoff: each inter-attempt sleep is a uniform random in `[1, 30·2^(n-1)]` ms, so per-attempt ceilings are 30/60/120/240 ms) for retryable errors:
 
 - **VERSION_CONFLICT**: Our domain-level optimistic locking error.
-- **PostgreSQL serialization failure** (SQLSTATE 40001 / Prisma P2034): Thrown under Serializable isolation when PostgreSQL detects a read/write dependency conflict.
+- **PostgreSQL serialization failure** (SQLSTATE 40001 / Prisma P2034 / `TransactionWriteConflict`): Thrown under Serializable isolation when PostgreSQL (or the Prisma 7 engine) detects a read/write or write/write dependency conflict.
 
 If all retries are exhausted, serialization failures are escalated as `VERSION_CONFLICT` (409) so the client can retry with the same idempotency key. Non-retryable errors propagate immediately without retry.
 
-This means the client sees retries only when the server's internal attempts are insufficient — for most low-contention workloads, conflicts resolve within the 3 internal attempts without the client ever knowing.
+The retry knobs are set to the industry-standard defaults (AWS backoff guidance): jitter prevents retry waves from re-colliding at the same clock tick, and 5 attempts give SSI one more chance to pick a winning serialization order than 3. Under extreme cross-wallet contention (hundreds of concurrent transactions on the same sharded `(platform, currency)`), no retry tuning saves the day — we measured deterministic 3-retry and jittered 5-retry and both land in the same band on the 300×4 load test. The right lever at that point is lowering contention at the source (more shards, smaller tx footprint); whatever survives is the client's to retry via the same `Idempotency-Key`.
 
 ## Logging
 
@@ -123,13 +123,14 @@ Paginated GET endpoints use a **reusable listing system** (`utils/kernel/listing
 | Control | Use |
 |---------|-----|
 | Distributed lock (LockRunner) | **Outer serialization layer** for mutating use cases. Acquires a Redis mutex keyed by resource ID (`wallet-lock:<walletId>`) before the transaction starts, so concurrent writers queue instead of racing. Optional (feature-flagged). If the backend is unreachable the runner falls through transparently and optimistic locking remains as the safety net. See § "Distributed Lock" below. |
-| Optimistic locking | User wallet mutations (single and multi-wallet), **including PlaceHold and VoidHold** which call `wallet.touchForHoldChange()` + `walletRepo.save()` to participate in version contention. `version` field checked on save; mismatch → VERSION_CONFLICT. TransactionManager retries internally (3 attempts, exponential backoff); if exhausted, escalates `409 VERSION_CONFLICT` to client, who retries with same idempotency key. **System wallets** use `adjustSystemWalletBalance()` with atomic increment instead — no version check needed, eliminates hot-row contention. |
+| Optimistic locking | User wallet mutations (single and multi-wallet), **including PlaceHold and VoidHold** which call `wallet.touchForHoldChange()` + `walletRepo.save()` to participate in version contention. `version` field checked on save; mismatch → VERSION_CONFLICT. TransactionManager retries internally (3 attempts, exponential backoff); if exhausted, escalates `409 VERSION_CONFLICT` to client, who retries with same idempotency key. |
+| System wallet sharding | Every movement debits/credits a system wallet for `(platform, currency)` to keep the ledger zero-sum. The system side is sharded into N buckets (default 32) keyed by `wallets.shard_index`; each mutation routes to a bucket via a deterministic FNV-1a hash of the user wallet id and writes with a single `UPDATE … RETURNING` (atomic increment, no read-then-write). Sharding is the mechanism that stops the system wallet from becoming a hot-row bottleneck under cross-wallet concurrency. Shard count is per-platform and only-increase. See § "System Wallet Sharding" below. |
 | Idempotency keys | All mutations. Atomic acquire pattern: INSERT pending record before execution; concurrent duplicates get `409 IDEMPOTENCY_KEY_IN_PROGRESS` or cached response. Transient errors (5xx, 409) are released, not cached. Request hash includes `method:path:body` so the same key on a different endpoint is rejected. Payload mismatch → `422 IDEMPOTENCY_PAYLOAD_MISMATCH`. |
 | DB constraints | Uniqueness, referential integrity, positive amounts, balance rules as safety net. |
 
 ### Why optimistic locking, not SELECT FOR UPDATE
 
-We use optimistic locking (version field) for **user wallet** mutations, including multi-wallet operations like transfers. System wallets use atomic increment (`cached_balance_minor + delta`) instead of version check — they have no balance constraints that require read-before-write. We deliberately avoid `SELECT FOR UPDATE` (pessimistic locking) because:
+We use optimistic locking (version field) for **user wallet** mutations, including multi-wallet operations like transfers. System wallets use atomic increment (`cached_balance_minor + delta`) on a sharded row (see § "System Wallet Sharding") instead of a version check — they have no balance constraints that require read-before-write. We deliberately avoid `SELECT FOR UPDATE` (pessimistic locking) because:
 
 1. **Hexagonal purity**: `SELECT FOR UPDATE` is a SQL-specific concept. Putting it in the domain port (`WalletRepository.findByIdForUpdate`) leaks infrastructure into the domain. If we switch to MongoDB, DynamoDB, or an event store, pessimistic row locking doesn't exist. The `version` field is database-agnostic — any persistence adapter can implement it.
 
@@ -245,6 +246,70 @@ Plus structured logs at every transition (acquire start/ok/contended/backend-err
 - Use cases: mock `LockRunner` via `createMockLockRunner()` (pass-through — executes `fn` directly without touching the real port).
 - Adapter: unit-tested against a `mock<Redis>` from `vitest-mock-extended`.
 - E2E: [tests/e2e/wallet/wallet-lock.e2e.test.ts](../../tests/e2e/wallet/wallet-lock.e2e.test.ts) covers happy-path concurrency, cross-wallet parallelism, mixed mutations, and **forced contention via an external Redis holder** (connects to Redis at `localhost:6380` and holds the key with a foreign token) to validate the 409 LOCK_CONTENDED wire path.
+
+## System Wallet Sharding
+
+### Why
+
+Every financial movement (deposit, withdraw, charge, adjust, captureHold, importHistoricalEntry) debits or credits a **system wallet** for the `(platform, currency)` pair to preserve the double-entry ledger's zero-sum invariant. With a single system wallet per `(platform, currency)` that row becomes a hot account: cross-wallet concurrency ends up serializing on it, and under `SERIALIZABLE` isolation PostgreSQL aborts the losing transactions with `40001 / TransactionWriteConflict`. Pre-sharding load tests with 350 wallets × 4 concurrent ops cleared well below 25% success.
+
+Sharding fans the system side out over N deterministic buckets, so `SUM(shard_balance) + SUM(user_balance) = 0` remains the invariant while the concurrent write footprint drops from "one row" to "N rows".
+
+### Data model
+
+- **`platforms.system_wallet_shard_count`** (int, default 32, 1..1024, only-increase) — how many shards exist for each `(platform, currency)` under this tenant.
+- **`wallets.shard_index`** (int NOT NULL, default 0, CHECK >= 0) — the bucket the row belongs to. User wallets keep `shard_index = 0`; system wallets span `0..shard_count-1`.
+- **Unique constraint** on `(owner_id, platform_id, currency_code, shard_index)`. NOT NULL is required because Postgres treats NULLs as distinct, which would let duplicate user wallets slip past.
+- Immutable-ledger trigger (`prevent_wallet_field_tampering`) protects `shard_index` against `UPDATE` alongside id/owner/platform/currency/is_system.
+
+### Routing (deterministic, application-side)
+
+- Pure FNV-1a 32-bit hash over the **user wallet id**: `systemWalletShardIndex(userWalletId, shardCount)` lives in `src/utils/kernel/shard.ts`. Same user wallet → same shard for the life of the platform's shard count.
+- When the shard count grows, existing movements keep routing to old buckets; new wallets distribute across the expanded range. Historical ledger entries are never rewritten.
+
+### Transparent reads
+
+Balances are computed as `SUM(cached_balance_minor) WHERE is_system = true AND platform_id = ? AND currency_code = ?` via `IWalletRepository.sumSystemWalletBalance`. Public read stores filter `is_system = false`, so API consumers never see the shard rows.
+
+### Write path (UPDATE + RETURNING, single statement)
+
+Mutation use cases route the system side via:
+
+```ts
+const shardIndex = systemWalletShardIndex(wallet.id, cmd.systemWalletShardCount);
+const systemSide = await this.walletRepo.adjustSystemShardBalance(
+  txCtx, wallet.platformId, wallet.currencyCode, shardIndex, delta, now,
+);
+// systemSide.walletId feeds the ledger entry; systemSide.cachedBalanceMinor = balance_after.
+```
+
+`adjustSystemShardBalance` compiles to `UPDATE wallets SET cached_balance_minor = cached_balance_minor + $delta, updated_at = $now WHERE owner_id = 'SYSTEM' AND platform_id = ? AND currency_code = ? AND shard_index = ? RETURNING id, cached_balance_minor`. Doing the read and the write in one statement avoids the read/write dependency that `SERIALIZABLE` would otherwise turn into an abort.
+
+### Materialisation
+
+- **Lazy, idempotent.** `ensureSystemWalletShards(ctx, platformId, currencyCode, count, now)` runs a `findMany` + `createMany({ skipDuplicates: true })` so concurrent callers converge on the same N rows.
+- Called **outside the transaction** from `CreateWalletUseCase` — materialising inside the SERIALIZABLE tx caused read/write conflicts on the shard rows under concurrent createWallet requests for the same `(platform, currency)`.
+- Also called from `UpdatePlatformConfigUseCase` when `system_wallet_shard_count` increases: it lists every currency already in use for the platform and ensures the expanded shard set for each.
+
+### Config update semantics
+
+- `UpdatePlatformConfigUseCase` accepts an optional `systemWalletShardCount`. The Platform aggregate enforces **only-increase** (`setSystemWalletShardCount` rejects any value < current) and bounds `1..1024`. Shrinking would silently strand balance in "orphan" shards that no live user wallet hashes into.
+- Defaults live in `src/platform/domain/platform/platform.aggregate.ts`: `DEFAULT_SYSTEM_WALLET_SHARD_COUNT = 32`, `MAX_SYSTEM_WALLET_SHARD_COUNT = 1024`.
+
+### Interaction with the TransactionManager
+
+With sharding in place, remaining `SERIALIZABLE` aborts come from genuine cross-row contention at high concurrency. The TransactionManager's `isRetryable` predicate matches:
+- `AppError.VERSION_CONFLICT`
+- Prisma `P2034`
+- Error `.name === "TransactionWriteConflict"`
+- Messages containing `"TransactionWriteConflict"`, `"could not serialize access"`, or `"write conflict"`.
+
+After 3 internal retries it wraps any remaining serialization failure as `409 VERSION_CONFLICT`, which clients retry with the same `Idempotency-Key`. Non-retryable errors still surface as `500`.
+
+### Testing
+
+- Unit: [tests/unit/utils/kernel/shard.test.ts](../../tests/unit/utils/kernel/shard.test.ts), [tests/unit/wallet/infrastructure/prisma/wallet.prisma.test.ts](../../tests/unit/wallet/infrastructure/prisma/wallet.prisma.test.ts) covers `findSystemShard`, `adjustSystemShardBalance`, `ensureSystemWalletShards`, `sumSystemWalletBalance`, `listSystemWalletCurrencies`.
+- E2E: [tests/e2e/wallet/system-wallet-sharding.e2e.test.ts](../../tests/e2e/wallet/system-wallet-sharding.e2e.test.ts) asserts `>95%` success on a 150-wallet × 4-op cross-wallet load test, the ledger zero-sum invariant across all shards, default shard count = 32, lazy re-materialisation after a shard is deleted, and that system shards never leak into the public `/v1/wallets` listing.
 
 ## BigInt Serialization
 

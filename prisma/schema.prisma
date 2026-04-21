@@ -15,9 +15,12 @@ model Platform {
   apiKeyId   String   @unique @map("api_key_id") /// Public key identifier
   status               String   @default("active") /// active | suspended | revoked
   allowNegativeBalance Boolean  @default(false) @map("allow_negative_balance") /// When true, adjust can push wallet balance below zero
-  createdAt            BigInt   @map("created_at") /// Unix ms
-  updatedAt            BigInt   @map("updated_at") /// Unix ms
-  wallets              Wallet[]
+  /// Number of shards for this platform's system wallets (one logical system wallet per currency → N physical rows).
+  /// See systemPatterns.md § "System Wallet Sharding". Can only be increased (domain-enforced).
+  systemWalletShardCount Int @default(32) @map("system_wallet_shard_count")
+  createdAt              BigInt   @map("created_at") /// Unix ms
+  updatedAt              BigInt   @map("updated_at") /// Unix ms
+  wallets                Wallet[]
 
   @@map("platforms")
 }
@@ -34,6 +37,10 @@ model Wallet {
   status             String        @default("active") /// active | frozen | closed
   version            Int           @default(1) /// Optimistic locking
   isSystem           Boolean       @default(false) @map("is_system") /// True for system/omnibus wallets
+  /// Shard index. `0` for user wallets (always — they are their own shard 0).
+  /// `0..N-1` for system wallets, where N = platform.systemWalletShardCount.
+  /// See systemPatterns.md § "System Wallet Sharding".
+  shardIndex         Int           @default(0) @map("shard_index")
   createdAt          BigInt        @map("created_at") /// Unix ms
   updatedAt          BigInt        @map("updated_at") /// Unix ms
   transactions              Transaction[] @relation("WalletTransactions")
@@ -41,8 +48,9 @@ model Wallet {
   ledgerEntries             LedgerEntry[]
   holds                     Hold[]
 
-  @@unique([ownerId, platformId, currencyCode])
+  @@unique([ownerId, platformId, currencyCode, shardIndex])
   @@index([platformId, status])
+  @@index([platformId, currencyCode, isSystem])
   @@map("wallets")
 }
 

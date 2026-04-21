@@ -32,6 +32,7 @@ export class PrismaPlatformRepo implements IPlatformRepository {
         apiKeyId: platform.apiKeyId,
         status: platform.status,
         allowNegativeBalance: platform.allowNegativeBalance,
+        systemWalletShardCount: platform.systemWalletShardCount,
         createdAt: BigInt(platform.createdAt),
         updatedAt: BigInt(platform.updatedAt),
       },
@@ -39,6 +40,7 @@ export class PrismaPlatformRepo implements IPlatformRepository {
         name: platform.name,
         status: platform.status,
         allowNegativeBalance: platform.allowNegativeBalance,
+        systemWalletShardCount: platform.systemWalletShardCount,
         updatedAt: BigInt(platform.updatedAt),
       },
     });
@@ -71,6 +73,7 @@ export class PrismaPlatformRepo implements IPlatformRepository {
     apiKeyId: string;
     status: string;
     allowNegativeBalance: boolean;
+    systemWalletShardCount: number;
     createdAt: bigint;
     updatedAt: bigint;
   }): Platform {
@@ -81,6 +84,7 @@ export class PrismaPlatformRepo implements IPlatformRepository {
       row.apiKeyId,
       row.status as PlatformStatus,
       row.allowNegativeBalance,
+      row.systemWalletShardCount,
       Number(row.createdAt),
       Number(row.updatedAt),
     );

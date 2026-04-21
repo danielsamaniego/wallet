@@ -113,6 +113,7 @@ API consumer that integrates the Wallet Service. Authenticates via API key.
 | api_key_id | string | Public key identifier (unique) |
 | status | string | active, suspended, revoked |
 | allow_negative_balance | boolean | Default false. When true, the `adjust` command may push wallet balances below zero. All other operations (withdraw, transfer, holds) are unaffected. |
+| system_wallet_shard_count | int | Default 32, range 1..1024, **only-increase**. How many shards back the system wallet for each `(platform, currency)`. See systemPatterns.md § "System Wallet Sharding". |
 | created_at | BIGINT | Unix ms |
 | updated_at | BIGINT | Unix ms |
 
@@ -135,14 +136,17 @@ Per-owner, per-platform, per-currency balance container. Uses optimistic locking
 | status | string | active, frozen, closed |
 | version | int | Optimistic locking for user wallets; incremented on every mutation (deposit, withdraw, transfer, captureHold, placeHold, voidHold, freeze, unfreeze, close). System wallets bypass version check -- they use atomic increment (`cached_balance_minor + delta`) to avoid hot-row contention. Not exposed in the API -- clients use idempotency keys for retry, not version numbers |
 | is_system | boolean | True for system/omnibus wallets |
+| shard_index | int | NOT NULL, default 0, CHECK >= 0. User wallets keep 0; system wallets span `0..platform.system_wallet_shard_count - 1`. A deterministic FNV-1a hash of the user wallet id picks the shard on every movement. See systemPatterns.md § "System Wallet Sharding". |
 | created_at | BIGINT | Unix ms |
 | updated_at | BIGINT | Unix ms |
 
-**Unique constraint:** (owner_id, platform_id, currency_code)
+**Unique constraint:** (owner_id, platform_id, currency_code, shard_index)
 
 **CHECK constraint:** `wallets_supported_currency` ensures `currency_code` is one of the supported currencies (USD, EUR, MXN, CLP, KWD).
 
 **Trigger:** `trg_enforce_positive_balance` (BEFORE INSERT OR UPDATE) prevents non-system wallet balances from going negative unless `platforms.allow_negative_balance = true`. Fast-path for non-negative or system wallets; only queries Platform when balance would go negative.
+
+**Trigger:** `prevent_wallet_field_tampering` (BEFORE UPDATE) blocks mutations to immutable columns: `id`, `owner_id`, `platform_id`, `currency_code`, `is_system`, and `shard_index`. `shard_index` is immutable because every ledger entry references the specific system shard row, and re-homing would orphan historical entries from their balance source.
 
 **Relationships:**
 - Belongs to Platform

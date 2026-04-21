@@ -2,7 +2,23 @@
 
 ## Current Focus
 
-**Distributed lock feature landed.** The service now has a Redis-backed per-resource serialization layer that wraps all 12 mutating use cases. Under concurrent same-wallet writes, requests queue on a Redis mutex instead of racing on the DB version, eliminating the 409 VERSION_CONFLICT storm observed under real load. Optimistic locking remains as the safety net.
+**System wallet sharding landed.** The system wallet is no longer a single hot row per `(platform, currency)`. It is physically fanned out across N shards (default 32, configurable per platform via `platforms.system_wallet_shard_count`, only-increase). Every movement routes to a shard via a deterministic FNV-1a hash of the user wallet id and writes with a single `UPDATE … RETURNING` (atomic increment, no read-then-write). This closes the residual hot-row surface left behind by the distributed lock, which serialized user wallets only.
+
+**Sharding feature (completed):**
+- `wallets.shard_index` (int, NOT NULL, default 0, CHECK >= 0) + unique `(owner_id, platform_id, currency_code, shard_index)`. User wallets keep 0; system wallets span `0..count-1`.
+- `platforms.system_wallet_shard_count` (int, default 32, 1..1024, only-increase enforced at the domain boundary by `Platform.setSystemWalletShardCount`).
+- `src/utils/kernel/shard.ts` — pure FNV-1a hash, zero deps.
+- `IWalletRepository` port rewritten: `findSystemWallet` / `adjustSystemWalletBalance` gone; replaced by `adjustSystemShardBalance`, `findSystemShard`, `ensureSystemWalletShards`, `sumSystemWalletBalance`, `listSystemWalletCurrencies`.
+- All 6 financial mutation use cases route the system side via the hash; `adjustSystemShardBalance` runs `UPDATE wallets SET cached_balance_minor = cached_balance_minor + $delta, updated_at = $now … RETURNING id, cached_balance_minor`, so the shard read happens in the same statement as the write and no longer creates a read/write dependency that `SERIALIZABLE` aborts.
+- `CreateWalletUseCase.handle` calls `ensureSystemWalletShards` **outside** the SERIALIZABLE tx; inside the tx we only check for duplicate owner and save the user wallet. Materialising shards inside the tx caused aborts under concurrent createWallet bursts for the same `(platform, currency)`.
+- `UpdatePlatformConfigUseCase` accepts an optional `systemWalletShardCount`. When it grows, the use case lists every currency in use for the platform and ensures the expanded shard set for each (idempotent via `skipDuplicates`).
+- `ReadStore`s filter `is_system = false` for the public wallet listing; shards never leak into `/v1/wallets`.
+- Immutable-ledger trigger (`prevent_wallet_field_tampering`) now also blocks `UPDATE` on `shard_index`.
+- TransactionManager's `isRetryable` extended to match Prisma 7's `TransactionWriteConflict` class and messages ("TransactionWriteConflict", "write conflict", "could not serialize access", code "P2034"). Previously these leaked as 500 under heavy cross-wallet load instead of being retried or wrapped as 409 VERSION_CONFLICT.
+- Load test [tests/e2e/wallet/system-wallet-sharding.e2e.test.ts](../tests/e2e/wallet/system-wallet-sharding.e2e.test.ts): 150 wallets × 4 concurrent deposits each (600 ops) clears `>95%` success with zero 500s; remaining non-201s are 409 VERSION_CONFLICTs, retryable by the client with the same `Idempotency-Key`.
+- Full 100% unit coverage maintained (834 tests); 258 E2E tests pass.
+
+**Distributed lock feature (already landed):** The service has a Redis-backed per-resource serialization layer that wraps all 12 mutating use cases. Under concurrent same-wallet writes, requests queue on a Redis mutex instead of racing on the DB version, eliminating the 409 VERSION_CONFLICT storm on user wallets. Optimistic locking remains as the safety net.
 
 **Lock feature (completed):**
 - Port `IDistributedLock` + app-level `LockRunner` + `RedisDistributedLock` adapter (ioredis, SET NX PX + token-aware Lua release).
@@ -14,7 +30,7 @@
 - Full 100% coverage maintained. New E2E tests in `wallet-lock.e2e.test.ts` (50/100 concurrent deposits, cross-wallet parallelism, mixed deposit/withdraw/adjust, forced contention via external Redis holder).
 - Docs updated: see `systemPatterns.md` § "Distributed Lock" for the canonical usage guide.
 
-**Known limitation, deliberately out of scope**: the lock serializes user wallets only. The **system wallet** (single row per platform+currency) is still updated via atomic increment (`adjustSystemWalletBalance`). Under cross-wallet high concurrency on the same platform+currency, PostgreSQL SERIALIZABLE can still abort on the shared row — this is the residual 409 VERSION_CONFLICT surface that future work (sharded system wallets, or extending the lock to `system-wallet:<id>`) can address.
+The residual hot-row surface called out when the lock shipped is now closed by sharding (see above). `adjustSystemWalletBalance` is gone; every mutation writes through one of N `adjustSystemShardBalance` rows.
 
 ---
 

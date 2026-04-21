@@ -7,13 +7,25 @@ import type { ILogger } from "../kernel/observability/logger.port.js";
 const mainLogTag = "PrismaTransactionManager";
 
 /** Max internal retries on retryable errors before escalating to client. */
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 5;
 
-/** Base delay in ms for exponential backoff between retries (30ms, 60ms, 120ms). */
+/**
+ * Base delay in ms for the exponential backoff ceiling between retries.
+ * Actual delay uses "full jitter": uniform random in [1, BASE * 2^(n-1)] ms.
+ * Per-attempt ceiling: 30, 60, 120, 240 ms.
+ *
+ * Jitter desynchronises waves of losing transactions that would otherwise
+ * retry at the same clock tick and collide again.
+ */
 const BASE_DELAY_MS = 30;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryDelayMs(attempt: number): number {
+  const ceiling = BASE_DELAY_MS * 2 ** (attempt - 1);
+  return Math.floor(Math.random() * ceiling) + 1;
 }
 
 /**
@@ -22,18 +34,27 @@ function sleep(ms: number): Promise<void> {
  * - PostgreSQL serialization failure (40001 / P2034): thrown under
  *   Serializable isolation when PostgreSQL detects a read/write
  *   dependency conflict between concurrent transactions.
+ * - Prisma's `TransactionWriteConflict` class: thrown when the query engine
+ *   detects a write/write conflict during the transaction (no code/message
+ *   match — only `name`). Covers the same family as 40001 at the engine level.
  */
 function isRetryable(err: unknown): boolean {
   // Our domain error for optimistic locking
   if (AppError.is(err) && err.code === "VERSION_CONFLICT") return true;
 
   // PostgreSQL serialization failure (Prisma surfaces it as P2034 or
-  // wraps the underlying 40001 SQLSTATE in the error message)
+  // wraps the underlying 40001 SQLSTATE in the error message). Prisma 7's
+  // engine also throws errors whose `name` or `message` is literally
+  // "TransactionWriteConflict" (depending on where in the call stack the
+  // error is raised), so match both.
   if (typeof err === "object" && err !== null) {
     const e = err as Record<string, unknown>;
     if (e.code === "P2034") return true;
-    if (typeof e.message === "string" && e.message.includes("could not serialize access"))
-      return true;
+    if (e.name === "TransactionWriteConflict") return true;
+    const msg = typeof e.message === "string" ? e.message : "";
+    if (msg.includes("TransactionWriteConflict")) return true;
+    if (msg.includes("could not serialize access")) return true;
+    if (msg.includes("write conflict")) return true;
   }
 
   return false;
@@ -63,7 +84,7 @@ export class PrismaTransactionManager implements ITransactionManager {
         return result;
       } catch (err) {
         if (isRetryable(err) && attempt < MAX_RETRIES) {
-          const delayMs = BASE_DELAY_MS * 2 ** (attempt - 1); // Exponential backoff.
+          const delayMs = retryDelayMs(attempt);
           this.logger.info(ctx, `${methodLogTag} retryable conflict, retrying internally`, {
             attempt,
             max_retries: MAX_RETRIES,

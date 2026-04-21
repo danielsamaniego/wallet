@@ -15,6 +15,7 @@ function buildApp(commandBus: ICommandBus) {
     c.set("canonical", new CanonicalAccumulator());
     c.set("platformId", "platform-1");
     c.set("allowNegativeBalance", false);
+    c.set("systemWalletShardCount", 32);
     await next();
   });
 
@@ -43,10 +44,10 @@ describe("updatePlatformConfigRoute", () => {
     });
   });
 
-  describe("Given a request with an invalid body (missing field)", () => {
-    it("When PATCH /config is called, Then returns 400 validation error", async () => {
+  describe("Given a request with an empty body (all fields optional)", () => {
+    it("When PATCH /config is called, Then still dispatches (no-op update) and returns 200", async () => {
       const commandBus: ICommandBus = {
-        dispatch: vi.fn(),
+        dispatch: vi.fn().mockResolvedValue({ platformId: "platform-1" }),
       };
       const app = buildApp(commandBus);
 
@@ -54,6 +55,43 @@ describe("updatePlatformConfigRoute", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(200);
+      expect(commandBus.dispatch).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("Given a request with system_wallet_shard_count=64", () => {
+    it("When PATCH /config is called, Then dispatches with the shard count", async () => {
+      const commandBus: ICommandBus = {
+        dispatch: vi.fn().mockResolvedValue({ platformId: "platform-1" }),
+      };
+      const app = buildApp(commandBus);
+
+      const res = await app.request("/config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ system_wallet_shard_count: 64 }),
+      });
+
+      expect(res.status).toBe(200);
+      const dispatched = (commandBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as {
+        systemWalletShardCount: number | undefined;
+      };
+      expect(dispatched.systemWalletShardCount).toBe(64);
+    });
+  });
+
+  describe("Given a request with a shard count above the max (1025)", () => {
+    it("When PATCH /config is called, Then returns 400 validation error", async () => {
+      const commandBus: ICommandBus = { dispatch: vi.fn() };
+      const app = buildApp(commandBus);
+
+      const res = await app.request("/config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ system_wallet_shard_count: 1025 }),
       });
 
       expect(res.status).toBe(400);

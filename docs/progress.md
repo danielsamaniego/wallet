@@ -78,6 +78,12 @@
 - [x] OpenAPI: 409 `LOCK_CONTENDED`/`VERSION_CONFLICT` declared on all 12 mutating endpoints.
 - [x] Per-request canonical metrics for observability: `lock.attempts`, `lock.transient_errors`, `lock.token_mismatch`, `lock.acquired`, `lock.contended`, `lock.fallthrough`, `lock.duration_ms`; Redis connection lifecycle events hooked in wiring.
 - [x] E2E coverage in `tests/e2e/wallet/wallet-lock.e2e.test.ts`: 50/100 concurrent deposits, cross-wallet parallelism preservation, mixed deposit/withdraw/adjust on same wallet, forced contention via external Redis holder to validate the 409 `LOCK_CONTENDED` wire path.
+- [x] **System wallet sharding**: `wallets.shard_index` (NOT NULL, default 0) + `platforms.system_wallet_shard_count` (default 32, 1..1024, only-increase). FNV-1a hash routes each movement to one of N shards; `adjustSystemShardBalance` uses `UPDATE … RETURNING` for a single-statement read+write. All 6 mutation use cases updated; `findSystemWallet`/`adjustSystemWalletBalance` removed.
+- [x] `ensureSystemWalletShards` is lazy + idempotent (`findMany` + `createMany(skipDuplicates)`); called outside the SERIALIZABLE tx from `CreateWalletUseCase` to avoid cross-request aborts on shard rows.
+- [x] `UpdatePlatformConfig` accepts `systemWalletShardCount`; when it grows, materialises the expanded set for every currency in use on the platform. Domain enforces only-increase.
+- [x] Immutable-ledger trigger `prevent_wallet_field_tampering` extended to block `UPDATE` on `shard_index`.
+- [x] TransactionManager's `isRetryable` extended to match Prisma 7's `TransactionWriteConflict` class + messages; previously leaked to 500 under heavy cross-wallet load.
+- [x] E2E coverage in `tests/e2e/wallet/system-wallet-sharding.e2e.test.ts`: 150 wallets × 4 concurrent deposits each (600 ops) at `>95%` success with zero 500s; ledger zero-sum invariant across all shards; lazy re-materialisation after shard delete; system shards never leak into `/v1/wallets` listing.
 
 ## What's Left to Build
 
@@ -97,7 +103,7 @@
 - [ ] Integration tests
 - [x] Idempotency record TTL cleanup job (60s interval) — implemented as command dispatched via bus
 - [x] API documentation (auto-generated OpenAPI + Scalar UI at /docs)
-- [ ] **System wallet contention** (follow-up to the distributed lock): under cross-wallet concurrency on the same `platform+currency`, the shared system-wallet row remains a hot spot (`adjustSystemWalletBalance` + SERIALIZABLE abort). Candidate approaches: sharded system wallets (`system-EUR-0…N`), extending `LockRunner` to `system-wallet:<id>`, or moving the counterpart update out of the tx. Not addressed by the current lock feature.
+- [x] ~~System wallet contention~~ — closed by sharding (see above). Residual 409s under extreme load are expected SERIALIZABLE aborts on other rows (user wallet, transaction, ledger index), retryable by the client with the same `Idempotency-Key`.
 
 ## Known Issues
 

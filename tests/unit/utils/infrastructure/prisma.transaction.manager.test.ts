@@ -180,6 +180,83 @@ describe("PrismaTransactionManager", () => {
     });
   });
 
+  describe("run — retry on TransactionWriteConflict (Prisma engine error class)", () => {
+    it("Given a TransactionWriteConflict on first attempt, When run is called, Then retries and succeeds", async () => {
+      const { manager, prisma } = buildManager();
+      let callCount = 0;
+      (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(async (fn: Function) => {
+        callCount++;
+        if (callCount === 1) {
+          const err = new Error("write conflict") as Error;
+          (err as Error & { name: string }).name = "TransactionWriteConflict";
+          throw err;
+        }
+        return fn({});
+      });
+
+      const result = await manager.run(ctx, async () => "ok");
+
+      expect(result).toBe("ok");
+      expect(callCount).toBe(2);
+    });
+  });
+
+  describe("run — retry on 'write conflict' message fallback", () => {
+    it("Given an error whose only signal is 'write conflict' in the message, When run is called, Then retries and succeeds", async () => {
+      const { manager, prisma } = buildManager();
+      let callCount = 0;
+      (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(async (fn: Function) => {
+        callCount++;
+        if (callCount === 1) {
+          throw new Error("transaction failed: write conflict detected");
+        }
+        return fn({});
+      });
+
+      const result = await manager.run(ctx, async () => "ok");
+
+      expect(result).toBe("ok");
+      expect(callCount).toBe(2);
+    });
+  });
+
+  describe("run — non-retryable object error with non-string message", () => {
+    it("Given an object error whose message is not a string, When run is called, Then throws immediately without retry", async () => {
+      const { manager, prisma } = buildManager();
+      let callCount = 0;
+      // An object shaped like an error but without the string message that our
+      // retry heuristics inspect. Exercises the `typeof e.message === 'string'`
+      // fallback branch in isRetryable.
+      const weirdError = { code: "SOME_OTHER", name: "WeirdError", message: 12345 };
+      (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+        callCount++;
+        throw weirdError;
+      });
+
+      await expect(manager.run(ctx, async () => "never")).rejects.toBe(weirdError);
+      expect(callCount).toBe(1);
+    });
+  });
+
+  describe("run — retry on message 'TransactionWriteConflict' (Prisma 7 engine path)", () => {
+    it("Given an error whose message is exactly 'TransactionWriteConflict', When run is called, Then retries and succeeds", async () => {
+      const { manager, prisma } = buildManager();
+      let callCount = 0;
+      (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(async (fn: Function) => {
+        callCount++;
+        if (callCount === 1) {
+          throw new Error("TransactionWriteConflict");
+        }
+        return fn({});
+      });
+
+      const result = await manager.run(ctx, async () => "ok");
+
+      expect(result).toBe("ok");
+      expect(callCount).toBe(2);
+    });
+  });
+
   describe("run — P2034 retries exhausted escalated to VERSION_CONFLICT", () => {
     it("Given P2034 error on all attempts, When run exhausts retries, Then escalates to VERSION_CONFLICT", async () => {
       // Given

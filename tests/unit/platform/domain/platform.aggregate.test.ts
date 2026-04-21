@@ -28,6 +28,11 @@ describe("Platform aggregate", () => {
       expect(p.allowNegativeBalance).toBe(false);
     });
 
+    it("Given valid params, When create is called, Then systemWalletShardCount defaults to 32", () => {
+      const p = createDefault();
+      expect(p.systemWalletShardCount).toBe(32);
+    });
+
     it("Given a name with leading/trailing spaces, When create is called, Then name is trimmed", () => {
       const p = Platform.create("p-2", "  Trimmed  ", "hash", "kid", NOW);
       expect(p.name).toBe("Trimmed");
@@ -80,7 +85,7 @@ describe("Platform aggregate", () => {
 
   describe("reconstruct", () => {
     it("Given stored values, When reconstruct is called, Then returns a Platform with those exact values", () => {
-      const p = Platform.reconstruct("p-10", "OldName", "h", "k", "suspended", false, 100, 200);
+      const p = Platform.reconstruct("p-10", "OldName", "h", "k", "suspended", false, 32, 100, 200);
       expect(p.id).toBe("p-10");
       expect(p.name).toBe("OldName");
       expect(p.apiKeyHash).toBe("h");
@@ -92,7 +97,7 @@ describe("Platform aggregate", () => {
     });
 
     it("Given allowNegativeBalance=true, When reconstruct is called, Then getter returns true", () => {
-      const p = Platform.reconstruct("p-11", "Name", "h", "k", "active", true, 100, 200);
+      const p = Platform.reconstruct("p-11", "Name", "h", "k", "active", true, 32, 100, 200);
       expect(p.allowNegativeBalance).toBe(true);
     });
   });
@@ -143,7 +148,7 @@ describe("Platform aggregate", () => {
     });
 
     it("Given a revoked platform, When suspended, Then throws PLATFORM_REVOKED", () => {
-      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", false, NOW, NOW);
+      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", false, 32, NOW, NOW);
       expect(() => p.suspend(NOW + 1)).toThrowAppError(ErrorKind.DomainRule, "PLATFORM_REVOKED");
     });
 
@@ -169,7 +174,7 @@ describe("Platform aggregate", () => {
     });
 
     it("Given a revoked platform, When activated, Then throws PLATFORM_REVOKED", () => {
-      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", false, NOW, NOW);
+      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", false, 32, NOW, NOW);
       expect(() => p.activate(NOW + 1)).toThrowAppError(ErrorKind.DomainRule, "PLATFORM_REVOKED");
     });
 
@@ -201,7 +206,7 @@ describe("Platform aggregate", () => {
     });
 
     it("Given an already revoked platform, When revoked again, Then throws PLATFORM_ALREADY_REVOKED", () => {
-      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", false, NOW, NOW);
+      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", false, 32, NOW, NOW);
       expect(() => p.revoke(NOW + 1)).toThrowAppError(
         ErrorKind.DomainRule,
         "PLATFORM_ALREADY_REVOKED",
@@ -221,13 +226,13 @@ describe("Platform aggregate", () => {
     });
 
     it("Given an active platform with allowNegativeBalance=true, When setting to false, Then getter returns false", () => {
-      const p = Platform.reconstruct("p-1", "X", "h", "k", "active", true, NOW, NOW);
+      const p = Platform.reconstruct("p-1", "X", "h", "k", "active", true, 32, NOW, NOW);
       p.setAllowNegativeBalance(false, NOW + 1);
       expect(p.allowNegativeBalance).toBe(false);
     });
 
     it("Given a revoked platform, When setting allowNegativeBalance, Then throws PLATFORM_REVOKED", () => {
-      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", false, NOW, NOW);
+      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", false, 32, NOW, NOW);
       expect(() => p.setAllowNegativeBalance(true, NOW + 1)).toThrowAppError(
         ErrorKind.DomainRule,
         "PLATFORM_REVOKED",
@@ -239,6 +244,62 @@ describe("Platform aggregate", () => {
       p.suspend(NOW + 1);
       p.setAllowNegativeBalance(true, NOW + 2);
       expect(p.allowNegativeBalance).toBe(true);
+    });
+  });
+
+  // ── setSystemWalletShardCount ────────────────────────────────────────
+
+  describe("setSystemWalletShardCount", () => {
+    it("Given an active platform, When increasing the count, Then getter returns the new value and updatedAt advances", () => {
+      const p = createDefault(); // default 32
+      p.setSystemWalletShardCount(64, NOW + 1000);
+      expect(p.systemWalletShardCount).toBe(64);
+      expect(p.updatedAt).toBe(NOW + 1000);
+    });
+
+    it("Given the same count, When called, Then succeeds (idempotent — equal is not a decrease)", () => {
+      const p = createDefault();
+      expect(() => p.setSystemWalletShardCount(32, NOW + 1)).not.toThrow();
+    });
+
+    it("Given a smaller count, When called, Then throws SHARD_COUNT_DECREASE_NOT_ALLOWED", () => {
+      const p = createDefault(); // 32
+      expect(() => p.setSystemWalletShardCount(16, NOW + 1)).toThrowAppError(
+        ErrorKind.DomainRule,
+        "SHARD_COUNT_DECREASE_NOT_ALLOWED",
+      );
+    });
+
+    it("Given count below 1, When called, Then throws INVALID_SHARD_COUNT", () => {
+      const p = createDefault();
+      expect(() => p.setSystemWalletShardCount(0, NOW + 1)).toThrowAppError(
+        ErrorKind.Validation,
+        "INVALID_SHARD_COUNT",
+      );
+    });
+
+    it("Given count above the upper bound, When called, Then throws INVALID_SHARD_COUNT", () => {
+      const p = createDefault();
+      expect(() => p.setSystemWalletShardCount(1025, NOW + 1)).toThrowAppError(
+        ErrorKind.Validation,
+        "INVALID_SHARD_COUNT",
+      );
+    });
+
+    it("Given a non-integer count, When called, Then throws INVALID_SHARD_COUNT", () => {
+      const p = createDefault();
+      expect(() => p.setSystemWalletShardCount(32.5, NOW + 1)).toThrowAppError(
+        ErrorKind.Validation,
+        "INVALID_SHARD_COUNT",
+      );
+    });
+
+    it("Given a revoked platform, When called, Then throws PLATFORM_REVOKED", () => {
+      const p = Platform.reconstruct("p-1", "X", "h", "k", "revoked", false, 32, NOW, NOW);
+      expect(() => p.setSystemWalletShardCount(64, NOW + 1)).toThrowAppError(
+        ErrorKind.DomainRule,
+        "PLATFORM_REVOKED",
+      );
     });
   });
 });

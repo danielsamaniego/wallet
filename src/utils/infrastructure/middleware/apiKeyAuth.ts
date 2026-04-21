@@ -23,6 +23,7 @@ export function apiKeyAuth(prisma: PrismaClient): MiddlewareHandler<{ Variables:
 
     c.set("platformId", result.platformId);
     c.set("allowNegativeBalance", result.allowNegativeBalance);
+    c.set("systemWalletShardCount", result.systemWalletShardCount);
     await next();
   };
 }
@@ -30,7 +31,11 @@ export function apiKeyAuth(prisma: PrismaClient): MiddlewareHandler<{ Variables:
 async function validateApiKey(
   prisma: PrismaClient,
   apiKey: string,
-): Promise<{ platformId: string; allowNegativeBalance: boolean } | null> {
+): Promise<{
+  platformId: string;
+  allowNegativeBalance: boolean;
+  systemWalletShardCount: number;
+} | null> {
   // apiKey format: "<api_key_id>.<secret>"
   const dotIndex = apiKey.indexOf(".");
   if (dotIndex === -1) return null;
@@ -53,5 +58,9 @@ async function validateApiKey(
     return null;
   }
 
-  return { platformId: platform.id, allowNegativeBalance: platform.allowNegativeBalance };
+  return {
+    platformId: platform.id,
+    allowNegativeBalance: platform.allowNegativeBalance,
+    systemWalletShardCount: platform.systemWalletShardCount,
+  };
 }

@@ -43,7 +43,11 @@ export function updatePlatformConfigRoute(commandBus: ICommandBus) {
 
       const result = await commandBus.dispatch(
         ctx,
-        new UpdatePlatformConfigCommand(ctx.platformId, data.allow_negative_balance),
+        new UpdatePlatformConfigCommand(
+          ctx.platformId,
+          data.allow_negative_balance,
+          data.system_wallet_shard_count,
+        ),
       );
 
       return c.json({ platform_id: result.platformId }, 200);
