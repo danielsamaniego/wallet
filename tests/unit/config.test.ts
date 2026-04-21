@@ -152,6 +152,7 @@ describe("loadConfig", () => {
       delete process.env.WALLET_LOCK_TTL_MS;
       delete process.env.WALLET_LOCK_WAIT_MS;
       delete process.env.WALLET_LOCK_RETRY_MS;
+      delete process.env.WALLET_LOCK_TRANSPORT;
       delete process.env.REDIS_URL;
     });
 
@@ -163,17 +164,38 @@ describe("loadConfig", () => {
     });
 
     describe("When WALLET_LOCK_ENABLED=true and REDIS_URL is set", () => {
-      it("Then walletLock carries the Redis URL and default timings", () => {
+      it("Then walletLock carries the Redis URL, default tcp transport, and default timings", () => {
         process.env.WALLET_LOCK_ENABLED = "true";
         process.env.REDIS_URL = "redis://localhost:6379";
 
         const config = loadConfig();
         expect(config.walletLock).toEqual({
           redisUrl: "redis://localhost:6379",
+          transport: "tcp",
           ttlMs: 10_000,
           waitMs: 5_000,
           retryMs: 50,
         });
+      });
+    });
+
+    describe("When WALLET_LOCK_TRANSPORT=rest is set", () => {
+      it("Then walletLock.transport is 'rest' (enables the HTTP adapter)", () => {
+        process.env.WALLET_LOCK_ENABLED = "true";
+        process.env.REDIS_URL = "rediss://default:secret@hostname.upstash.io:6379";
+        process.env.WALLET_LOCK_TRANSPORT = "rest";
+
+        const config = loadConfig();
+        expect(config.walletLock?.transport).toBe("rest");
+      });
+    });
+
+    describe("When WALLET_LOCK_TRANSPORT has an unsupported value", () => {
+      it("Then loadConfig throws (zod enum rejects it at startup)", () => {
+        process.env.WALLET_LOCK_ENABLED = "true";
+        process.env.REDIS_URL = "redis://localhost:6379";
+        process.env.WALLET_LOCK_TRANSPORT = "grpc";
+        expect(() => loadConfig()).toThrow("Invalid environment configuration");
       });
     });
 
@@ -240,6 +262,7 @@ describe("loadConfig", () => {
         const config = loadConfig();
         expect(config.walletLock).toEqual({
           redisUrl: "redis://localhost:6379",
+          transport: "tcp",
           ttlMs: 15000,
           waitMs: 7000,
           retryMs: 100,

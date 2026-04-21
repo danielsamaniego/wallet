@@ -220,10 +220,18 @@ Acquiring a lock on a key derived from user-supplied input is a small but real D
 | Env var | Default | Purpose |
 |---|---|---|
 | `WALLET_LOCK_ENABLED` | `false` | Feature toggle. |
-| `REDIS_URL` | unset | `redis://host:port` (local) or `rediss://default:TOKEN@host:port` (Upstash, etc.). Required when enabled. |
+| `REDIS_URL` | unset | `redis://host:port` (local) or `rediss://default:TOKEN@host:port` (Upstash, etc.). Required when enabled. Both transports parse the same URL. |
+| `WALLET_LOCK_TRANSPORT` | `tcp` | `tcp` → ioredis (persistent connection, ~1-5ms per op). `rest` → `@upstash/redis` over HTTPS (stateless per-request, no connection quota to exhaust on serverless bursts; ~10-30ms per op). REST parses host+token out of `REDIS_URL` and builds an `https://<host>` endpoint. |
 | `WALLET_LOCK_TTL_MS` | `10000` | Lock auto-expiry. Must exceed the longest legitimate critical section. |
 | `WALLET_LOCK_WAIT_MS` | `5000` | How long a waiter blocks before rejecting with `LOCK_CONTENDED`. Must be shorter than the HTTP request timeout. |
 | `WALLET_LOCK_RETRY_MS` | `50` | Polling interval between `SET NX` attempts while waiting. |
+
+### Choosing a transport
+
+- **`tcp` (default)** — use for local development, long-lived Node processes, or any environment with a stable connection pool. Lower latency per op, uses Upstash/Redis connections.
+- **`rest`** — use for serverless (Vercel, AWS Lambda, Cloudflare Workers). Cold-start bursts open many concurrent TCP connections to Redis and can exhaust the provider's per-DB quota (Upstash: `EMAXCONN`). HTTP is stateless — each lock op is an independent request, unaffected by peak concurrency.
+
+Wire protocol (`SET NX PX` for acquire + token-aware Lua `EVAL` for release) is identical across transports; the same Upstash DB can run mixed clients safely.
 
 ### Observability (per-request canonical metrics)
 
@@ -232,7 +240,7 @@ Seven additive counters on the request's canonical log line:
 | Field | Source | Meaning |
 |---|---|---|
 | `lock.attempts` | adapter | `SET NX` calls made (retries included) |
-| `lock.transient_errors` | adapter | `Command timed out` retries absorbed by the classifier |
+| `lock.transient_errors` | adapter (TCP only) | `Command timed out` retries absorbed by the classifier. REST transport has no command-timeout concept — any error is treated as backend-unavailable. |
 | `lock.token_mismatch` | adapter (release) | TTL expired mid-critical-section — potential invariant break |
 | `lock.acquired` | runner | Successful run |
 | `lock.contended` | runner | 409 LOCK_CONTENDED emitted |

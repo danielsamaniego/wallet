@@ -1,5 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import { Redis as UpstashRedis } from "@upstash/redis";
 import { Redis as IORedis } from "ioredis";
 import { createAppContext } from "./utils/kernel/context.js";
 
@@ -38,6 +39,10 @@ import { SafeLogger } from "./utils/infrastructure/observability/safe.logger.js"
 import { SensitiveKeysFilter } from "./utils/infrastructure/observability/sensitive.filter.js";
 import { PrismaTransactionManager } from "./utils/infrastructure/prisma.transaction.manager.js";
 import { RedisDistributedLock } from "./utils/infrastructure/redis.distributed.lock.js";
+import {
+  parseUpstashRestCredentials,
+  UpstashRestDistributedLock,
+} from "./utils/infrastructure/upstash.rest.distributed.lock.js";
 import { UUIDV7Generator } from "./utils/infrastructure/uuidV7.js";
 import type { ILogger } from "./utils/kernel/observability/logger.port.js";
 
@@ -142,60 +147,81 @@ export function wire(config: Config): Dependencies {
     retryMs: config.walletLock?.retryMs ?? 50,
   };
   if (config.walletLock) {
-    // Resilience config: if Redis is unreachable at any point, commands
-    // fail FAST so the lock runner falls through.
-    //
-    //   maxRetriesPerRequest: 1   → one retry per command, then reject
-    //   enableOfflineQueue: false → don't buffer commands while disconnected
-    //   commandTimeout: 500       → hard cap of 500ms per command
-    //   lazyConnect: true         → don't hit Redis at app startup
-    const client = new IORedis(config.walletLock.redisUrl, {
-      maxRetriesPerRequest: 1,
-      enableReadyCheck: true,
-      enableOfflineQueue: false,
-      commandTimeout: 500,
-      lazyConnect: true,
-    });
-
-    // Redis connection lifecycle — surfaces backend availability independent
-    // of individual request paths. `error` intentionally goes to warn (not
-    // error) because the lock runner is allowed to fall through silently —
-    // what matters is that the event is visible, not that it fails the service.
     const redisHost = safeRedisHost(config.walletLock.redisUrl);
-    client.on("connect", () => {
-      logger.info(bootCtx, "RedisDistributedLock connect", { redis_host: redisHost });
-    });
-    client.on("ready", () => {
-      logger.info(bootCtx, "RedisDistributedLock ready", { redis_host: redisHost });
-    });
-    client.on("reconnecting", (delayMs: number) => {
-      logger.warn(bootCtx, "RedisDistributedLock reconnecting", {
-        redis_host: redisHost,
-        delay_ms: delayMs,
-      });
-    });
-    client.on("end", () => {
-      logger.warn(bootCtx, "RedisDistributedLock connection ended", { redis_host: redisHost });
-    });
-    client.on("error", (err: Error) => {
-      logger.warn(bootCtx, "RedisDistributedLock client error", {
-        redis_host: redisHost,
-        error: err.message,
-        error_name: err.name,
-        ...((err as { code?: unknown }).code !== undefined
-          ? { error_code: String((err as { code?: unknown }).code) }
-          : {}),
-      });
-    });
 
-    distributedLock = new RedisDistributedLock(client, idGen, logger);
-    logger.info(bootCtx, "wallet lock wired", {
-      enabled: true,
-      redis_host: redisHost,
-      ttl_ms: lockOptions.ttlMs,
-      wait_ms: lockOptions.waitMs,
-      retry_ms: lockOptions.retryMs,
-    });
+    if (config.walletLock.transport === "rest") {
+      // REST transport: stateless per-request HTTP. Safe for serverless cold
+      // bursts where TCP would exhaust the provider's connection quota
+      // (Upstash: EMAXCONN at 200/1000 concurrent conns). Credentials come
+      // from the same REDIS_URL — host + token are parsed and fed to the
+      // @upstash/redis SDK.
+      const { url, token } = parseUpstashRestCredentials(config.walletLock.redisUrl);
+      const client = new UpstashRedis({ url, token });
+      distributedLock = new UpstashRestDistributedLock(client, idGen, logger);
+      logger.info(bootCtx, "wallet lock wired", {
+        enabled: true,
+        transport: "rest",
+        redis_host: redisHost,
+        ttl_ms: lockOptions.ttlMs,
+        wait_ms: lockOptions.waitMs,
+        retry_ms: lockOptions.retryMs,
+      });
+    } else {
+      // TCP transport (ioredis). Resilience config: if Redis is unreachable
+      // at any point, commands fail FAST so the lock runner falls through.
+      //
+      //   maxRetriesPerRequest: 1   → one retry per command, then reject
+      //   enableOfflineQueue: false → don't buffer commands while disconnected
+      //   commandTimeout: 500       → hard cap of 500ms per command
+      //   lazyConnect: true         → don't hit Redis at app startup
+      const client = new IORedis(config.walletLock.redisUrl, {
+        maxRetriesPerRequest: 1,
+        enableReadyCheck: true,
+        enableOfflineQueue: false,
+        commandTimeout: 500,
+        lazyConnect: true,
+      });
+
+      // Redis connection lifecycle — surfaces backend availability independent
+      // of individual request paths. `error` intentionally goes to warn (not
+      // error) because the lock runner is allowed to fall through silently —
+      // what matters is that the event is visible, not that it fails the service.
+      client.on("connect", () => {
+        logger.info(bootCtx, "RedisDistributedLock connect", { redis_host: redisHost });
+      });
+      client.on("ready", () => {
+        logger.info(bootCtx, "RedisDistributedLock ready", { redis_host: redisHost });
+      });
+      client.on("reconnecting", (delayMs: number) => {
+        logger.warn(bootCtx, "RedisDistributedLock reconnecting", {
+          redis_host: redisHost,
+          delay_ms: delayMs,
+        });
+      });
+      client.on("end", () => {
+        logger.warn(bootCtx, "RedisDistributedLock connection ended", { redis_host: redisHost });
+      });
+      client.on("error", (err: Error) => {
+        logger.warn(bootCtx, "RedisDistributedLock client error", {
+          redis_host: redisHost,
+          error: err.message,
+          error_name: err.name,
+          ...((err as { code?: unknown }).code !== undefined
+            ? { error_code: String((err as { code?: unknown }).code) }
+            : {}),
+        });
+      });
+
+      distributedLock = new RedisDistributedLock(client, idGen, logger);
+      logger.info(bootCtx, "wallet lock wired", {
+        enabled: true,
+        transport: "tcp",
+        redis_host: redisHost,
+        ttl_ms: lockOptions.ttlMs,
+        wait_ms: lockOptions.waitMs,
+        retry_ms: lockOptions.retryMs,
+      });
+    }
   } else {
     logger.info(bootCtx, "wallet lock disabled", {
       enabled: false,

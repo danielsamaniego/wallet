@@ -20,6 +20,13 @@ const configSchema = z.object({
   WALLET_LOCK_TTL_MS: z.coerce.number().int().min(100).max(60_000).default(10_000),
   WALLET_LOCK_WAIT_MS: z.coerce.number().int().min(0).max(30_000).default(5_000),
   WALLET_LOCK_RETRY_MS: z.coerce.number().int().min(1).max(1_000).default(50),
+  // Transport for the distributed lock. Default `tcp` uses ioredis against
+  // `REDIS_URL`. `rest` uses @upstash/redis over HTTPS — stateless per-request,
+  // ideal for serverless where cold starts would otherwise exhaust the
+  // provider's connection quota (Upstash: `EMAXCONN` at 200/1000 conns). Both
+  // transports read credentials from the same `REDIS_URL`; REST parses out the
+  // host + token and builds an HTTPS URL for the Upstash proxy.
+  WALLET_LOCK_TRANSPORT: z.enum(["tcp", "rest"]).default("tcp"),
   REDIS_URL: z.string().optional(),
 });
 
@@ -43,6 +50,7 @@ export interface Config {
   cronSecret: string;
   walletLock?: {
     redisUrl: string;
+    transport: "tcp" | "rest";
     ttlMs: number;
     waitMs: number;
     retryMs: number;
@@ -70,6 +78,7 @@ export function loadConfig(): Config {
     if (env.REDIS_URL) {
       walletLock = {
         redisUrl: env.REDIS_URL,
+        transport: env.WALLET_LOCK_TRANSPORT,
         ttlMs: env.WALLET_LOCK_TTL_MS,
         waitMs: env.WALLET_LOCK_WAIT_MS,
         retryMs: env.WALLET_LOCK_RETRY_MS,

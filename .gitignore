@@ -53,3 +53,6 @@ tmp/
 *.tmp
 *.swp
 *~
+
+## Local-only load test script (kept out of repo; re-runnable locally)
+load-test.mjs
