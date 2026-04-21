@@ -4,6 +4,7 @@
 import { mock, mockReset } from "vitest-mock-extended";
 import {
   createMockIDGenerator,
+  createMockLockRunner,
   createMockLogger,
   createMockTransactionManager,
 } from "@test/helpers/mocks/index.js";
@@ -31,6 +32,7 @@ describe("ImportHistoricalEntryUseCase", () => {
   const txManager = createMockTransactionManager();
   const idGen = createMockIDGenerator(["tx-1", "mov-1", "ledger-1", "ledger-2"]);
   const logger = createMockLogger();
+  const lockRunner = createMockLockRunner();
 
   const sut = new ImportHistoricalEntryUseCase(
     txManager,
@@ -41,6 +43,7 @@ describe("ImportHistoricalEntryUseCase", () => {
     movementRepo,
     idGen,
     logger,
+    lockRunner,
   );
 
   const ctx = createTestContext();

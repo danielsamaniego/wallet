@@ -1,5 +1,22 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import { Redis as IORedis } from "ioredis";
+import { createAppContext } from "./utils/kernel/context.js";
+
+/**
+ * Strips credentials from a redis[s]:// URL for safe logging.
+ * Returns "host:port" (+ scheme tag for TLS) or a marker when parsing fails.
+ */
+function safeRedisHost(url: string): string {
+  try {
+    const u = new URL(url);
+    const tls = u.protocol === "rediss:" ? " (tls)" : "";
+    return `${u.hostname}:${u.port || "6379"}${tls}`;
+  } catch {
+    return "<unparseable-redis-url>";
+  }
+}
+
 import type { IIdempotencyStore } from "./common/idempotency/application/ports/idempotency.store.js";
 import { PrismaIdempotencyStore } from "./common/idempotency/infrastructure/adapters/outbound/prisma/idempotency.store.js";
 import type { Config } from "./config.js";
@@ -11,13 +28,16 @@ import type {
   IQueryBus,
   IQueryHandler,
 } from "./utils/application/cqrs.js";
+import type { IDistributedLock } from "./utils/application/distributed.lock.js";
 import type { IIDGenerator } from "./utils/application/id.generator.js";
+import { LockRunner } from "./utils/application/lock.runner.js";
 import type { ITransactionManager } from "./utils/application/transaction.manager.js";
 import { CommandBus, QueryBus } from "./utils/infrastructure/cqrs.js";
 import { PinoAdapter } from "./utils/infrastructure/observability/pino.adapter.js";
 import { SafeLogger } from "./utils/infrastructure/observability/safe.logger.js";
 import { SensitiveKeysFilter } from "./utils/infrastructure/observability/sensitive.filter.js";
 import { PrismaTransactionManager } from "./utils/infrastructure/prisma.transaction.manager.js";
+import { RedisDistributedLock } from "./utils/infrastructure/redis.distributed.lock.js";
 import { UUIDV7Generator } from "./utils/infrastructure/uuidV7.js";
 import type { ILogger } from "./utils/kernel/observability/logger.port.js";
 
@@ -29,6 +49,12 @@ export interface SharedInfra {
   idGen: IIDGenerator;
   txManager: ITransactionManager;
   idempotencyStore: IIdempotencyStore;
+  /**
+   * Generic per-key distributed lock runner. Use cases inject it to serialize
+   * concurrent operations on the same logical resource. When the feature is
+   * disabled or the backend is down, the runner falls through transparently.
+   */
+  lockRunner: LockRunner;
 }
 
 export interface CommandRegistration {
@@ -100,7 +126,85 @@ export function wire(config: Config): Dependencies {
 
   const idempotencyStore = new PrismaIdempotencyStore(prisma, idGen);
 
-  const shared = { prisma, logger, idGen, txManager, idempotencyStore };
+  // ── Per-wallet distributed lock (optional) ────────────
+  // Built only when WALLET_LOCK_ENABLED=true + REDIS_URL present. When disabled,
+  // `distributedLock` is undefined and `lockRunner` falls through transparently
+  // — use cases keep working without any serialization. Optimistic locking on
+  // Wallet.version remains as a safety net either way.
+  //
+  // `bootCtx` gives wiring-level logs a real trackingId so startup events and
+  // Redis connection lifecycle events are correlatable across the module.
+  const bootCtx = createAppContext(idGen);
+  let distributedLock: IDistributedLock | undefined;
+  const lockOptions = {
+    ttlMs: config.walletLock?.ttlMs ?? 10_000,
+    waitMs: config.walletLock?.waitMs ?? 5_000,
+    retryMs: config.walletLock?.retryMs ?? 50,
+  };
+  if (config.walletLock) {
+    // Resilience config: if Redis is unreachable at any point, commands
+    // fail FAST so the lock runner falls through.
+    //
+    //   maxRetriesPerRequest: 1   → one retry per command, then reject
+    //   enableOfflineQueue: false → don't buffer commands while disconnected
+    //   commandTimeout: 500       → hard cap of 500ms per command
+    //   lazyConnect: true         → don't hit Redis at app startup
+    const client = new IORedis(config.walletLock.redisUrl, {
+      maxRetriesPerRequest: 1,
+      enableReadyCheck: true,
+      enableOfflineQueue: false,
+      commandTimeout: 500,
+      lazyConnect: true,
+    });
+
+    // Redis connection lifecycle — surfaces backend availability independent
+    // of individual request paths. `error` intentionally goes to warn (not
+    // error) because the lock runner is allowed to fall through silently —
+    // what matters is that the event is visible, not that it fails the service.
+    const redisHost = safeRedisHost(config.walletLock.redisUrl);
+    client.on("connect", () => {
+      logger.info(bootCtx, "RedisDistributedLock connect", { redis_host: redisHost });
+    });
+    client.on("ready", () => {
+      logger.info(bootCtx, "RedisDistributedLock ready", { redis_host: redisHost });
+    });
+    client.on("reconnecting", (delayMs: number) => {
+      logger.warn(bootCtx, "RedisDistributedLock reconnecting", {
+        redis_host: redisHost,
+        delay_ms: delayMs,
+      });
+    });
+    client.on("end", () => {
+      logger.warn(bootCtx, "RedisDistributedLock connection ended", { redis_host: redisHost });
+    });
+    client.on("error", (err: Error) => {
+      logger.warn(bootCtx, "RedisDistributedLock client error", {
+        redis_host: redisHost,
+        error: err.message,
+        error_name: err.name,
+        ...((err as { code?: unknown }).code !== undefined
+          ? { error_code: String((err as { code?: unknown }).code) }
+          : {}),
+      });
+    });
+
+    distributedLock = new RedisDistributedLock(client, idGen, logger);
+    logger.info(bootCtx, "wallet lock wired", {
+      enabled: true,
+      redis_host: redisHost,
+      ttl_ms: lockOptions.ttlMs,
+      wait_ms: lockOptions.waitMs,
+      retry_ms: lockOptions.retryMs,
+    });
+  } else {
+    logger.info(bootCtx, "wallet lock disabled", {
+      enabled: false,
+      reason: "WALLET_LOCK_ENABLED=false or REDIS_URL missing",
+    });
+  }
+  const lockRunner = new LockRunner(distributedLock, lockOptions, logger);
+
+  const shared = { prisma, logger, idGen, txManager, idempotencyStore, lockRunner };
 
   // ── Modules ──────────────────────────────
   const wallet = WalletModule.wire(shared);

@@ -1,5 +1,6 @@
 import type { ICommandHandler } from "../../../../utils/application/cqrs.js";
 import type { IIDGenerator } from "../../../../utils/application/id.generator.js";
+import type { LockRunner } from "../../../../utils/application/lock.runner.js";
 import type { ITransactionManager } from "../../../../utils/application/transaction.manager.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
@@ -30,6 +31,7 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
     private readonly movementRepo: IMovementRepository,
     private readonly idGen: IIDGenerator,
     private readonly logger: ILogger,
+    private readonly lockRunner: LockRunner,
   ) {}
 
   async handle(ctx: AppContext, cmd: CaptureHoldCommand): Promise<CaptureHoldResult> {
@@ -37,126 +39,142 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
 
     this.logger.debug(ctx, `${methodLogTag} start`, { hold_id: cmd.holdId });
 
+    const holdForKey = await this.holdRepo.findById(ctx, cmd.holdId);
+    if (!holdForKey) {
+      this.logger.warn(ctx, `${methodLogTag} hold not found`, { hold_id: cmd.holdId });
+      throw ErrHoldNotFound(cmd.holdId);
+    }
+
+    const walletForKey = await this.walletRepo.findById(ctx, holdForKey.walletId);
+    if (!walletForKey || walletForKey.platformId !== cmd.platformId) {
+      this.logger.warn(ctx, `${methodLogTag} cross-tenant pre-lock rejection`, {
+        hold_id: cmd.holdId,
+        wallet_id: holdForKey.walletId,
+        expected_platform_id: cmd.platformId,
+        actual_platform_id: walletForKey?.platformId,
+      });
+      throw ErrHoldNotFound(cmd.holdId);
+    }
+
     const txId = this.idGen.newId();
     const movementId = this.idGen.newId();
     let walletCurrency = "";
 
-    await this.txManager.run(ctx, async (txCtx) => {
-      const hold = await this.holdRepo.findById(txCtx, cmd.holdId);
-      if (!hold) {
-        this.logger.warn(txCtx, `${methodLogTag} hold not found`, { hold_id: cmd.holdId });
-        throw ErrHoldNotFound(cmd.holdId);
-      }
-
-      const wallet = await this.walletRepo.findById(txCtx, hold.walletId);
-      if (!wallet) {
-        this.logger.warn(txCtx, `${methodLogTag} wallet not found`, { wallet_id: hold.walletId });
-        throw ErrWalletNotFound(hold.walletId);
-      }
-      walletCurrency = wallet.currencyCode;
-      if (wallet.platformId !== cmd.platformId) {
-        this.logger.warn(txCtx, `${methodLogTag} platform mismatch`, {
-          wallet_id: hold.walletId,
-          currency_code: wallet.currencyCode,
-          expected_platform_id: cmd.platformId,
-          actual_platform_id: wallet.platformId,
-        });
-        throw ErrWalletNotFound(hold.walletId);
-      }
-
-      const systemWallet = await this.walletRepo.findSystemWallet(
-        txCtx,
-        wallet.platformId,
-        wallet.currencyCode,
-      );
-      if (!systemWallet) {
-        this.logger.warn(txCtx, `${methodLogTag} system wallet not found`, {
-          platform_id: wallet.platformId,
-          currency_code: wallet.currencyCode,
-        });
-        throw ErrSystemWalletNotFound(wallet.platformId, wallet.currencyCode);
-      }
-
-      const now = Date.now();
-
-      // Check hold expiration on-access
-      if (hold.isExpired(now)) {
-        this.logger.info(txCtx, `${methodLogTag} hold expired on access`, {
-          hold_id: hold.id,
-          wallet_id: hold.walletId,
-          currency_code: wallet.currencyCode,
-          expires_at: hold.expiresAt,
-        });
-        hold.expire(now);
-        try {
-          await this.holdRepo.transitionStatus(txCtx, hold.id, "active", "expired", now);
-        } catch {
-          /* already expired/changed by another process — that's fine */
+    await this.lockRunner.run(ctx, [`wallet-lock:${holdForKey.walletId}`], async () => {
+      await this.txManager.run(ctx, async (txCtx) => {
+        const hold = await this.holdRepo.findById(txCtx, cmd.holdId);
+        if (!hold) {
+          this.logger.warn(txCtx, `${methodLogTag} hold not found`, { hold_id: cmd.holdId });
+          throw ErrHoldNotFound(cmd.holdId);
         }
-        throw ErrHoldExpired(cmd.holdId);
-      }
 
-      // Capture hold
-      hold.capture(now);
+        // Wallet re-read inside the tx. Platform ownership was validated in
+        // the pre-lock guard and platformId is immutable, so we only defend
+        // against the wallet being deleted in the tiny window between
+        // pre-lock and tx start (theoretical; no current API deletes wallets).
+        const wallet = await this.walletRepo.findById(txCtx, hold.walletId);
+        if (!wallet) {
+          this.logger.warn(txCtx, `${methodLogTag} wallet disappeared after pre-lock`, {
+            wallet_id: hold.walletId,
+          });
+          throw ErrWalletNotFound(hold.walletId);
+        }
+        walletCurrency = wallet.currencyCode;
 
-      // Create movement (journal entry)
-      const movement = Movement.create({ id: movementId, type: "hold_capture", createdAt: now });
+        const systemWallet = await this.walletRepo.findSystemWallet(
+          txCtx,
+          wallet.platformId,
+          wallet.currencyCode,
+        );
+        if (!systemWallet) {
+          this.logger.warn(txCtx, `${methodLogTag} system wallet not found`, {
+            platform_id: wallet.platformId,
+            currency_code: wallet.currencyCode,
+          });
+          throw ErrSystemWalletNotFound(wallet.platformId, wallet.currencyCode);
+        }
 
-      // Debit user wallet
-      wallet.withdraw(hold.amountMinor, wallet.cachedBalanceMinor, now);
+        const now = Date.now();
 
-      // System wallet: compute snapshot for ledger entry (approximate under concurrency)
-      const systemBalanceAfter = systemWallet.cachedBalanceMinor + hold.amountMinor;
+        // Check hold expiration on-access
+        if (hold.isExpired(now)) {
+          this.logger.info(txCtx, `${methodLogTag} hold expired on access`, {
+            hold_id: hold.id,
+            wallet_id: hold.walletId,
+            currency_code: wallet.currencyCode,
+            expires_at: hold.expiresAt,
+          });
+          hold.expire(now);
+          try {
+            await this.holdRepo.transitionStatus(txCtx, hold.id, "active", "expired", now);
+          } catch {
+            /* already expired/changed by another process — that's fine */
+          }
+          throw ErrHoldExpired(cmd.holdId);
+        }
 
-      const tx = Transaction.create({
-        id: txId,
-        walletId: wallet.id,
-        counterpartWalletId: systemWallet.id,
-        type: "hold_capture",
-        amountMinor: hold.amountMinor,
-        status: "completed",
-        idempotencyKey: cmd.idempotencyKey,
-        reference: hold.reference,
-        metadata: null,
-        holdId: hold.id,
-        movementId,
-        createdAt: now,
+        // Capture hold
+        hold.capture(now);
+
+        // Create movement (journal entry)
+        const movement = Movement.create({ id: movementId, type: "hold_capture", createdAt: now });
+
+        // Debit user wallet
+        wallet.withdraw(hold.amountMinor, wallet.cachedBalanceMinor, now);
+
+        // System wallet: compute snapshot for ledger entry (approximate under concurrency)
+        const systemBalanceAfter = systemWallet.cachedBalanceMinor + hold.amountMinor;
+
+        const tx = Transaction.create({
+          id: txId,
+          walletId: wallet.id,
+          counterpartWalletId: systemWallet.id,
+          type: "hold_capture",
+          amountMinor: hold.amountMinor,
+          status: "completed",
+          idempotencyKey: cmd.idempotencyKey,
+          reference: hold.reference,
+          metadata: null,
+          holdId: hold.id,
+          movementId,
+          createdAt: now,
+        });
+
+        const debitEntry = LedgerEntry.create({
+          id: this.idGen.newId(),
+          transactionId: txId,
+          walletId: wallet.id,
+          entryType: "DEBIT",
+          amountMinor: -hold.amountMinor,
+          balanceAfterMinor: wallet.cachedBalanceMinor,
+          movementId,
+          createdAt: now,
+        });
+
+        const creditEntry = LedgerEntry.create({
+          id: this.idGen.newId(),
+          transactionId: txId,
+          walletId: systemWallet.id,
+          entryType: "CREDIT",
+          amountMinor: hold.amountMinor,
+          balanceAfterMinor: systemBalanceAfter,
+          movementId,
+          createdAt: now,
+        });
+
+        // Persist (movement first — FK constraint)
+        await this.movementRepo.save(txCtx, movement);
+        await this.holdRepo.transitionStatus(txCtx, hold.id, "active", "captured", now);
+        await this.walletRepo.save(txCtx, wallet);
+        await this.walletRepo.adjustSystemWalletBalance(
+          txCtx,
+          systemWallet.id,
+          hold.amountMinor,
+          now,
+        );
+        await this.transactionRepo.save(txCtx, tx);
+        await this.ledgerEntryRepo.saveMany(txCtx, [debitEntry, creditEntry]);
       });
-
-      const debitEntry = LedgerEntry.create({
-        id: this.idGen.newId(),
-        transactionId: txId,
-        walletId: wallet.id,
-        entryType: "DEBIT",
-        amountMinor: -hold.amountMinor,
-        balanceAfterMinor: wallet.cachedBalanceMinor,
-        movementId,
-        createdAt: now,
-      });
-
-      const creditEntry = LedgerEntry.create({
-        id: this.idGen.newId(),
-        transactionId: txId,
-        walletId: systemWallet.id,
-        entryType: "CREDIT",
-        amountMinor: hold.amountMinor,
-        balanceAfterMinor: systemBalanceAfter,
-        movementId,
-        createdAt: now,
-      });
-
-      // Persist (movement first — FK constraint)
-      await this.movementRepo.save(txCtx, movement);
-      await this.holdRepo.transitionStatus(txCtx, hold.id, "active", "captured", now);
-      await this.walletRepo.save(txCtx, wallet);
-      await this.walletRepo.adjustSystemWalletBalance(
-        txCtx,
-        systemWallet.id,
-        hold.amountMinor,
-        now,
-      );
-      await this.transactionRepo.save(txCtx, tx);
-      await this.ledgerEntryRepo.saveMany(txCtx, [debitEntry, creditEntry]);
     });
 
     this.logger.info(ctx, `${methodLogTag} hold captured`, {

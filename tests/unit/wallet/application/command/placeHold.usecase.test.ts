@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { mock, mockReset } from "vitest-mock-extended";
-import { createMockIDGenerator, createMockLogger, createMockTransactionManager } from "@test/helpers/mocks/index.js";
+import { createMockIDGenerator, createMockLockRunner, createMockLogger, createMockTransactionManager } from "@test/helpers/mocks/index.js";
 import { WalletBuilder } from "@test/helpers/builders/wallet.builder.js";
 import { createTestContext } from "@test/helpers/builders/context.builder.js";
 import { PlaceHoldUseCase } from "@/wallet/application/command/placeHold/usecase.js";
@@ -19,9 +19,10 @@ describe("PlaceHoldUseCase", () => {
   const idGen = createMockIDGenerator([HOLD_ID]);
   const logger = createMockLogger();
   const txManager = createMockTransactionManager();
+  const lockRunner = createMockLockRunner();
   const ctx = createTestContext();
 
-  const useCase = new PlaceHoldUseCase(txManager, walletRepo, holdRepo, idGen, logger);
+  const useCase = new PlaceHoldUseCase(txManager, walletRepo, holdRepo, idGen, logger, lockRunner);
 
   beforeEach(() => {
     mockReset(walletRepo);

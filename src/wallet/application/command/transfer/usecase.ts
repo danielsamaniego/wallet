@@ -1,5 +1,6 @@
 import type { ICommandHandler } from "../../../../utils/application/cqrs.js";
 import type { IIDGenerator } from "../../../../utils/application/id.generator.js";
+import type { LockRunner } from "../../../../utils/application/lock.runner.js";
 import type { ITransactionManager } from "../../../../utils/application/transaction.manager.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
@@ -30,6 +31,7 @@ export class TransferUseCase implements ICommandHandler<TransferCommand, Transfe
     private readonly movementRepo: IMovementRepository,
     private readonly idGen: IIDGenerator,
     private readonly logger: ILogger,
+    private readonly lockRunner: LockRunner,
   ) {}
 
   async handle(ctx: AppContext, cmd: TransferCommand): Promise<TransferResult> {
@@ -53,141 +55,147 @@ export class TransferUseCase implements ICommandHandler<TransferCommand, Transfe
     const movementId = this.idGen.newId();
     let sourceCurrency = "";
 
-    await this.txManager.run(ctx, async (txCtx) => {
-      const source = await this.walletRepo.findById(txCtx, cmd.sourceWalletId);
-      if (!source) {
-        this.logger.warn(txCtx, `${methodLogTag} source wallet not found`, {
-          source_wallet_id: cmd.sourceWalletId,
+    await this.lockRunner.run(
+      ctx,
+      [`wallet-lock:${cmd.sourceWalletId}`, `wallet-lock:${cmd.targetWalletId}`],
+      async () => {
+        await this.txManager.run(ctx, async (txCtx) => {
+          const source = await this.walletRepo.findById(txCtx, cmd.sourceWalletId);
+          if (!source) {
+            this.logger.warn(txCtx, `${methodLogTag} source wallet not found`, {
+              source_wallet_id: cmd.sourceWalletId,
+            });
+            throw ErrWalletNotFound(cmd.sourceWalletId);
+          }
+          sourceCurrency = source.currencyCode;
+          if (source.platformId !== cmd.platformId) {
+            this.logger.warn(txCtx, `${methodLogTag} source platform mismatch`, {
+              source_wallet_id: cmd.sourceWalletId,
+              currency_code: source.currencyCode,
+              expected_platform_id: cmd.platformId,
+              actual_platform_id: source.platformId,
+            });
+            throw ErrWalletNotFound(cmd.sourceWalletId);
+          }
+
+          const target = await this.walletRepo.findById(txCtx, cmd.targetWalletId);
+          if (!target) {
+            this.logger.warn(txCtx, `${methodLogTag} target wallet not found`, {
+              target_wallet_id: cmd.targetWalletId,
+            });
+            throw ErrWalletNotFound(cmd.targetWalletId);
+          }
+          if (target.platformId !== cmd.platformId) {
+            this.logger.warn(txCtx, `${methodLogTag} target platform mismatch`, {
+              target_wallet_id: cmd.targetWalletId,
+              currency_code: source.currencyCode,
+              expected_platform_id: cmd.platformId,
+              actual_platform_id: target.platformId,
+            });
+            throw ErrWalletNotFound(cmd.targetWalletId);
+          }
+
+          if (source.currencyCode !== target.currencyCode) {
+            this.logger.warn(txCtx, `${methodLogTag} currency mismatch`, {
+              source_wallet_id: source.id,
+              source_currency: source.currencyCode,
+              target_wallet_id: target.id,
+              target_currency: target.currencyCode,
+            });
+            throw ErrCurrencyMismatch();
+          }
+
+          const now = Date.now();
+
+          // Available balance for source
+          const activeHolds = await this.holdRepo.sumActiveHolds(txCtx, source.id);
+          const availableBalance = source.cachedBalanceMinor - activeHolds;
+
+          this.logger.debug(txCtx, `${methodLogTag} source balance check`, {
+            source_wallet_id: source.id,
+            currency_code: source.currencyCode,
+            cached_balance_minor: Number(source.cachedBalanceMinor),
+            active_holds_minor: Number(activeHolds),
+            available_balance_minor: Number(availableBalance),
+          });
+
+          // Create movement (journal entry — groups both sides of the transfer)
+          const movement = Movement.create({ id: movementId, type: "transfer", createdAt: now });
+
+          // Mutate
+          source.withdraw(cmd.amountMinor, availableBalance, now);
+          target.deposit(cmd.amountMinor, now);
+
+          // Transactions
+          const outTx = Transaction.create({
+            id: sourceTxId,
+            walletId: source.id,
+            counterpartWalletId: target.id,
+            type: "transfer_out",
+            amountMinor: cmd.amountMinor,
+            status: "completed",
+            idempotencyKey: cmd.idempotencyKey,
+            reference: cmd.reference ?? null,
+            metadata: cmd.metadata ?? null,
+            holdId: null,
+            movementId,
+            createdAt: now,
+          });
+
+          const inTx = Transaction.create({
+            id: targetTxId,
+            walletId: target.id,
+            counterpartWalletId: source.id,
+            type: "transfer_in",
+            amountMinor: cmd.amountMinor,
+            status: "completed",
+            idempotencyKey: null,
+            reference: cmd.reference ?? null,
+            metadata: cmd.metadata ?? null,
+            holdId: null,
+            movementId,
+            createdAt: now,
+          });
+
+          // Ledger entries: 1 DEBIT on source, 1 CREDIT on target — same movementId
+          const debitEntry = LedgerEntry.create({
+            id: this.idGen.newId(),
+            transactionId: sourceTxId,
+            walletId: source.id,
+            entryType: "DEBIT",
+            amountMinor: -cmd.amountMinor,
+            balanceAfterMinor: source.cachedBalanceMinor,
+            movementId,
+            createdAt: now,
+          });
+
+          const creditEntry = LedgerEntry.create({
+            id: this.idGen.newId(),
+            transactionId: targetTxId,
+            walletId: target.id,
+            entryType: "CREDIT",
+            amountMinor: cmd.amountMinor,
+            balanceAfterMinor: target.cachedBalanceMinor,
+            movementId,
+            createdAt: now,
+          });
+
+          // Persist (movement first — FK constraint).
+          // Wallets saved in deterministic ID order to prevent deadlocks:
+          // concurrent transfers A→B and B→A both lock the lower-ID wallet
+          // first, so the lock cycle that causes deadlock cannot form.
+          await this.movementRepo.save(txCtx, movement);
+          const [first, second] =
+            source.id < target.id // Avoid deadlocks deterministically
+              ? [source, target]
+              : [target, source];
+          await this.walletRepo.save(txCtx, first);
+          await this.walletRepo.save(txCtx, second);
+          await this.transactionRepo.saveMany(txCtx, [outTx, inTx]);
+          await this.ledgerEntryRepo.saveMany(txCtx, [debitEntry, creditEntry]);
         });
-        throw ErrWalletNotFound(cmd.sourceWalletId);
-      }
-      sourceCurrency = source.currencyCode;
-      if (source.platformId !== cmd.platformId) {
-        this.logger.warn(txCtx, `${methodLogTag} source platform mismatch`, {
-          source_wallet_id: cmd.sourceWalletId,
-          currency_code: source.currencyCode,
-          expected_platform_id: cmd.platformId,
-          actual_platform_id: source.platformId,
-        });
-        throw ErrWalletNotFound(cmd.sourceWalletId);
-      }
-
-      const target = await this.walletRepo.findById(txCtx, cmd.targetWalletId);
-      if (!target) {
-        this.logger.warn(txCtx, `${methodLogTag} target wallet not found`, {
-          target_wallet_id: cmd.targetWalletId,
-        });
-        throw ErrWalletNotFound(cmd.targetWalletId);
-      }
-      if (target.platformId !== cmd.platformId) {
-        this.logger.warn(txCtx, `${methodLogTag} target platform mismatch`, {
-          target_wallet_id: cmd.targetWalletId,
-          currency_code: source.currencyCode,
-          expected_platform_id: cmd.platformId,
-          actual_platform_id: target.platformId,
-        });
-        throw ErrWalletNotFound(cmd.targetWalletId);
-      }
-
-      if (source.currencyCode !== target.currencyCode) {
-        this.logger.warn(txCtx, `${methodLogTag} currency mismatch`, {
-          source_wallet_id: source.id,
-          source_currency: source.currencyCode,
-          target_wallet_id: target.id,
-          target_currency: target.currencyCode,
-        });
-        throw ErrCurrencyMismatch();
-      }
-
-      const now = Date.now();
-
-      // Available balance for source
-      const activeHolds = await this.holdRepo.sumActiveHolds(txCtx, source.id);
-      const availableBalance = source.cachedBalanceMinor - activeHolds;
-
-      this.logger.debug(txCtx, `${methodLogTag} source balance check`, {
-        source_wallet_id: source.id,
-        currency_code: source.currencyCode,
-        cached_balance_minor: Number(source.cachedBalanceMinor),
-        active_holds_minor: Number(activeHolds),
-        available_balance_minor: Number(availableBalance),
-      });
-
-      // Create movement (journal entry — groups both sides of the transfer)
-      const movement = Movement.create({ id: movementId, type: "transfer", createdAt: now });
-
-      // Mutate
-      source.withdraw(cmd.amountMinor, availableBalance, now);
-      target.deposit(cmd.amountMinor, now);
-
-      // Transactions
-      const outTx = Transaction.create({
-        id: sourceTxId,
-        walletId: source.id,
-        counterpartWalletId: target.id,
-        type: "transfer_out",
-        amountMinor: cmd.amountMinor,
-        status: "completed",
-        idempotencyKey: cmd.idempotencyKey,
-        reference: cmd.reference ?? null,
-        metadata: cmd.metadata ?? null,
-        holdId: null,
-        movementId,
-        createdAt: now,
-      });
-
-      const inTx = Transaction.create({
-        id: targetTxId,
-        walletId: target.id,
-        counterpartWalletId: source.id,
-        type: "transfer_in",
-        amountMinor: cmd.amountMinor,
-        status: "completed",
-        idempotencyKey: null,
-        reference: cmd.reference ?? null,
-        metadata: cmd.metadata ?? null,
-        holdId: null,
-        movementId,
-        createdAt: now,
-      });
-
-      // Ledger entries: 1 DEBIT on source, 1 CREDIT on target — same movementId
-      const debitEntry = LedgerEntry.create({
-        id: this.idGen.newId(),
-        transactionId: sourceTxId,
-        walletId: source.id,
-        entryType: "DEBIT",
-        amountMinor: -cmd.amountMinor,
-        balanceAfterMinor: source.cachedBalanceMinor,
-        movementId,
-        createdAt: now,
-      });
-
-      const creditEntry = LedgerEntry.create({
-        id: this.idGen.newId(),
-        transactionId: targetTxId,
-        walletId: target.id,
-        entryType: "CREDIT",
-        amountMinor: cmd.amountMinor,
-        balanceAfterMinor: target.cachedBalanceMinor,
-        movementId,
-        createdAt: now,
-      });
-
-      // Persist (movement first — FK constraint).
-      // Wallets saved in deterministic ID order to prevent deadlocks:
-      // concurrent transfers A→B and B→A both lock the lower-ID wallet
-      // first, so the lock cycle that causes deadlock cannot form.
-      await this.movementRepo.save(txCtx, movement);
-      const [first, second] =
-        source.id < target.id // Avoid deadlocks deterministically
-          ? [source, target]
-          : [target, source];
-      await this.walletRepo.save(txCtx, first);
-      await this.walletRepo.save(txCtx, second);
-      await this.transactionRepo.saveMany(txCtx, [outTx, inTx]);
-      await this.ledgerEntryRepo.saveMany(txCtx, [debitEntry, creditEntry]);
-    });
+      },
+    );
 
     this.logger.info(ctx, `${methodLogTag} transfer success`, {
       source_wallet_id: cmd.sourceWalletId,

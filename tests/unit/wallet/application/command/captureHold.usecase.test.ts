@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { mock, mockReset } from "vitest-mock-extended";
-import { createMockIDGenerator, createMockLogger, createMockTransactionManager } from "@test/helpers/mocks/index.js";
+import {
+  createMockIDGenerator,
+  createMockLockRunner,
+  createMockLogger,
+  createMockTransactionManager,
+} from "@test/helpers/mocks/index.js";
 import { WalletBuilder } from "@test/helpers/builders/wallet.builder.js";
 import { HoldBuilder } from "@test/helpers/builders/hold.builder.js";
 import { createTestContext } from "@test/helpers/builders/context.builder.js";
@@ -31,6 +36,7 @@ describe("CaptureHoldUseCase", () => {
   const idGen = createMockIDGenerator([TX_ID, MOVEMENT_ID, DEBIT_ENTRY_ID, CREDIT_ENTRY_ID]);
   const logger = createMockLogger();
   const txManager = createMockTransactionManager();
+  const lockRunner = createMockLockRunner();
   const ctx = createTestContext();
 
   const useCase = new CaptureHoldUseCase(
@@ -42,6 +48,7 @@ describe("CaptureHoldUseCase", () => {
     movementRepo,
     idGen,
     logger,
+    lockRunner,
   );
 
   beforeEach(() => {
@@ -114,7 +121,7 @@ describe("CaptureHoldUseCase", () => {
 
   describe("Given a hold that does not exist", () => {
     describe("When capturing the hold", () => {
-      it("Then throws HOLD_NOT_FOUND", async () => {
+      it("Then throws HOLD_NOT_FOUND from the pre-lookup and never enters the transaction", async () => {
         holdRepo.findById.mockResolvedValue(null);
 
         const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
@@ -124,6 +131,71 @@ describe("CaptureHoldUseCase", () => {
         });
 
         expect(walletRepo.findById).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe("Given a hold that disappears between the pre-lookup and the transaction", () => {
+    describe("When capturing the hold", () => {
+      it("Then throws HOLD_NOT_FOUND from the inner re-read (defensive guard)", async () => {
+        const hold = new HoldBuilder()
+          .withId(HOLD_ID)
+          .withWalletId(WALLET_ID)
+          .withAmount(1000n)
+          .build();
+        const wallet = new WalletBuilder()
+          .withId(WALLET_ID)
+          .withPlatformId(PLATFORM_ID)
+          .withCurrency("USD")
+          .build();
+
+        // Pre-lookup hold + wallet (platform check) succeed; inside the tx the
+        // hold has vanished.
+        holdRepo.findById.mockResolvedValueOnce(hold).mockResolvedValueOnce(null);
+        walletRepo.findById.mockResolvedValueOnce(wallet);
+
+        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
+
+        await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
+          return AppError.is(err) && err.kind === ErrorKind.NotFound && err.code === "HOLD_NOT_FOUND";
+        });
+
+        // Wallet lookup ran once (pre-lock platform check); inner tx re-read the
+        // hold and failed without a second walletRepo lookup.
+        expect(walletRepo.findById).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
+  describe("Given a hold belonging to ANOTHER platform's wallet (cross-tenant)", () => {
+    describe("When captureHold is invoked with the attacker's platformId", () => {
+      it("Then throws HOLD_NOT_FOUND BEFORE acquiring the lock and never enters the transaction", async () => {
+        const victimPlatformId = "platform-victim";
+        const attackerPlatformId = "platform-attacker";
+        const hold = new HoldBuilder()
+          .withId(HOLD_ID)
+          .withWalletId(WALLET_ID)
+          .withAmount(1000n)
+          .build();
+        const victimWallet = new WalletBuilder()
+          .withId(WALLET_ID)
+          .withPlatformId(victimPlatformId) // belongs to the victim
+          .withCurrency("USD")
+          .build();
+
+        holdRepo.findById.mockResolvedValueOnce(hold);
+        walletRepo.findById.mockResolvedValueOnce(victimWallet);
+
+        const cmd = new CaptureHoldCommand(HOLD_ID, attackerPlatformId, IDEMPOTENCY_KEY);
+
+        await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
+          return AppError.is(err) && err.kind === ErrorKind.NotFound && err.code === "HOLD_NOT_FOUND";
+        });
+
+        // Tx never ran → no inner re-reads, no transitionStatus, no writes.
+        expect(holdRepo.findById).toHaveBeenCalledTimes(1);
+        expect(holdRepo.transitionStatus).not.toHaveBeenCalled();
+        expect(walletRepo.save).not.toHaveBeenCalled();
       });
     });
   });
@@ -247,9 +319,40 @@ describe("CaptureHoldUseCase", () => {
     });
   });
 
-  describe("Given a hold whose wallet does not exist", () => {
+  describe("Given wallet deleted between pre-lock and transaction (race)", () => {
     describe("When capturing the hold", () => {
-      it("Then throws WALLET_NOT_FOUND", async () => {
+      it("Then the inner tx re-read defends by throwing WALLET_NOT_FOUND", async () => {
+        const hold = new HoldBuilder()
+          .withId(HOLD_ID)
+          .withWalletId(WALLET_ID)
+          .withAmount(1000n)
+          .build();
+        const wallet = new WalletBuilder()
+          .withId(WALLET_ID)
+          .withPlatformId(PLATFORM_ID)
+          .withCurrency("USD")
+          .build();
+
+        // Pre-lock: both exist. Inner tx: hold still there, wallet gone.
+        holdRepo.findById.mockResolvedValue(hold);
+        walletRepo.findById
+          .mockResolvedValueOnce(wallet) // pre-lock guard
+          .mockResolvedValueOnce(null); // inner tx race
+
+        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
+
+        await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
+          return AppError.is(err) && err.kind === ErrorKind.NotFound && err.code === "WALLET_NOT_FOUND";
+        });
+
+        expect(walletRepo.findSystemWallet).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe("Given a hold whose wallet does not exist (data integrity)", () => {
+    describe("When capturing the hold", () => {
+      it("Then the pre-lock guard throws HOLD_NOT_FOUND without entering the transaction", async () => {
         const hold = new HoldBuilder()
           .withId(HOLD_ID)
           .withWalletId("missing-wallet")
@@ -262,7 +365,7 @@ describe("CaptureHoldUseCase", () => {
         const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
 
         await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
-          return AppError.is(err) && err.kind === ErrorKind.NotFound && err.code === "WALLET_NOT_FOUND";
+          return AppError.is(err) && err.kind === ErrorKind.NotFound && err.code === "HOLD_NOT_FOUND";
         });
 
         expect(walletRepo.findSystemWallet).not.toHaveBeenCalled();
@@ -298,32 +401,6 @@ describe("CaptureHoldUseCase", () => {
     });
   });
 
-  describe("Given a platform mismatch between command and wallet", () => {
-    describe("When capturing the hold", () => {
-      it("Then throws WALLET_NOT_FOUND", async () => {
-        const hold = new HoldBuilder()
-          .withId(HOLD_ID)
-          .withWalletId(WALLET_ID)
-          .withAmount(1000n)
-          .build();
-
-        const wallet = new WalletBuilder()
-          .withId(WALLET_ID)
-          .withPlatformId("other-platform")
-          .withBalance(5000n)
-          .build();
-
-        holdRepo.findById.mockResolvedValue(hold);
-        walletRepo.findById.mockResolvedValue(wallet);
-
-        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
-
-        await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
-          return AppError.is(err) && err.kind === ErrorKind.NotFound && err.code === "WALLET_NOT_FOUND";
-        });
-
-        expect(walletRepo.findSystemWallet).not.toHaveBeenCalled();
-      });
-    });
-  });
+  // NOTE: platform-mismatch is covered by the cross-tenant test above — the
+  // pre-lock guard subsumes the old tx-internal platform check path.
 });

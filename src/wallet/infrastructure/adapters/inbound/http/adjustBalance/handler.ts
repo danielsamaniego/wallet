@@ -29,6 +29,11 @@ export function adjustBalanceRoute(commandBus: ICommandBus) {
           description: "Wallet not found",
           content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
         },
+        409: {
+          description:
+            "Concurrency conflict (LOCK_CONTENDED / VERSION_CONFLICT). Retry with the same Idempotency-Key.",
+          content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
+        },
       },
     }),
     zValidator("param", ParamSchema, validationHook),

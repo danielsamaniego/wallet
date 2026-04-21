@@ -54,7 +54,13 @@ import { PrismaTransactionRepo } from "./infrastructure/adapters/outbound/prisma
 import { PrismaWalletReadStore } from "./infrastructure/adapters/outbound/prisma/wallet.readstore.js";
 import { PrismaWalletRepo } from "./infrastructure/adapters/outbound/prisma/wallet.repo.js";
 
-export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleHandlers {
+export function wire({
+  prisma,
+  logger,
+  idGen,
+  txManager,
+  lockRunner,
+}: SharedInfra): ModuleHandlers {
   // Repos
   const walletRepo = new PrismaWalletRepo(prisma, logger);
   const holdRepo = new PrismaHoldRepo(prisma, logger);
@@ -77,6 +83,7 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
     movementRepo,
     idGen,
     logger,
+    lockRunner,
   );
   const deposit = new DepositUseCase(
     txManager,
@@ -86,6 +93,7 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
     movementRepo,
     idGen,
     logger,
+    lockRunner,
   );
   const withdraw = new WithdrawUseCase(
     txManager,
@@ -96,6 +104,7 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
     movementRepo,
     idGen,
     logger,
+    lockRunner,
   );
   const charge = new ChargeUseCase(
     txManager,
@@ -106,9 +115,10 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
     movementRepo,
     idGen,
     logger,
+    lockRunner,
   );
-  const freezeWallet = new FreezeWalletUseCase(txManager, walletRepo, logger);
-  const unfreezeWallet = new UnfreezeWalletUseCase(txManager, walletRepo, logger);
+  const freezeWallet = new FreezeWalletUseCase(txManager, walletRepo, logger, lockRunner);
+  const unfreezeWallet = new UnfreezeWalletUseCase(txManager, walletRepo, logger, lockRunner);
   // TODO(historical-import-temp): Remove this use case instantiation together
   // with the rest of the import-historical-entry feature after migration.
   const importHistoricalEntry = new ImportHistoricalEntryUseCase(
@@ -120,8 +130,9 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
     movementRepo,
     idGen,
     logger,
+    lockRunner,
   );
-  const closeWallet = new CloseWalletUseCase(txManager, walletRepo, holdRepo, logger);
+  const closeWallet = new CloseWalletUseCase(txManager, walletRepo, holdRepo, logger, lockRunner);
   const getWallet = new GetWalletUseCase(walletReadStore, logger);
   const listWallets = new ListWalletsUseCase(walletReadStore, logger);
   const getHold = new GetHoldUseCase(holdReadStore, logger);
@@ -137,8 +148,16 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
     movementRepo,
     idGen,
     logger,
+    lockRunner,
   );
-  const placeHold = new PlaceHoldUseCase(txManager, walletRepo, holdRepo, idGen, logger);
+  const placeHold = new PlaceHoldUseCase(
+    txManager,
+    walletRepo,
+    holdRepo,
+    idGen,
+    logger,
+    lockRunner,
+  );
   const captureHold = new CaptureHoldUseCase(
     txManager,
     walletRepo,
@@ -148,8 +167,9 @@ export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleH
     movementRepo,
     idGen,
     logger,
+    lockRunner,
   );
-  const voidHold = new VoidHoldUseCase(txManager, walletRepo, holdRepo, logger);
+  const voidHold = new VoidHoldUseCase(txManager, walletRepo, holdRepo, logger, lockRunner);
   const expireHolds = new ExpireHoldsUseCase(holdRepo, logger);
 
   return {

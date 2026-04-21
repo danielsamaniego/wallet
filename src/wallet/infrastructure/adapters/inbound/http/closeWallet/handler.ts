@@ -25,6 +25,11 @@ export function closeWalletRoute(commandBus: ICommandBus) {
           description: "Wallet not found",
           content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
         },
+        409: {
+          description:
+            "Concurrency conflict (LOCK_CONTENDED / VERSION_CONFLICT). Retry with the same Idempotency-Key.",
+          content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
+        },
         422: {
           description: "Wallet has non-zero balance or active holds",
           content: { "application/json": { schema: resolver(ErrorResponseSchema) } },

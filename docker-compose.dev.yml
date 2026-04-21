@@ -1,4 +1,4 @@
-# Wallet Service — Full local development (PostgreSQL + App with hot reload)
+# Wallet Service — Full local development (PostgreSQL + Redis + App with hot reload)
 # Usage: pnpm dev:docker
 
 name: wallet-dev
@@ -16,6 +16,28 @@ services:
       - postgres_dev_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U wallet -d wallet"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--maxmemory",
+        "256mb",
+        "--maxmemory-policy",
+        "allkeys-lru",
+      ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -38,9 +60,17 @@ services:
       # TODO(historical-import-temp): Remove this env var together with the
       # rest of the import-historical-entry feature after migration.
       HISTORICAL_IMPORT_ENABLED: "true"
+      # Distributed lock — uses the bundled Redis container
+      WALLET_LOCK_ENABLED: "true"
+      REDIS_URL: "redis://redis:6379"
+      WALLET_LOCK_TTL_MS: "10000"
+      WALLET_LOCK_WAIT_MS: "5000"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:
   postgres_dev_data:
+  redis_dev_data:

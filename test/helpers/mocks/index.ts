@@ -4,6 +4,7 @@ import { vi } from "vitest";
 import type { IIDGenerator } from "@/utils/application/id.generator.js";
 import type { ILogger } from "@/utils/kernel/observability/logger.port.js";
 import type { ITransactionManager } from "@/utils/application/transaction.manager.js";
+import type { LockRunner } from "@/utils/application/lock.runner.js";
 import type { AppContext } from "@/utils/kernel/context.js";
 
 /**
@@ -58,4 +59,16 @@ export function createMockTransactionManager(): ITransactionManager {
   return {
     run: vi.fn((_ctx: AppContext, fn: (txCtx: AppContext) => Promise<unknown>) => fn(_ctx)) as ITransactionManager["run"],
   };
+}
+
+/**
+ * Creates a mock LockRunner that executes the callback immediately (pass-through).
+ * Unit tests exercise the use case logic without involving a real lock backend;
+ * the runner's behavior under contention / backend failure is covered by its
+ * own unit tests.
+ */
+export function createMockLockRunner(): LockRunner {
+  return {
+    run: vi.fn((_ctx: AppContext, _keys: readonly string[], fn: () => Promise<unknown>) => fn()),
+  } as unknown as LockRunner;
 }

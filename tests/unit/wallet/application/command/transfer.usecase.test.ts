@@ -1,6 +1,7 @@
 import { mock, mockReset } from "vitest-mock-extended";
 import {
   createMockIDGenerator,
+  createMockLockRunner,
   createMockLogger,
   createMockTransactionManager,
 } from "@test/helpers/mocks/index.js";
@@ -43,6 +44,7 @@ describe("TransferUseCase", () => {
   const movementRepo = mock<IMovementRepository>();
   const txManager = createMockTransactionManager();
   const logger = createMockLogger();
+  const lockRunner = createMockLockRunner();
   let idGen: ReturnType<typeof createMockIDGenerator>;
   let useCase: TransferUseCase;
   const ctx = createTestContext();
@@ -63,6 +65,7 @@ describe("TransferUseCase", () => {
       movementRepo,
       idGen,
       logger,
+      lockRunner,
     );
   });
 

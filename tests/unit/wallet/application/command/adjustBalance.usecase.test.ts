@@ -1,6 +1,7 @@
 import { mock, mockReset } from "vitest-mock-extended";
 import {
   createMockIDGenerator,
+  createMockLockRunner,
   createMockLogger,
   createMockTransactionManager,
 } from "@test/helpers/mocks/index.js";
@@ -28,6 +29,7 @@ describe("AdjustBalanceUseCase", () => {
   const txManager = createMockTransactionManager();
   const idGen = createMockIDGenerator(["tx-1", "mov-1", "ledger-1", "ledger-2"]);
   const logger = createMockLogger();
+  const lockRunner = createMockLockRunner();
 
   const sut = new AdjustBalanceUseCase(
     txManager,
@@ -38,6 +40,7 @@ describe("AdjustBalanceUseCase", () => {
     movementRepo,
     idGen,
     logger,
+    lockRunner,
   );
 
   const ctx = createTestContext();

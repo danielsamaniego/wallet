@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { mock, mockReset } from "vitest-mock-extended";
-import { createMockLogger, createMockTransactionManager } from "@test/helpers/mocks/index.js";
+import {
+  createMockLockRunner,
+  createMockLogger,
+  createMockTransactionManager,
+} from "@test/helpers/mocks/index.js";
 import { WalletBuilder } from "@test/helpers/builders/wallet.builder.js";
 import { HoldBuilder } from "@test/helpers/builders/hold.builder.js";
 import { createTestContext } from "@test/helpers/builders/context.builder.js";
@@ -19,9 +23,10 @@ describe("VoidHoldUseCase", () => {
   const holdRepo = mock<IHoldRepository>();
   const logger = createMockLogger();
   const txManager = createMockTransactionManager();
+  const lockRunner = createMockLockRunner();
   const ctx = createTestContext();
 
-  const useCase = new VoidHoldUseCase(txManager, walletRepo, holdRepo, logger);
+  const useCase = new VoidHoldUseCase(txManager, walletRepo, holdRepo, logger, lockRunner);
 
   beforeEach(() => {
     mockReset(walletRepo);
@@ -99,7 +104,7 @@ describe("VoidHoldUseCase", () => {
 
   describe("Given a hold that does not exist", () => {
     describe("When voiding the hold", () => {
-      it("Then throws HOLD_NOT_FOUND", async () => {
+      it("Then throws HOLD_NOT_FOUND from the pre-lookup and never enters the transaction", async () => {
         holdRepo.findById.mockResolvedValue(null);
 
         const cmd = new VoidHoldCommand(HOLD_ID, PLATFORM_ID);
@@ -109,6 +114,96 @@ describe("VoidHoldUseCase", () => {
         });
 
         expect(walletRepo.findById).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe("Given a hold that disappears between the pre-lookup and the transaction", () => {
+    describe("When voiding the hold", () => {
+      it("Then throws HOLD_NOT_FOUND from the inner re-read (defensive guard)", async () => {
+        const hold = new HoldBuilder()
+          .withId(HOLD_ID)
+          .withWalletId(WALLET_ID)
+          .withAmount(2000n)
+          .build();
+        const wallet = new WalletBuilder()
+          .withId(WALLET_ID)
+          .withPlatformId(PLATFORM_ID)
+          .build();
+
+        // Pre-lookup hold + wallet (platform check) succeed; inside the tx the
+        // hold has vanished.
+        holdRepo.findById.mockResolvedValueOnce(hold).mockResolvedValueOnce(null);
+        walletRepo.findById.mockResolvedValueOnce(wallet);
+
+        const cmd = new VoidHoldCommand(HOLD_ID, PLATFORM_ID);
+
+        await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
+          return AppError.is(err) && err.kind === ErrorKind.NotFound && err.code === "HOLD_NOT_FOUND";
+        });
+
+        expect(walletRepo.findById).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
+  describe("Given wallet deleted between pre-lock and transaction (race)", () => {
+    describe("When voiding the hold", () => {
+      it("Then the inner tx re-read defends by throwing HOLD_NOT_FOUND", async () => {
+        const hold = new HoldBuilder()
+          .withId(HOLD_ID)
+          .withWalletId(WALLET_ID)
+          .withAmount(1000n)
+          .build();
+        const wallet = new WalletBuilder()
+          .withId(WALLET_ID)
+          .withPlatformId(PLATFORM_ID)
+          .build();
+
+        holdRepo.findById.mockResolvedValue(hold);
+        walletRepo.findById
+          .mockResolvedValueOnce(wallet) // pre-lock guard passes
+          .mockResolvedValueOnce(null); // inner tx race
+
+        const cmd = new VoidHoldCommand(HOLD_ID, PLATFORM_ID);
+
+        await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
+          return AppError.is(err) && err.kind === ErrorKind.NotFound && err.code === "HOLD_NOT_FOUND";
+        });
+
+        expect(holdRepo.transitionStatus).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe("Given a hold belonging to ANOTHER platform's wallet (cross-tenant)", () => {
+    describe("When voidHold is invoked with the attacker's platformId", () => {
+      it("Then throws HOLD_NOT_FOUND BEFORE acquiring the lock and never enters the transaction", async () => {
+        const victimPlatformId = "platform-victim";
+        const attackerPlatformId = "platform-attacker";
+        const hold = new HoldBuilder()
+          .withId(HOLD_ID)
+          .withWalletId(WALLET_ID)
+          .withAmount(2000n)
+          .build();
+        const victimWallet = new WalletBuilder()
+          .withId(WALLET_ID)
+          .withPlatformId(victimPlatformId) // belongs to the victim
+          .build();
+
+        holdRepo.findById.mockResolvedValueOnce(hold);
+        walletRepo.findById.mockResolvedValueOnce(victimWallet);
+
+        const cmd = new VoidHoldCommand(HOLD_ID, attackerPlatformId);
+
+        await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
+          return AppError.is(err) && err.kind === ErrorKind.NotFound && err.code === "HOLD_NOT_FOUND";
+        });
+
+        // Tx never ran — no inner re-reads, no transitions, no writes.
+        expect(holdRepo.findById).toHaveBeenCalledTimes(1);
+        expect(holdRepo.transitionStatus).not.toHaveBeenCalled();
+        expect(walletRepo.save).not.toHaveBeenCalled();
       });
     });
   });

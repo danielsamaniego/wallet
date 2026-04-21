@@ -25,6 +25,11 @@ export function voidHoldRoute(commandBus: ICommandBus) {
           description: "Hold not found",
           content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
         },
+        409: {
+          description:
+            "Concurrency conflict (LOCK_CONTENDED / VERSION_CONFLICT). Retry with the same Idempotency-Key.",
+          content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
+        },
         422: {
           description: "Hold not active",
           content: { "application/json": { schema: resolver(ErrorResponseSchema) } },

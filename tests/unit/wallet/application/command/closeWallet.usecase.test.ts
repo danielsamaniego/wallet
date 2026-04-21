@@ -1,5 +1,5 @@
 import { mock, mockReset } from "vitest-mock-extended";
-import { createMockLogger, createMockTransactionManager } from "@test/helpers/mocks/index.js";
+import { createMockLockRunner, createMockLogger, createMockTransactionManager } from "@test/helpers/mocks/index.js";
 import { WalletBuilder } from "@test/helpers/builders/wallet.builder.js";
 import { createTestContext } from "@test/helpers/builders/context.builder.js";
 import { CloseWalletUseCase } from "@/wallet/application/command/closeWallet/usecase.js";
@@ -13,7 +13,8 @@ describe("CloseWalletUseCase", () => {
   const holdRepo = mock<IHoldRepository>();
   const txManager = createMockTransactionManager();
   const logger = createMockLogger();
-  const useCase = new CloseWalletUseCase(txManager, walletRepo, holdRepo, logger);
+  const lockRunner = createMockLockRunner();
+  const useCase = new CloseWalletUseCase(txManager, walletRepo, holdRepo, logger, lockRunner);
 
   const ctx = createTestContext();
   const WALLET_ID = "wallet-1";

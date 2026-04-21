@@ -1,4 +1,5 @@
 import type { ICommandHandler } from "../../../../utils/application/cqrs.js";
+import type { LockRunner } from "../../../../utils/application/lock.runner.js";
 import type { ITransactionManager } from "../../../../utils/application/transaction.manager.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
@@ -13,6 +14,7 @@ export class UnfreezeWalletUseCase implements ICommandHandler<UnfreezeWalletComm
     private readonly txManager: ITransactionManager,
     private readonly walletRepo: IWalletRepository,
     private readonly logger: ILogger,
+    private readonly lockRunner: LockRunner,
   ) {}
 
   async handle(ctx: AppContext, cmd: UnfreezeWalletCommand): Promise<void> {
@@ -22,26 +24,28 @@ export class UnfreezeWalletUseCase implements ICommandHandler<UnfreezeWalletComm
 
     let walletCurrency = "";
 
-    await this.txManager.run(ctx, async (txCtx) => {
-      const wallet = await this.walletRepo.findById(txCtx, cmd.walletId);
-      if (!wallet) {
-        this.logger.warn(txCtx, `${methodLogTag} wallet not found`, { wallet_id: cmd.walletId });
-        throw ErrWalletNotFound(cmd.walletId);
-      }
-      walletCurrency = wallet.currencyCode;
-      if (wallet.platformId !== cmd.platformId) {
-        this.logger.warn(txCtx, `${methodLogTag} platform mismatch`, {
-          wallet_id: cmd.walletId,
-          currency_code: wallet.currencyCode,
-          expected_platform_id: cmd.platformId,
-          actual_platform_id: wallet.platformId,
-        });
-        throw ErrWalletNotFound(cmd.walletId);
-      }
+    await this.lockRunner.run(ctx, [`wallet-lock:${cmd.walletId}`], async () => {
+      await this.txManager.run(ctx, async (txCtx) => {
+        const wallet = await this.walletRepo.findById(txCtx, cmd.walletId);
+        if (!wallet) {
+          this.logger.warn(txCtx, `${methodLogTag} wallet not found`, { wallet_id: cmd.walletId });
+          throw ErrWalletNotFound(cmd.walletId);
+        }
+        walletCurrency = wallet.currencyCode;
+        if (wallet.platformId !== cmd.platformId) {
+          this.logger.warn(txCtx, `${methodLogTag} platform mismatch`, {
+            wallet_id: cmd.walletId,
+            currency_code: wallet.currencyCode,
+            expected_platform_id: cmd.platformId,
+            actual_platform_id: wallet.platformId,
+          });
+          throw ErrWalletNotFound(cmd.walletId);
+        }
 
-      const now = Date.now();
-      wallet.unfreeze(now);
-      await this.walletRepo.save(txCtx, wallet);
+        const now = Date.now();
+        wallet.unfreeze(now);
+        await this.walletRepo.save(txCtx, wallet);
+      });
     });
 
     this.logger.info(ctx, `${methodLogTag} wallet unfrozen`, {

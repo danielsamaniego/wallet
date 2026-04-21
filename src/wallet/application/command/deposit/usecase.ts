@@ -1,5 +1,6 @@
 import type { ICommandHandler } from "../../../../utils/application/cqrs.js";
 import type { IIDGenerator } from "../../../../utils/application/id.generator.js";
+import type { LockRunner } from "../../../../utils/application/lock.runner.js";
 import type { ITransactionManager } from "../../../../utils/application/transaction.manager.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
@@ -27,6 +28,7 @@ export class DepositUseCase implements ICommandHandler<DepositCommand, DepositRe
     private readonly movementRepo: IMovementRepository,
     private readonly idGen: IIDGenerator,
     private readonly logger: ILogger,
+    private readonly lockRunner: LockRunner,
   ) {}
 
   async handle(ctx: AppContext, cmd: DepositCommand): Promise<DepositResult> {
@@ -41,97 +43,102 @@ export class DepositUseCase implements ICommandHandler<DepositCommand, DepositRe
     const movementId = this.idGen.newId();
     let walletCurrency = "";
 
-    await this.txManager.run(ctx, async (txCtx) => {
-      const wallet = await this.walletRepo.findById(txCtx, cmd.walletId);
-      if (!wallet) {
-        this.logger.warn(txCtx, `${methodLogTag} wallet not found`, { wallet_id: cmd.walletId });
-        throw ErrWalletNotFound(cmd.walletId);
-      }
-      walletCurrency = wallet.currencyCode;
-      if (wallet.platformId !== cmd.platformId) {
-        this.logger.warn(txCtx, `${methodLogTag} platform mismatch`, {
-          wallet_id: cmd.walletId,
-          currency_code: wallet.currencyCode,
-          expected_platform_id: cmd.platformId,
-          actual_platform_id: wallet.platformId,
+    // Serialize concurrent deposits to the same wallet. The lock runner falls
+    // through silently if the feature is disabled or the backend is down —
+    // the TransactionManager's optimistic-locking retries remain as a safety net.
+    await this.lockRunner.run(ctx, [`wallet-lock:${cmd.walletId}`], async () => {
+      await this.txManager.run(ctx, async (txCtx) => {
+        const wallet = await this.walletRepo.findById(txCtx, cmd.walletId);
+        if (!wallet) {
+          this.logger.warn(txCtx, `${methodLogTag} wallet not found`, { wallet_id: cmd.walletId });
+          throw ErrWalletNotFound(cmd.walletId);
+        }
+        walletCurrency = wallet.currencyCode;
+        if (wallet.platformId !== cmd.platformId) {
+          this.logger.warn(txCtx, `${methodLogTag} platform mismatch`, {
+            wallet_id: cmd.walletId,
+            currency_code: wallet.currencyCode,
+            expected_platform_id: cmd.platformId,
+            actual_platform_id: wallet.platformId,
+          });
+          throw ErrWalletNotFound(cmd.walletId);
+        }
+
+        const systemWallet = await this.walletRepo.findSystemWallet(
+          txCtx,
+          wallet.platformId,
+          wallet.currencyCode,
+        );
+        if (!systemWallet) {
+          this.logger.warn(txCtx, `${methodLogTag} system wallet not found`, {
+            platform_id: wallet.platformId,
+            currency_code: wallet.currencyCode,
+          });
+          throw ErrSystemWalletNotFound(wallet.platformId, wallet.currencyCode);
+        }
+
+        const now = Date.now();
+
+        // Create movement (journal entry)
+        const movement = Movement.create({ id: movementId, type: "deposit", createdAt: now });
+
+        // Mutate user wallet aggregate
+        wallet.deposit(cmd.amountMinor, now);
+
+        // System wallet: compute snapshot for ledger entry (approximate under concurrency)
+        const systemBalanceAfter = systemWallet.cachedBalanceMinor - cmd.amountMinor;
+
+        // Create transaction
+        const tx = Transaction.create({
+          id: txId,
+          walletId: wallet.id,
+          counterpartWalletId: systemWallet.id,
+          type: "deposit",
+          amountMinor: cmd.amountMinor,
+          status: "completed",
+          idempotencyKey: cmd.idempotencyKey,
+          reference: cmd.reference ?? null,
+          metadata: cmd.metadata ?? null,
+          holdId: null,
+          movementId,
+          createdAt: now,
         });
-        throw ErrWalletNotFound(cmd.walletId);
-      }
 
-      const systemWallet = await this.walletRepo.findSystemWallet(
-        txCtx,
-        wallet.platformId,
-        wallet.currencyCode,
-      );
-      if (!systemWallet) {
-        this.logger.warn(txCtx, `${methodLogTag} system wallet not found`, {
-          platform_id: wallet.platformId,
-          currency_code: wallet.currencyCode,
+        // Create ledger entries (CREDIT user wallet, DEBIT system wallet)
+        const creditEntry = LedgerEntry.create({
+          id: this.idGen.newId(),
+          transactionId: txId,
+          walletId: wallet.id,
+          entryType: "CREDIT",
+          amountMinor: cmd.amountMinor,
+          balanceAfterMinor: wallet.cachedBalanceMinor,
+          movementId,
+          createdAt: now,
         });
-        throw ErrSystemWalletNotFound(wallet.platformId, wallet.currencyCode);
-      }
 
-      const now = Date.now();
+        const debitEntry = LedgerEntry.create({
+          id: this.idGen.newId(),
+          transactionId: txId,
+          walletId: systemWallet.id,
+          entryType: "DEBIT",
+          amountMinor: -cmd.amountMinor,
+          balanceAfterMinor: systemBalanceAfter,
+          movementId,
+          createdAt: now,
+        });
 
-      // Create movement (journal entry)
-      const movement = Movement.create({ id: movementId, type: "deposit", createdAt: now });
-
-      // Mutate user wallet aggregate
-      wallet.deposit(cmd.amountMinor, now);
-
-      // System wallet: compute snapshot for ledger entry (approximate under concurrency)
-      const systemBalanceAfter = systemWallet.cachedBalanceMinor - cmd.amountMinor;
-
-      // Create transaction
-      const tx = Transaction.create({
-        id: txId,
-        walletId: wallet.id,
-        counterpartWalletId: systemWallet.id,
-        type: "deposit",
-        amountMinor: cmd.amountMinor,
-        status: "completed",
-        idempotencyKey: cmd.idempotencyKey,
-        reference: cmd.reference ?? null,
-        metadata: cmd.metadata ?? null,
-        holdId: null,
-        movementId,
-        createdAt: now,
+        // Persist (movement first — FK constraint)
+        await this.movementRepo.save(txCtx, movement);
+        await this.walletRepo.save(txCtx, wallet);
+        await this.walletRepo.adjustSystemWalletBalance(
+          txCtx,
+          systemWallet.id,
+          -cmd.amountMinor,
+          now,
+        );
+        await this.transactionRepo.save(txCtx, tx);
+        await this.ledgerEntryRepo.saveMany(txCtx, [creditEntry, debitEntry]);
       });
-
-      // Create ledger entries (CREDIT user wallet, DEBIT system wallet)
-      const creditEntry = LedgerEntry.create({
-        id: this.idGen.newId(),
-        transactionId: txId,
-        walletId: wallet.id,
-        entryType: "CREDIT",
-        amountMinor: cmd.amountMinor,
-        balanceAfterMinor: wallet.cachedBalanceMinor,
-        movementId,
-        createdAt: now,
-      });
-
-      const debitEntry = LedgerEntry.create({
-        id: this.idGen.newId(),
-        transactionId: txId,
-        walletId: systemWallet.id,
-        entryType: "DEBIT",
-        amountMinor: -cmd.amountMinor,
-        balanceAfterMinor: systemBalanceAfter,
-        movementId,
-        createdAt: now,
-      });
-
-      // Persist (movement first — FK constraint)
-      await this.movementRepo.save(txCtx, movement);
-      await this.walletRepo.save(txCtx, wallet);
-      await this.walletRepo.adjustSystemWalletBalance(
-        txCtx,
-        systemWallet.id,
-        -cmd.amountMinor,
-        now,
-      );
-      await this.transactionRepo.save(txCtx, tx);
-      await this.ledgerEntryRepo.saveMany(txCtx, [creditEntry, debitEntry]);
     });
 
     this.logger.info(ctx, `${methodLogTag} deposit success`, {

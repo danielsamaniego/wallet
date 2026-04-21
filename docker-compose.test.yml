@@ -1,7 +1,7 @@
 # Wallet Service — E2E test infrastructure (isolated from dev)
 # Uses different project name, ports, and volumes to avoid conflicts.
-# Dev:  PostgreSQL :5432, App :3000
-# Test: PostgreSQL :5433, App :3333
+# Dev:  PostgreSQL :5432, Redis :6379, App :3000
+# Test: PostgreSQL :5433, Redis :6380, App :3333
 
 name: wallet-test
 
@@ -22,6 +22,18 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    # No persistence — ephemeral test data
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+
   app:
     build:
       context: .
@@ -37,8 +49,15 @@ services:
       # TODO(historical-import-temp): Remove this env var together with the
       # rest of the import-historical-entry feature after migration.
       HISTORICAL_IMPORT_ENABLED: "true"
+      # Distributed lock enabled for E2E to exercise the full pipeline
+      WALLET_LOCK_ENABLED: "true"
+      REDIS_URL: "redis://redis:6379"
+      WALLET_LOCK_TTL_MS: "10000"
+      WALLET_LOCK_WAIT_MS: "5000"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]

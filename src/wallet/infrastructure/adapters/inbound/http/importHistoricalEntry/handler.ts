@@ -38,6 +38,11 @@ export function importHistoricalEntryRoute(commandBus: ICommandBus) {
           description: "Wallet not found (or endpoint disabled)",
           content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
         },
+        409: {
+          description:
+            "Concurrency conflict (LOCK_CONTENDED / VERSION_CONFLICT). Retry with the same Idempotency-Key.",
+          content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
+        },
       },
     }),
     zValidator("param", ParamSchema, validationHook),

@@ -24,6 +24,7 @@ describe("loadConfig", () => {
     "directUrl",
     "httpPort",
     "logLevel",
+    "walletLock",
   ];
 
   describe("Given a valid configuration", () => {
@@ -139,6 +140,111 @@ describe("loadConfig", () => {
       process.env.LOG_LEVEL = "verbose";
 
       expect(() => loadConfig()).toThrow("Invalid environment configuration");
+    });
+  });
+
+  // ── walletLock ───────────────────────────────────────────────────
+
+  describe("Given walletLock configuration", () => {
+    beforeEach(() => {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+      delete process.env.WALLET_LOCK_ENABLED;
+      delete process.env.WALLET_LOCK_TTL_MS;
+      delete process.env.WALLET_LOCK_WAIT_MS;
+      delete process.env.WALLET_LOCK_RETRY_MS;
+      delete process.env.REDIS_URL;
+    });
+
+    describe("When WALLET_LOCK_ENABLED is unset", () => {
+      it("Then walletLock is undefined (feature disabled)", () => {
+        const config = loadConfig();
+        expect(config.walletLock).toBeUndefined();
+      });
+    });
+
+    describe("When WALLET_LOCK_ENABLED=true and REDIS_URL is set", () => {
+      it("Then walletLock carries the Redis URL and default timings", () => {
+        process.env.WALLET_LOCK_ENABLED = "true";
+        process.env.REDIS_URL = "redis://localhost:6379";
+
+        const config = loadConfig();
+        expect(config.walletLock).toEqual({
+          redisUrl: "redis://localhost:6379",
+          ttlMs: 10_000,
+          waitMs: 5_000,
+          retryMs: 50,
+        });
+      });
+    });
+
+    describe("When WALLET_LOCK_ENABLED=true with a managed Redis TCP URL (rediss://)", () => {
+      it("Then walletLock preserves the full connection string", () => {
+        process.env.WALLET_LOCK_ENABLED = "true";
+        process.env.REDIS_URL = "rediss://default:secret@hostname.upstash.io:6379";
+
+        const config = loadConfig();
+        expect(config.walletLock?.redisUrl).toBe(
+          "rediss://default:secret@hostname.upstash.io:6379",
+        );
+      });
+    });
+
+    describe("When WALLET_LOCK_ENABLED=true but REDIS_URL is missing", () => {
+      it("Then walletLock is undefined (feature disabled) and a warning is emitted to stderr", () => {
+        process.env.WALLET_LOCK_ENABLED = "true";
+        const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        try {
+          const config = loadConfig();
+          expect(config.walletLock).toBeUndefined();
+          expect(warnSpy).toHaveBeenCalledWith(
+            expect.stringContaining("WALLET_LOCK_ENABLED=true but REDIS_URL is not set"),
+          );
+        } finally {
+          warnSpy.mockRestore();
+        }
+      });
+    });
+
+    describe("When timing parameters are out of range", () => {
+      it("Then loadConfig throws for invalid WALLET_LOCK_TTL_MS", () => {
+        process.env.WALLET_LOCK_TTL_MS = "10";
+        expect(() => loadConfig()).toThrow("Invalid environment configuration");
+      });
+
+      it("Then loadConfig throws for WALLET_LOCK_WAIT_MS above 30000", () => {
+        process.env.WALLET_LOCK_WAIT_MS = "40000";
+        expect(() => loadConfig()).toThrow("Invalid environment configuration");
+      });
+
+      it("Then loadConfig throws for WALLET_LOCK_RETRY_MS below 1", () => {
+        process.env.WALLET_LOCK_RETRY_MS = "0";
+        expect(() => loadConfig()).toThrow("Invalid environment configuration");
+      });
+    });
+
+    describe("When WALLET_LOCK_ENABLED has an invalid value", () => {
+      it("Then loadConfig throws", () => {
+        process.env.WALLET_LOCK_ENABLED = "yes";
+        expect(() => loadConfig()).toThrow("Invalid environment configuration");
+      });
+    });
+
+    describe("When enabled and timing params are provided", () => {
+      it("Then they override the defaults", () => {
+        process.env.WALLET_LOCK_ENABLED = "true";
+        process.env.REDIS_URL = "redis://localhost:6379";
+        process.env.WALLET_LOCK_TTL_MS = "15000";
+        process.env.WALLET_LOCK_WAIT_MS = "7000";
+        process.env.WALLET_LOCK_RETRY_MS = "100";
+
+        const config = loadConfig();
+        expect(config.walletLock).toEqual({
+          redisUrl: "redis://localhost:6379",
+          ttlMs: 15000,
+          waitMs: 7000,
+          retryMs: 100,
+        });
+      });
     });
   });
 });
