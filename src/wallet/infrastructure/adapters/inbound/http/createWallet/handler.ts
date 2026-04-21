@@ -34,7 +34,12 @@ export function createWalletRoute(commandBus: ICommandBus) {
 
       const result = await commandBus.dispatch(
         ctx,
-        new CreateWalletCommand(data.owner_id, ctx.platformId, data.currency_code),
+        new CreateWalletCommand(
+          data.owner_id,
+          ctx.platformId,
+          data.currency_code,
+          c.get("systemWalletShardCount") ?? 0,
+        ),
       );
 
       return c.json({ wallet_id: result.walletId }, 201);

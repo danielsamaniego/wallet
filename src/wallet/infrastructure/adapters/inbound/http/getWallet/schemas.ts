@@ -14,7 +14,6 @@ export const ResponseSchema = z.object({
   balance_minor: z.union([z.number(), z.string()]),
   available_balance_minor: z.union([z.number(), z.string()]),
   status: z.string(),
-  is_system: z.boolean(),
   created_at: z.number(),
   updated_at: z.number(),
 });

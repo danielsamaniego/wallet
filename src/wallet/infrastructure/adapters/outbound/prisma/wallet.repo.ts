@@ -1,9 +1,13 @@
 import type { PrismaClient } from "@prisma/client";
+import type { IIDGenerator } from "../../../../../utils/application/id.generator.js";
 import type { AppContext } from "../../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
 import type { IWalletRepository } from "../../../../domain/ports/wallet.repository.js";
 import { Wallet, type WalletStatus } from "../../../../domain/wallet/wallet.aggregate.js";
-import { ErrVersionConflict } from "../../../../domain/wallet/wallet.errors.js";
+import {
+  ErrSystemWalletNotFound,
+  ErrVersionConflict,
+} from "../../../../domain/wallet/wallet.errors.js";
 
 type PrismaTransactionClient = Omit<
   PrismaClient,
@@ -14,6 +18,7 @@ export class PrismaWalletRepo implements IWalletRepository {
   constructor(
     private readonly prisma: PrismaTransactionClient,
     private readonly logger: ILogger,
+    private readonly idGen: IIDGenerator,
   ) {}
 
   private client(ctx: AppContext): PrismaTransactionClient {
@@ -39,6 +44,7 @@ export class PrismaWalletRepo implements IWalletRepository {
           status: wallet.status,
           version: wallet.version,
           isSystem: wallet.isSystem,
+          shardIndex: wallet.shardIndex,
           createdAt: BigInt(wallet.createdAt),
           updatedAt: BigInt(wallet.updatedAt),
         },
@@ -65,24 +71,59 @@ export class PrismaWalletRepo implements IWalletRepository {
     }
   }
 
-  async adjustSystemWalletBalance(
+  async adjustSystemShardBalance(
     ctx: AppContext,
-    walletId: string,
+    platformId: string,
+    currencyCode: string,
+    shardIndex: number,
     deltaMinor: bigint,
     now: number,
-  ): Promise<void> {
-    this.logger.debug(ctx, "WalletRepo | adjustSystemWalletBalance", {
-      wallet_id: walletId,
+  ): Promise<{ walletId: string; cachedBalanceMinor: bigint }> {
+    const methodLogTag = "WalletRepo | adjustSystemShardBalance";
+    const upperCurrency = currencyCode.toUpperCase();
+    this.logger.debug(ctx, `${methodLogTag}`, {
+      platform_id: platformId,
+      currency_code: upperCurrency,
+      shard_index: shardIndex,
       delta_minor: Number(deltaMinor),
     });
     const db = this.client(ctx);
-    await db.wallet.update({
-      where: { id: walletId },
-      data: {
-        cachedBalanceMinor: { increment: deltaMinor },
-        updatedAt: BigInt(now),
-      },
-    });
+    try {
+      // Single UPDATE ... RETURNING locating the shard via the 4-tuple unique.
+      // No pre-SELECT: avoids read-write dependencies that SERIALIZABLE would
+      // abort under cross-wallet concurrency.
+      const updated = await db.wallet.update({
+        where: {
+          ownerId_platformId_currencyCode_shardIndex: {
+            ownerId: "SYSTEM",
+            platformId,
+            currencyCode: upperCurrency,
+            shardIndex,
+          },
+        },
+        data: {
+          cachedBalanceMinor: { increment: deltaMinor },
+          updatedAt: BigInt(now),
+        },
+        select: { id: true, cachedBalanceMinor: true },
+      });
+      return {
+        walletId: updated.id,
+        cachedBalanceMinor: updated.cachedBalanceMinor,
+      };
+    } catch (err) {
+      // Prisma P2025 = Record not found. Surface as a domain-level error so
+      // callers know they need to ensure shards exist (createWallet path).
+      if (err instanceof Error && "code" in err && (err as { code: string }).code === "P2025") {
+        this.logger.warn(ctx, `${methodLogTag} shard not found`, {
+          platform_id: platformId,
+          currency_code: upperCurrency,
+          shard_index: shardIndex,
+        });
+        throw ErrSystemWalletNotFound(platformId, upperCurrency);
+      }
+      throw err;
+    }
   }
 
   async findById(ctx: AppContext, walletId: string): Promise<Wallet | null> {
@@ -108,10 +149,12 @@ export class PrismaWalletRepo implements IWalletRepository {
     });
     const row = await this.client(ctx).wallet.findUnique({
       where: {
-        ownerId_platformId_currencyCode: {
+        ownerId_platformId_currencyCode_shardIndex: {
           ownerId,
           platformId,
           currencyCode: currencyCode.toUpperCase(),
+          // User wallets are always shard 0 (they are their own shard 0).
+          shardIndex: 0,
         },
       },
     });
@@ -126,32 +169,102 @@ export class PrismaWalletRepo implements IWalletRepository {
     return this.toDomain(row);
   }
 
-  async findSystemWallet(
+  async ensureSystemWalletShards(
     ctx: AppContext,
     platformId: string,
     currencyCode: string,
-  ): Promise<Wallet | null> {
-    this.logger.debug(ctx, "WalletRepo | findSystemWallet", {
+    shardCount: number,
+    now: number,
+  ): Promise<void> {
+    const methodLogTag = "WalletRepo | ensureSystemWalletShards";
+    const upperCurrency = currencyCode.toUpperCase();
+    this.logger.debug(ctx, `${methodLogTag} start`, {
       platform_id: platformId,
-      currency_code: currencyCode,
+      currency_code: upperCurrency,
+      shard_count: shardCount,
     });
-    const row = await this.client(ctx).wallet.findUnique({
-      where: {
-        ownerId_platformId_currencyCode: {
-          ownerId: "SYSTEM",
-          platformId,
-          currencyCode: currencyCode.toUpperCase(),
-        },
-      },
+    const db = this.client(ctx);
+    // Read the set of existing shards so we can insert only the missing ones.
+    // `skipDuplicates` below is still the atomicity guarantee — the pre-read is
+    // only an optimisation to avoid hitting the DB with a full N-row INSERT on
+    // the common case where the shards already exist.
+    const existing = await db.wallet.findMany({
+      where: { platformId, currencyCode: upperCurrency, isSystem: true },
+      select: { shardIndex: true },
     });
-    if (!row) {
-      this.logger.debug(ctx, "WalletRepo | findSystemWallet not found", {
-        platform_id: platformId,
-        currency_code: currencyCode,
-      });
-      return null;
+    const existingSet = new Set(existing.map((r) => r.shardIndex));
+    const missing: number[] = [];
+    for (let i = 0; i < shardCount; i++) {
+      if (!existingSet.has(i)) missing.push(i);
     }
-    return this.toDomain(row);
+    if (missing.length === 0) {
+      this.logger.debug(ctx, `${methodLogTag} no-op`, {
+        platform_id: platformId,
+        currency_code: upperCurrency,
+        existing_count: existing.length,
+      });
+      return;
+    }
+    const nowBig = BigInt(now);
+    await db.wallet.createMany({
+      data: missing.map((idx) => ({
+        id: this.idGen.newId(),
+        ownerId: "SYSTEM",
+        platformId,
+        currencyCode: upperCurrency,
+        cachedBalanceMinor: 0n,
+        status: "active",
+        version: 1,
+        isSystem: true,
+        shardIndex: idx,
+        createdAt: nowBig,
+        updatedAt: nowBig,
+      })),
+      // ON CONFLICT DO NOTHING — concurrent requests trying to create the same
+      // shard both succeed idempotently (the second produces zero rows affected).
+      skipDuplicates: true,
+    });
+    this.logger.info(ctx, `${methodLogTag} inserted`, {
+      platform_id: platformId,
+      currency_code: upperCurrency,
+      inserted: missing.length,
+      shard_count: shardCount,
+    });
+  }
+
+  async listSystemWalletCurrencies(ctx: AppContext, platformId: string): Promise<string[]> {
+    this.logger.debug(ctx, "WalletRepo | listSystemWalletCurrencies", {
+      platform_id: platformId,
+    });
+    const rows = await this.client(ctx).wallet.findMany({
+      where: { platformId, isSystem: true },
+      select: { currencyCode: true },
+      distinct: ["currencyCode"],
+    });
+    return rows.map((r) => r.currencyCode);
+  }
+
+  async sumSystemWalletBalance(
+    ctx: AppContext,
+    platformId: string,
+    currencyCode: string,
+  ): Promise<{ cachedBalanceMinor: bigint; shardCount: number }> {
+    const methodLogTag = "WalletRepo | sumSystemWalletBalance";
+    const upperCurrency = currencyCode.toUpperCase();
+    this.logger.debug(ctx, `${methodLogTag} start`, {
+      platform_id: platformId,
+      currency_code: upperCurrency,
+    });
+    const db = this.client(ctx);
+    const result = await db.wallet.aggregate({
+      where: { platformId, currencyCode: upperCurrency, isSystem: true },
+      _sum: { cachedBalanceMinor: true },
+      _count: { _all: true },
+    });
+    return {
+      cachedBalanceMinor: result._sum.cachedBalanceMinor ?? 0n,
+      shardCount: result._count._all,
+    };
   }
 
   async existsByOwner(
@@ -165,10 +278,18 @@ export class PrismaWalletRepo implements IWalletRepository {
       platform_id: platformId,
       currency_code: currencyCode,
     });
-    const count = await this.client(ctx).wallet.count({
-      where: { ownerId, platformId, currencyCode: currencyCode.toUpperCase() },
+    const row = await this.client(ctx).wallet.findUnique({
+      where: {
+        ownerId_platformId_currencyCode_shardIndex: {
+          ownerId,
+          platformId,
+          currencyCode: currencyCode.toUpperCase(),
+          shardIndex: 0,
+        },
+      },
+      select: { id: true },
     });
-    return count > 0;
+    return row !== null;
   }
 
   private toDomain(row: {
@@ -180,6 +301,7 @@ export class PrismaWalletRepo implements IWalletRepository {
     status: string;
     version: number;
     isSystem: boolean;
+    shardIndex: number;
     createdAt: bigint;
     updatedAt: bigint;
   }): Wallet {
@@ -192,6 +314,7 @@ export class PrismaWalletRepo implements IWalletRepository {
       row.status as WalletStatus,
       row.version,
       row.isSystem,
+      row.shardIndex,
       Number(row.createdAt),
       Number(row.updatedAt),
     );

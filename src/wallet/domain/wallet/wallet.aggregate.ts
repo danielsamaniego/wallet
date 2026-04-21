@@ -17,6 +17,12 @@ export class Wallet {
   private _status: WalletStatus;
   private _version: number;
   private readonly _isSystem: boolean;
+  /**
+   * `0` for user wallets (they are always their own shard 0).
+   * `0..N-1` for system wallets where N = platform.systemWalletShardCount.
+   * Immutable post-creation (enforced by DB trigger `trg_wallet_field_lock`).
+   */
+  private readonly _shardIndex: number;
   private _createdAt: number;
   private _updatedAt: number;
 
@@ -30,6 +36,7 @@ export class Wallet {
     this._status = "active";
     this._version = 0;
     this._isSystem = false;
+    this._shardIndex = 0;
     this._createdAt = 0;
     this._updatedAt = 0;
   }
@@ -39,7 +46,6 @@ export class Wallet {
     ownerId: string,
     platformId: string,
     currencyCode: string,
-    isSystem: boolean,
     now: number,
   ): Wallet {
     const upper = currencyCode.toUpperCase();
@@ -58,7 +64,8 @@ export class Wallet {
       _cachedBalanceMinor: 0n,
       _status: "active",
       _version: 1,
-      _isSystem: isSystem,
+      _isSystem: false,
+      _shardIndex: 0,
       _createdAt: now,
       _updatedAt: now,
     });
@@ -74,6 +81,7 @@ export class Wallet {
     status: WalletStatus,
     version: number,
     isSystem: boolean,
+    shardIndex: number,
     createdAt: number,
     updatedAt: number,
   ): Wallet {
@@ -87,6 +95,7 @@ export class Wallet {
       _status: status,
       _version: version,
       _isSystem: isSystem,
+      _shardIndex: shardIndex,
       _createdAt: createdAt,
       _updatedAt: updatedAt,
     });
@@ -116,6 +125,9 @@ export class Wallet {
   }
   get isSystem(): boolean {
     return this._isSystem;
+  }
+  get shardIndex(): number {
+    return this._shardIndex;
   }
   get createdAt(): number {
     return this._createdAt;

@@ -12,6 +12,7 @@ export class ChargeCommand extends ICommand<ChargeResult> {
     public readonly platformId: string,
     public readonly amountMinor: bigint,
     public readonly idempotencyKey: string,
+    public readonly systemWalletShardCount: number,
     public readonly reference?: string,
     public readonly metadata?: Record<string, unknown>,
   ) {

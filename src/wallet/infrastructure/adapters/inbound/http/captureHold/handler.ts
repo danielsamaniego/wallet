@@ -43,7 +43,12 @@ export function captureHoldRoute(commandBus: ICommandBus) {
 
       const result = await commandBus.dispatch(
         ctx,
-        new CaptureHoldCommand(holdId, ctx.platformId, c.req.header("idempotency-key") ?? ""),
+        new CaptureHoldCommand(
+          holdId,
+          ctx.platformId,
+          c.req.header("idempotency-key") ?? "",
+          c.get("systemWalletShardCount") ?? 0,
+        ),
       );
 
       return c.json({ transaction_id: result.transactionId, movement_id: result.movementId }, 201);

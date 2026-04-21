@@ -13,7 +13,6 @@ export interface WalletDTO {
   balance_minor: number | string;
   available_balance_minor: number | string;
   status: string;
-  is_system: boolean;
   created_at: number;
   updated_at: number;
 }

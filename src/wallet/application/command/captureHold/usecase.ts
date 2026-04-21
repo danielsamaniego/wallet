@@ -4,6 +4,7 @@ import type { LockRunner } from "../../../../utils/application/lock.runner.js";
 import type { ITransactionManager } from "../../../../utils/application/transaction.manager.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
+import { systemWalletShardIndex } from "../../../../utils/kernel/shard.js";
 import { ErrHoldExpired, ErrHoldNotFound } from "../../../domain/hold/hold.errors.js";
 import { LedgerEntry } from "../../../domain/ledgerEntry/ledgerEntry.entity.js";
 import { Movement } from "../../../domain/movement/movement.entity.js";
@@ -13,10 +14,7 @@ import type { IMovementRepository } from "../../../domain/ports/movement.reposit
 import type { ITransactionRepository } from "../../../domain/ports/transaction.repository.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { Transaction } from "../../../domain/transaction/transaction.entity.js";
-import {
-  ErrSystemWalletNotFound,
-  ErrWalletNotFound,
-} from "../../../domain/wallet/wallet.errors.js";
+import { ErrWalletNotFound } from "../../../domain/wallet/wallet.errors.js";
 import type { CaptureHoldCommand, CaptureHoldResult } from "./command.js";
 
 const mainLogTag = "CaptureHoldUseCase";
@@ -81,22 +79,8 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
         }
         walletCurrency = wallet.currencyCode;
 
-        const systemWallet = await this.walletRepo.findSystemWallet(
-          txCtx,
-          wallet.platformId,
-          wallet.currencyCode,
-        );
-        if (!systemWallet) {
-          this.logger.warn(txCtx, `${methodLogTag} system wallet not found`, {
-            platform_id: wallet.platformId,
-            currency_code: wallet.currencyCode,
-          });
-          throw ErrSystemWalletNotFound(wallet.platformId, wallet.currencyCode);
-        }
-
         const now = Date.now();
 
-        // Check hold expiration on-access
         if (hold.isExpired(now)) {
           this.logger.info(txCtx, `${methodLogTag} hold expired on access`, {
             hold_id: hold.id,
@@ -113,22 +97,26 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
           throw ErrHoldExpired(cmd.holdId);
         }
 
-        // Capture hold
         hold.capture(now);
 
-        // Create movement (journal entry)
         const movement = Movement.create({ id: movementId, type: "hold_capture", createdAt: now });
 
-        // Debit user wallet
         wallet.withdraw(hold.amountMinor, wallet.cachedBalanceMinor, now);
 
-        // System wallet: compute snapshot for ledger entry (approximate under concurrency)
-        const systemBalanceAfter = systemWallet.cachedBalanceMinor + hold.amountMinor;
+        const shardIndex = systemWalletShardIndex(wallet.id, cmd.systemWalletShardCount);
+        const systemSide = await this.walletRepo.adjustSystemShardBalance(
+          txCtx,
+          wallet.platformId,
+          wallet.currencyCode,
+          shardIndex,
+          hold.amountMinor,
+          now,
+        );
 
         const tx = Transaction.create({
           id: txId,
           walletId: wallet.id,
-          counterpartWalletId: systemWallet.id,
+          counterpartWalletId: systemSide.walletId,
           type: "hold_capture",
           amountMinor: hold.amountMinor,
           status: "completed",
@@ -154,24 +142,18 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
         const creditEntry = LedgerEntry.create({
           id: this.idGen.newId(),
           transactionId: txId,
-          walletId: systemWallet.id,
+          walletId: systemSide.walletId,
           entryType: "CREDIT",
           amountMinor: hold.amountMinor,
-          balanceAfterMinor: systemBalanceAfter,
+          balanceAfterMinor: systemSide.cachedBalanceMinor,
           movementId,
           createdAt: now,
         });
 
-        // Persist (movement first — FK constraint)
+        // movement first: ledger_entries.movement_id FK requires it
         await this.movementRepo.save(txCtx, movement);
         await this.holdRepo.transitionStatus(txCtx, hold.id, "active", "captured", now);
         await this.walletRepo.save(txCtx, wallet);
-        await this.walletRepo.adjustSystemWalletBalance(
-          txCtx,
-          systemWallet.id,
-          hold.amountMinor,
-          now,
-        );
         await this.transactionRepo.save(txCtx, tx);
         await this.ledgerEntryRepo.saveMany(txCtx, [debitEntry, creditEntry]);
       });

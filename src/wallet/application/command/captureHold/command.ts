@@ -11,6 +11,7 @@ export class CaptureHoldCommand extends ICommand<CaptureHoldResult> {
     public readonly holdId: string,
     public readonly platformId: string,
     public readonly idempotencyKey: string,
+    public readonly systemWalletShardCount: number,
   ) {
     super(CaptureHoldCommand.TYPE);
   }

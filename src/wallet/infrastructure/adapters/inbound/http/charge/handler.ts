@@ -54,6 +54,7 @@ export function chargeRoute(commandBus: ICommandBus) {
           ctx.platformId,
           BigInt(data.amount_minor),
           c.req.header("idempotency-key") ?? "",
+          c.get("systemWalletShardCount") ?? 0,
           data.reference,
           data.metadata,
         ),

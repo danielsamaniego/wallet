@@ -20,6 +20,7 @@ export class ImportHistoricalEntryCommand extends ICommand<ImportHistoricalEntry
     public readonly reference: string,
     public readonly idempotencyKey: string,
     public readonly historicalCreatedAt: number,
+    public readonly systemWalletShardCount: number,
     public readonly metadata?: Record<string, unknown>,
   ) {
     super(ImportHistoricalEntryCommand.TYPE);

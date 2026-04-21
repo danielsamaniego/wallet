@@ -17,8 +17,9 @@ export class PrismaWalletReadStore implements IWalletReadStore {
 
   async getById(ctx: AppContext, walletId: string, platformId: string): Promise<WalletDTO | null> {
     this.logger.debug(ctx, "WalletReadStore | getById", { wallet_id: walletId });
+    // System wallets are internal; never surface through the public read API.
     const row = await this.prisma.wallet.findFirst({
-      where: { id: walletId, platformId },
+      where: { id: walletId, platformId, isSystem: false },
     });
 
     if (!row) {
@@ -40,7 +41,11 @@ export class PrismaWalletReadStore implements IWalletReadStore {
     this.logger.debug(ctx, "WalletReadStore | list", { platform_id: platformId });
 
     const { where, orderBy, take } = buildPrismaListing(
-      { platformId },
+      // System wallets are internal accumulator shards; platforms should never
+      // see them in wallet listings. See systemPatterns.md § "System Wallet
+      // Sharding" — the transparent read surface is `sumSystemWalletBalance`
+      // (on the repo), which reports for reconciliation, not for public API.
+      { platformId, isSystem: false },
       listing.filters,
       listing.sort,
       listing.limit,
@@ -76,7 +81,6 @@ export class PrismaWalletReadStore implements IWalletReadStore {
     currencyCode: string;
     cachedBalanceMinor: bigint;
     status: string;
-    isSystem: boolean;
     createdAt: bigint;
     updatedAt: bigint;
   }): Promise<WalletDTO> {
@@ -101,7 +105,6 @@ export class PrismaWalletReadStore implements IWalletReadStore {
       balance_minor: toSafeNumber(row.cachedBalanceMinor),
       available_balance_minor: toSafeNumber(availableBalance),
       status: row.status,
-      is_system: row.isSystem,
       created_at: toNumber(row.createdAt),
       updated_at: toNumber(row.updatedAt),
     };

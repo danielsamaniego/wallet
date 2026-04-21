@@ -4,6 +4,7 @@ import type { LockRunner } from "../../../../utils/application/lock.runner.js";
 import type { ITransactionManager } from "../../../../utils/application/transaction.manager.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
+import { systemWalletShardIndex } from "../../../../utils/kernel/shard.js";
 import { LedgerEntry } from "../../../domain/ledgerEntry/ledgerEntry.entity.js";
 import { Movement } from "../../../domain/movement/movement.entity.js";
 import type { IHoldRepository } from "../../../domain/ports/hold.repository.js";
@@ -12,10 +13,7 @@ import type { IMovementRepository } from "../../../domain/ports/movement.reposit
 import type { ITransactionRepository } from "../../../domain/ports/transaction.repository.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { Transaction } from "../../../domain/transaction/transaction.entity.js";
-import {
-  ErrSystemWalletNotFound,
-  ErrWalletNotFound,
-} from "../../../domain/wallet/wallet.errors.js";
+import { ErrWalletNotFound } from "../../../domain/wallet/wallet.errors.js";
 import type { WithdrawCommand, WithdrawResult } from "./command.js";
 
 const mainLogTag = "WithdrawUseCase";
@@ -63,22 +61,8 @@ export class WithdrawUseCase implements ICommandHandler<WithdrawCommand, Withdra
           throw ErrWalletNotFound(cmd.walletId);
         }
 
-        const systemWallet = await this.walletRepo.findSystemWallet(
-          txCtx,
-          wallet.platformId,
-          wallet.currencyCode,
-        );
-        if (!systemWallet) {
-          this.logger.warn(txCtx, `${methodLogTag} system wallet not found`, {
-            platform_id: wallet.platformId,
-            currency_code: wallet.currencyCode,
-          });
-          throw ErrSystemWalletNotFound(wallet.platformId, wallet.currencyCode);
-        }
-
         const now = Date.now();
 
-        // Calculate available balance (cached - active holds)
         const activeHolds = await this.holdRepo.sumActiveHolds(txCtx, wallet.id);
         const availableBalance = wallet.cachedBalanceMinor - activeHolds;
 
@@ -90,20 +74,24 @@ export class WithdrawUseCase implements ICommandHandler<WithdrawCommand, Withdra
           available_balance_minor: Number(availableBalance),
         });
 
-        // Create movement (journal entry)
         const movement = Movement.create({ id: movementId, type: "withdrawal", createdAt: now });
 
-        // Mutate user wallet aggregate
         wallet.withdraw(cmd.amountMinor, availableBalance, now);
 
-        // System wallet: compute snapshot for ledger entry (approximate under concurrency)
-        const systemBalanceAfter = systemWallet.cachedBalanceMinor + cmd.amountMinor;
+        const shardIndex = systemWalletShardIndex(wallet.id, cmd.systemWalletShardCount);
+        const systemSide = await this.walletRepo.adjustSystemShardBalance(
+          txCtx,
+          wallet.platformId,
+          wallet.currencyCode,
+          shardIndex,
+          cmd.amountMinor,
+          now,
+        );
 
-        // Create transaction
         const tx = Transaction.create({
           id: txId,
           walletId: wallet.id,
-          counterpartWalletId: systemWallet.id,
+          counterpartWalletId: systemSide.walletId,
           type: "withdrawal",
           amountMinor: cmd.amountMinor,
           status: "completed",
@@ -115,7 +103,6 @@ export class WithdrawUseCase implements ICommandHandler<WithdrawCommand, Withdra
           createdAt: now,
         });
 
-        // Ledger entries (DEBIT user wallet, CREDIT system wallet)
         const debitEntry = LedgerEntry.create({
           id: this.idGen.newId(),
           transactionId: txId,
@@ -130,23 +117,17 @@ export class WithdrawUseCase implements ICommandHandler<WithdrawCommand, Withdra
         const creditEntry = LedgerEntry.create({
           id: this.idGen.newId(),
           transactionId: txId,
-          walletId: systemWallet.id,
+          walletId: systemSide.walletId,
           entryType: "CREDIT",
           amountMinor: cmd.amountMinor,
-          balanceAfterMinor: systemBalanceAfter,
+          balanceAfterMinor: systemSide.cachedBalanceMinor,
           movementId,
           createdAt: now,
         });
 
-        // Persist (movement first — FK constraint)
+        // movement first: ledger_entries.movement_id FK requires it
         await this.movementRepo.save(txCtx, movement);
         await this.walletRepo.save(txCtx, wallet);
-        await this.walletRepo.adjustSystemWalletBalance(
-          txCtx,
-          systemWallet.id,
-          cmd.amountMinor,
-          now,
-        );
         await this.transactionRepo.save(txCtx, tx);
         await this.ledgerEntryRepo.saveMany(txCtx, [debitEntry, creditEntry]);
       });

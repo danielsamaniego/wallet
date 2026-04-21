@@ -31,6 +31,18 @@ export class CreateWalletUseCase
     const walletId = this.idGen.newId();
     const now = Date.now();
 
+    // Materialize shards OUTSIDE the SERIALIZABLE tx: concurrent createWallet
+    // requests for the same (platform, currency) would otherwise create
+    // read-write dependencies on the shard rows and abort each other.
+    // Idempotent via INSERT ... ON CONFLICT DO NOTHING.
+    await this.walletRepo.ensureSystemWalletShards(
+      ctx,
+      cmd.platformId,
+      cmd.currencyCode,
+      cmd.systemWalletShardCount,
+      now,
+    );
+
     await this.txManager.run(ctx, async (txCtx) => {
       const exists = await this.walletRepo.existsByOwner(
         txCtx,
@@ -47,31 +59,7 @@ export class CreateWalletUseCase
         throw ErrWalletAlreadyExists();
       }
 
-      // Ensure system wallet exists for this platform/currency
-      const systemWallet = await this.walletRepo.findSystemWallet(
-        txCtx,
-        cmd.platformId,
-        cmd.currencyCode,
-      );
-      if (!systemWallet) {
-        const sysId = this.idGen.newId();
-        const sys = Wallet.create(sysId, "SYSTEM", cmd.platformId, cmd.currencyCode, true, now);
-        await this.walletRepo.save(txCtx, sys);
-        this.logger.info(txCtx, `${methodLogTag} system wallet created`, {
-          system_wallet_id: sysId,
-          platform_id: cmd.platformId,
-          currency_code: cmd.currencyCode,
-        });
-      }
-
-      const wallet = Wallet.create(
-        walletId,
-        cmd.ownerId,
-        cmd.platformId,
-        cmd.currencyCode,
-        false,
-        now,
-      );
+      const wallet = Wallet.create(walletId, cmd.ownerId, cmd.platformId, cmd.currencyCode, now);
       await this.walletRepo.save(txCtx, wallet);
     });
 

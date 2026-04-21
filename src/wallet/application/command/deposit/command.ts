@@ -12,6 +12,7 @@ export class DepositCommand extends ICommand<DepositResult> {
     public readonly platformId: string,
     public readonly amountMinor: bigint,
     public readonly idempotencyKey: string,
+    public readonly systemWalletShardCount: number,
     public readonly reference?: string,
     public readonly metadata?: Record<string, unknown>,
   ) {

@@ -14,6 +14,7 @@ export class AdjustBalanceCommand extends ICommand<AdjustBalanceResult> {
     public readonly reason: string,
     public readonly idempotencyKey: string,
     public readonly allowNegativeBalance: boolean,
+    public readonly systemWalletShardCount: number,
     public readonly reference?: string,
     public readonly metadata?: Record<string, unknown>,
   ) {

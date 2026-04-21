@@ -52,6 +52,7 @@ export function adjustBalanceRoute(commandBus: ICommandBus) {
           data.reason,
           c.req.header("idempotency-key") ?? "",
           c.get("allowNegativeBalance") ?? false,
+          c.get("systemWalletShardCount") ?? 0,
           data.reference,
           data.metadata,
         ),

@@ -62,7 +62,7 @@ export function wire({
   lockRunner,
 }: SharedInfra): ModuleHandlers {
   // Repos
-  const walletRepo = new PrismaWalletRepo(prisma, logger);
+  const walletRepo = new PrismaWalletRepo(prisma, logger, idGen);
   const holdRepo = new PrismaHoldRepo(prisma, logger);
   const transactionRepo = new PrismaTransactionRepo(prisma, logger);
   const ledgerEntryRepo = new PrismaLedgerEntryRepo(prisma, logger);

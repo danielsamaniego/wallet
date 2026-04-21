@@ -8,6 +8,7 @@ import type { LockRunner } from "../../../../utils/application/lock.runner.js";
 import type { ITransactionManager } from "../../../../utils/application/transaction.manager.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
+import { systemWalletShardIndex } from "../../../../utils/kernel/shard.js";
 import { LedgerEntry } from "../../../domain/ledgerEntry/ledgerEntry.entity.js";
 import { Movement } from "../../../domain/movement/movement.entity.js";
 import type { IHoldRepository } from "../../../domain/ports/hold.repository.js";
@@ -16,10 +17,7 @@ import type { IMovementRepository } from "../../../domain/ports/movement.reposit
 import type { ITransactionRepository } from "../../../domain/ports/transaction.repository.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { Transaction } from "../../../domain/transaction/transaction.entity.js";
-import {
-  ErrSystemWalletNotFound,
-  ErrWalletNotFound,
-} from "../../../domain/wallet/wallet.errors.js";
+import { ErrWalletNotFound } from "../../../domain/wallet/wallet.errors.js";
 import type { ImportHistoricalEntryCommand, ImportHistoricalEntryResult } from "./command.js";
 
 const mainLogTag = "ImportHistoricalEntryUseCase";
@@ -75,19 +73,6 @@ export class ImportHistoricalEntryUseCase
           throw ErrWalletNotFound(cmd.walletId);
         }
 
-        const systemWallet = await this.walletRepo.findSystemWallet(
-          txCtx,
-          wallet.platformId,
-          wallet.currencyCode,
-        );
-        if (!systemWallet) {
-          this.logger.warn(txCtx, `${methodLogTag} system wallet not found`, {
-            platform_id: wallet.platformId,
-            currency_code: wallet.currencyCode,
-          });
-          throw ErrSystemWalletNotFound(wallet.platformId, wallet.currencyCode);
-        }
-
         // Historical timestamp is the source of truth for all journal entities
         // (Movement, Transaction, LedgerEntry) so the imported history reflects
         // the original event times end-to-end. Wallet aggregates are also
@@ -115,7 +100,6 @@ export class ImportHistoricalEntryUseCase
           });
         }
 
-        // Create movement (journal entry) with historical timestamp
         const movement = Movement.create({
           id: movementId,
           type: "adjustment",
@@ -123,24 +107,28 @@ export class ImportHistoricalEntryUseCase
           createdAt: historicalAt,
         });
 
-        // Mutate user wallet aggregate at historical timestamp
-        // Historical import is a privileged migration operation; negative balances are always allowed.
+        // Historical import is privileged: negative balances always allowed (migration path).
         wallet.adjust(cmd.amountMinor, availableBalance, true, historicalAt);
 
-        // Direction for transaction type and ledger entries
         const isCredit = cmd.amountMinor > 0n;
         const absAmount = isCredit ? cmd.amountMinor : -cmd.amountMinor;
         const txType = isCredit ? "adjustment_credit" : "adjustment_debit";
-
-        // System wallet counterpart balance (approximate under concurrency)
         const systemDelta = isCredit ? -absAmount : absAmount;
-        const systemBalanceAfter = systemWallet.cachedBalanceMinor + systemDelta;
 
-        // Transaction with historical timestamp + user-facing reference
+        const shardIndex = systemWalletShardIndex(wallet.id, cmd.systemWalletShardCount);
+        const systemSide = await this.walletRepo.adjustSystemShardBalance(
+          txCtx,
+          wallet.platformId,
+          wallet.currencyCode,
+          shardIndex,
+          systemDelta,
+          historicalAt,
+        );
+
         const tx = Transaction.create({
           id: txId,
           walletId: wallet.id,
-          counterpartWalletId: systemWallet.id,
+          counterpartWalletId: systemSide.walletId,
           type: txType,
           amountMinor: absAmount,
           status: "completed",
@@ -152,7 +140,6 @@ export class ImportHistoricalEntryUseCase
           createdAt: historicalAt,
         });
 
-        // Ledger entries at historical timestamp
         const userEntry = LedgerEntry.create({
           id: this.idGen.newId(),
           transactionId: txId,
@@ -167,23 +154,17 @@ export class ImportHistoricalEntryUseCase
         const systemEntry = LedgerEntry.create({
           id: this.idGen.newId(),
           transactionId: txId,
-          walletId: systemWallet.id,
+          walletId: systemSide.walletId,
           entryType: isCredit ? "DEBIT" : "CREDIT",
           amountMinor: isCredit ? -absAmount : absAmount,
-          balanceAfterMinor: systemBalanceAfter,
+          balanceAfterMinor: systemSide.cachedBalanceMinor,
           movementId,
           createdAt: historicalAt,
         });
 
-        // Persist (movement first — FK constraint)
+        // movement first: ledger_entries.movement_id FK requires it
         await this.movementRepo.save(txCtx, movement);
         await this.walletRepo.save(txCtx, wallet);
-        await this.walletRepo.adjustSystemWalletBalance(
-          txCtx,
-          systemWallet.id,
-          systemDelta,
-          historicalAt,
-        );
         await this.transactionRepo.save(txCtx, tx);
         await this.ledgerEntryRepo.saveMany(txCtx, [userEntry, systemEntry]);
       });

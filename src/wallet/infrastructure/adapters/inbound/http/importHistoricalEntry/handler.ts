@@ -62,6 +62,7 @@ export function importHistoricalEntryRoute(commandBus: ICommandBus) {
           data.reference,
           c.req.header("idempotency-key") ?? "",
           data.historical_created_at,
+          c.get("systemWalletShardCount") ?? 0,
           data.metadata,
         ),
       );
