@@ -10,21 +10,18 @@ import { ListPlatformsUseCase } from "./application/query/listPlatforms/usecase.
 // Repos
 import { PrismaPlatformReadStore } from "./infrastructure/adapters/outbound/prisma/platform.readstore.js";
 import { PrismaPlatformRepo } from "./infrastructure/adapters/outbound/prisma/platform.repo.js";
+import { SystemWalletAdapter } from "./infrastructure/adapters/outbound/wallet/system.wallet.adapter.js";
 
 export function wire({ prisma, logger, idGen, txManager }: SharedInfra): ModuleHandlers {
   const platformRepo = new PrismaPlatformRepo(prisma, logger);
   const platformReadStore = new PrismaPlatformReadStore(prisma, logger);
-  // Cross-BC: UpdatePlatformConfig needs to materialise shards on the wallet
-  // side when system_wallet_shard_count increases. Instantiating a dedicated
-  // PrismaWalletRepo here is cheap (shared Prisma client) and avoids leaking
-  // wallet-specific internals into SharedInfra.
-  const walletRepo = new PrismaWalletRepo(prisma, logger, idGen);
+  const systemWallet = new SystemWalletAdapter(new PrismaWalletRepo(prisma, logger, idGen));
 
   const listPlatforms = new ListPlatformsUseCase(platformReadStore, logger);
   const updatePlatformConfig = new UpdatePlatformConfigUseCase(
     txManager,
     platformRepo,
-    walletRepo,
+    systemWallet,
     logger,
   );
 

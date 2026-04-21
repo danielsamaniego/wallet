@@ -2,9 +2,9 @@ import type { ICommandHandler } from "../../../../utils/application/cqrs.js";
 import type { ITransactionManager } from "../../../../utils/application/transaction.manager.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
-import type { IWalletRepository } from "../../../../wallet/domain/ports/wallet.repository.js";
 import { ErrPlatformNotFound } from "../../../domain/platform/platform.errors.js";
 import type { IPlatformRepository } from "../../../domain/ports/platform.repository.js";
+import type { ISystemWalletPort } from "../../../domain/ports/system.wallet.port.js";
 import type { UpdatePlatformConfigCommand, UpdatePlatformConfigResult } from "./command.js";
 
 const mainLogTag = "UpdatePlatformConfigUseCase";
@@ -15,7 +15,7 @@ export class UpdatePlatformConfigUseCase
   constructor(
     private readonly txManager: ITransactionManager,
     private readonly platformRepo: IPlatformRepository,
-    private readonly walletRepo: IWalletRepository,
+    private readonly systemWallet: ISystemWalletPort,
     private readonly logger: ILogger,
   ) {}
 
@@ -60,9 +60,9 @@ export class UpdatePlatformConfigUseCase
     // createWallet call for that currency.
     if (cmd.systemWalletShardCount !== undefined) {
       const now = Date.now();
-      const currencies = await this.walletRepo.listSystemWalletCurrencies(ctx, cmd.platformId);
+      const currencies = await this.systemWallet.listCurrencies(ctx, cmd.platformId);
       for (const currency of currencies) {
-        await this.walletRepo.ensureSystemWalletShards(
+        await this.systemWallet.ensureShards(
           ctx,
           cmd.platformId,
           currency,

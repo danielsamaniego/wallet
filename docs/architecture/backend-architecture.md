@@ -172,6 +172,75 @@ src/
 
 ---
 
+## Cross-Context Dependencies
+
+### Rule
+
+A BC's **domain and application layers must never import types, ports, or implementations from another BC**. This includes repository interfaces, aggregates, entities, errors, and DTOs that belong to a different bounded context.
+
+Allowed cross-BC imports: only `utils/kernel/` and `utils/application/` (shared abstractions, not owned by any BC).
+
+Wiring files (`*.module.ts`, `wiring.ts`) are excluded from this rule — their job is precisely to compose BCs together.
+
+### When cross-BC interaction is unavoidable
+
+When a use case in BC-A genuinely needs to trigger an operation in BC-B, apply one of the following patterns. The checklist below guides the choice.
+
+---
+
+#### Option A — Narrow port in the consuming BC ✅ Default
+
+The **consumer defines a port** that expresses what *it* needs, named after its own concern (not after the provider). The provider's adapter implements it. Wiring injects the adapter.
+
+```
+src/<consumer-bc>/domain/ports/i-thing.port.ts      ← interface (consumer-owned)
+src/<consumer-bc>/infra/adapters/outbound/<provider>/thing.adapter.ts  ← delegates to provider
+src/<consumer-bc>/<consumer-bc>.module.ts           ← new Adapter(providerRepo)
+```
+
+**Use when:** the interaction is a small, bounded set of operations that conceptually belong to the consumer's workflow. The consumer knows *what* it needs; the provider knows *how* to do it.
+
+**Real example in this codebase:** `Platform` needs to materialise system-wallet shards when `systemWalletShardCount` increases. Platform defines `ISystemWalletPort` (`listCurrencies`, `ensureShards`). `SystemWalletAdapter` (in platform infra) delegates to `PrismaWalletRepo`. Platform's application layer only sees `ISystemWalletPort` — it has no knowledge of `IWalletRepository`.
+
+---
+
+#### Option B — Promote to `common/` (shared kernel)
+
+Move the shared concern to `src/common/` with its own port, use case, and adapter. Both BCs depend on `common/` — which is explicitly a cross-cutting module, not a bounded context.
+
+**Use when:** the feature is cross-cutting and multiple BCs need it, or the logic belongs to neither BC exclusively.
+
+**Real example in this codebase:** `IIdempotencyStore` lives in `common/` and is consumed by a middleware in `utils/infrastructure/` rather than by any single BC.
+
+---
+
+#### Option C — Extract to a new bounded context
+
+The coupling reveals that a concept has been misplaced. Create a new BC that owns the shared domain model. Both original BCs depend on the new one.
+
+**Use when:** the dependency is deep, bidirectional, or touches the provider's aggregate internals — a sign the concept deserves its own bounded context.
+
+**Rarely needed** in this service given its size. Justify it explicitly before choosing this option.
+
+---
+
+### Decision guide
+
+| Question | Answer → Option |
+|---|---|
+| Does the interaction fit in 1–3 operations that the consumer can name in its own language? | **A** |
+| Is the feature genuinely cross-cutting and consumed by more than one BC? | **B** |
+| Does the coupling touch aggregate internals or reveal a missing domain concept? | **C** |
+
+### What is never acceptable
+
+- BC application layer imports another BC's repository interface directly (e.g., `import type { IWalletRepository } from "../../wallet/..."` inside `platform/application/`)
+- BC domain layer imports another BC's aggregate, entity, or error type
+- BC application layer imports another BC's concrete infrastructure adapter (e.g., `PrismaWalletRepo`)
+- Wiring logic duplicated in multiple module files to work around the rule
+
+---
+
 ## Cross-Cutting Modules
 
 
