@@ -586,7 +586,10 @@ The scheduler infrastructure lives in `utils/infrastructure/scheduler.ts` (`star
 
 ## Concurrency
 
-- **Optimistic locking**: All wallet mutations (single and multi-wallet). On version mismatch, the `TransactionManager` retries internally (3 attempts, exponential backoff 30/60/120ms) before escalating `409 VERSION_CONFLICT` to the client. Transactions run under **Serializable isolation**; PostgreSQL serialization failures (40001/P2034) are also retried internally and, if exhausted, mapped to `VERSION_CONFLICT`.
+Two layers protect writes. The outer layer funnels concurrent writers before they reach the DB; the inner layer catches anything that slips through.
+
+- **Distributed lock (outer layer, optional)**: `LockRunner` (Redis-backed) serializes mutations per-resource. All 12 mutating use cases wrap their `txManager.run(...)` inside `lockRunner.run(ctx, ["wallet-lock:<walletId>"], ...)`. Transfer passes both wallet keys and the runner sorts+dedupes them to prevent A↔B deadlocks. Feature-toggled via `WALLET_LOCK_ENABLED`; when disabled or Redis is unreachable the runner falls through transparently and the inner layer takes over. `LockContendedError` → `AppError.conflict("LOCK_CONTENDED")` → HTTP 409 (client retries with the same `Idempotency-Key`). See `systemPatterns.md` § "Distributed Lock" for the contract, when to use it, and the per-request canonical metrics it emits.
+- **Optimistic locking (inner layer)**: All wallet mutations (single and multi-wallet). On version mismatch, the `TransactionManager` retries internally (3 attempts, exponential backoff 30/60/120ms) before escalating `409 VERSION_CONFLICT` to the client. Transactions run under **Serializable isolation**; PostgreSQL serialization failures (40001/P2034) are also retried internally and, if exhausted, mapped to `VERSION_CONFLICT`.
 - **Idempotency keys**: All mutations. Atomic acquire pattern (INSERT pending → execute → complete). See `systemPatterns.md`.
 - **DB constraints**: Uniqueness, referential integrity, positive amounts as safety net.
 
@@ -1124,6 +1127,8 @@ await prisma.$transaction(async (tx) => {
 - **Not needed** for wallet creation (single insert, idempotent via unique constraint)
 
 **No SELECT FOR UPDATE**: Multi-wallet operations (transfers, hold capture) rely on optimistic locking via the `version` field, not pessimistic row locks. This keeps the domain layer database-agnostic. See `systemPatterns.md` § "Why optimistic locking, not SELECT FOR UPDATE" for the architectural rationale. If pessimistic locking becomes necessary under high contention, it can be added inside the Prisma adapter as an implementation detail without changing domain ports.
+
+**Lock + transaction order**: Mutating use cases wrap their `txManager.run(...)` inside `lockRunner.run(...)` — the Redis lock acquires FIRST, then the DB transaction opens. Holding a DB transaction while waiting for a Redis mutex would multiply resource pressure; the lock exists to prevent the tx from starting under contention. See `systemPatterns.md` § "Distributed Lock" for the full pattern.
 
 ---
 

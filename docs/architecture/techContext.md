@@ -17,6 +17,7 @@
 | Linting / formatting | Biome |
 | Package manager | pnpm |
 | Local DB | Docker Compose (PostgreSQL container) |
+| Distributed lock | Redis 7 + ioredis (**optional**; per-wallet write serialization — `redis://` local or `rediss://` managed such as Upstash). See systemPatterns.md § "Distributed Lock". |
 
 ## Local Development
 
@@ -84,10 +85,19 @@ Rules:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://wallet:wallet@localhost:5432/wallet` |
+| `DIRECT_URL` | Prisma direct connection (bypasses pooler; used by migrations). Falls back to `DATABASE_URL`. | unset |
 | `HTTP_PORT` | Server port | `3000` |
 | `LOG_LEVEL` | Pino log level | `info` |
+| `CRON_SECRET` | Shared secret for Vercel Cron auth. Empty string disables check. | `""` |
+| `WALLET_LOCK_ENABLED` | Feature toggle for the per-wallet distributed lock. `true`/`false`. | `false` |
+| `REDIS_URL` | Redis connection (`redis://host:port` or `rediss://default:TOKEN@host:port`). Required when the lock is enabled; when absent with `WALLET_LOCK_ENABLED=true`, the lock is effectively disabled and a `console.warn` is emitted at boot. | unset |
+| `WALLET_LOCK_TTL_MS` | Lock auto-expiry if a holder crashes. Must exceed the longest critical section. | `10000` |
+| `WALLET_LOCK_WAIT_MS` | How long a waiter blocks before rejecting with `LOCK_CONTENDED`. Must be below the HTTP request timeout. | `5000` |
+| `WALLET_LOCK_RETRY_MS` | Polling interval between `SET NX` attempts while waiting. | `50` |
 
 Credentials via environment variables — never hardcode.
+
+**Lock tuning guidance**: see [systemPatterns.md § Distributed Lock](systemPatterns.md#distributed-lock-per-resource-serialization) for the full contract, fallthrough behavior, and the seven per-request canonical metrics emitted.
 
 ## Constraints
 

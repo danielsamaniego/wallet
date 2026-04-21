@@ -2,7 +2,23 @@
 
 ## Current Focus
 
-`allow_negative_balance` per-platform feature complete. Platforms can now configure their own instance to permit administrative adjustments (`POST /v1/wallets/:id/adjust`) that push wallet balances below zero — enabling dispute resolution, chargeback, and penalty fee workflows. The `PATCH /v1/platforms/config` endpoint allows platforms to toggle this flag using their own API key.
+**Distributed lock feature landed.** The service now has a Redis-backed per-resource serialization layer that wraps all 12 mutating use cases. Under concurrent same-wallet writes, requests queue on a Redis mutex instead of racing on the DB version, eliminating the 409 VERSION_CONFLICT storm observed under real load. Optimistic locking remains as the safety net.
+
+**Lock feature (completed):**
+- Port `IDistributedLock` + app-level `LockRunner` + `RedisDistributedLock` adapter (ioredis, SET NX PX + token-aware Lua release).
+- Wired into all 12 mutating use cases (`deposit`, `withdraw`, `transfer`, `charge`, `adjustBalance`, `placeHold`, `captureHold`, `voidHold`, `freeze`, `unfreeze`, `close`, `importHistoricalEntry`). Transfer locks both wallets (sort + dedupe → no A↔B deadlock).
+- Feature-toggled via `WALLET_LOCK_ENABLED` + `REDIS_URL`. Graceful fallthrough when Redis is unreachable; falls through silently on `Command timed out` during contention (transient reclassification) to preserve the serialization guarantee.
+- Pre-lock platform validation in `captureHold`/`voidHold` to prevent cross-tenant DoS via known holdId.
+- OpenAPI: 409 `LOCK_CONTENDED`/`VERSION_CONFLICT` declared on all mutation endpoints.
+- Observability: seven per-request canonical metrics (`lock.attempts`, `lock.transient_errors`, `lock.token_mismatch`, `lock.acquired`, `lock.contended`, `lock.fallthrough`, `lock.duration_ms`) + structured logs at debug/info/warn + Redis connection lifecycle events hooked in wiring.
+- Full 100% coverage maintained. New E2E tests in `wallet-lock.e2e.test.ts` (50/100 concurrent deposits, cross-wallet parallelism, mixed deposit/withdraw/adjust, forced contention via external Redis holder).
+- Docs updated: see `systemPatterns.md` § "Distributed Lock" for the canonical usage guide.
+
+**Known limitation, deliberately out of scope**: the lock serializes user wallets only. The **system wallet** (single row per platform+currency) is still updated via atomic increment (`adjustSystemWalletBalance`). Under cross-wallet high concurrency on the same platform+currency, PostgreSQL SERIALIZABLE can still abort on the shared row — this is the residual 409 VERSION_CONFLICT surface that future work (sharded system wallets, or extending the lock to `system-wallet:<id>`) can address.
+
+---
+
+**Previous focus — `allow_negative_balance` per-platform feature (completed):** Platforms can configure their own instance to permit administrative adjustments (`POST /v1/wallets/:id/adjust`) that push wallet balances below zero — enabling dispute resolution, chargeback, and penalty fee workflows. The `PATCH /v1/platforms/config` endpoint allows platforms to toggle this flag using their own API key.
 
 **allow_negative_balance feature (completed):**
 - `Platform` aggregate: `allowNegativeBalance` field, getter, `setAllowNegativeBalance()` method
@@ -76,7 +92,7 @@
 - **allow_negative_balance**: Per-platform flag. Flows through HonoVariables → AdjustBalanceCommand (not through AppContext, which is cross-cutting infra context only). DB enforcement via trigger (not CHECK) because triggers can reference other tables at runtime. Available balance no longer clamped to 0 in readstore. Withdraw, transfer, and holds are unaffected by the flag.
 
 - **Amounts**: Integer in smallest currency unit per ISO 4217 (BigInt) — `_minor` suffix is convention
-- **Concurrency**: Optimistic locking (version field) for ALL wallet mutations including PlaceHold/VoidHold — no SELECT FOR UPDATE in domain (see systemPatterns.md)
+- **Concurrency**: Two layers. Outer = `LockRunner` per-resource Redis mutex wrapping the `txManager.run(...)` of every mutating use case (feature-toggled; falls through if Redis is absent or down). Inner = optimistic locking (version field) on all wallet mutations including PlaceHold/VoidHold. No SELECT FOR UPDATE in domain. See systemPatterns.md § "Distributed Lock" and § "Why optimistic locking…".
 - **Ledger**: Double-entry via Movement entity, append-only, protected by PostgreSQL trigger. Audit invariant: `SUM(amount_minor) GROUP BY movement_id = 0`
 - **Auth**: API key per platform (not user JWT)
 - **DI**: Manual wiring (no DI container). All deps instantiated in `wiring.ts`, registered on CommandBus/QueryBus

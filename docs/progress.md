@@ -71,6 +71,13 @@
 - [x] E2E test suite expanded: 221 tests passing (`negative-balance.e2e.test.ts`, `config.e2e.test.ts`, third test platform seeded)
 - [x] `Charge` endpoint: `POST /v1/wallets/:walletId/charge` for platform-initiated fees and commissions with optional memo
 - [x] Root path redirects to `/docs` for interactive API discovery
+- [x] **Distributed lock** (Redis, per-resource): `IDistributedLock` port + `LockRunner` app service + `RedisDistributedLock` adapter (ioredis, `SET NX PX` + token-aware Lua release). Wired on all 12 mutating use cases; transfer sorts+dedupes keys to avoid A↔B deadlock.
+- [x] Lock feature toggle via `WALLET_LOCK_ENABLED` + `REDIS_URL`; transparent fallthrough when Redis is unreachable or the feature is off.
+- [x] Transient-error classification in the acquire loop: `Command timed out` absorbed and retried within `waitMs` (slow Redis no longer silently degrades the serialization guarantee).
+- [x] Pre-lock platform validation in `captureHold`/`voidHold` to prevent cross-tenant DoS via known `holdId`.
+- [x] OpenAPI: 409 `LOCK_CONTENDED`/`VERSION_CONFLICT` declared on all 12 mutating endpoints.
+- [x] Per-request canonical metrics for observability: `lock.attempts`, `lock.transient_errors`, `lock.token_mismatch`, `lock.acquired`, `lock.contended`, `lock.fallthrough`, `lock.duration_ms`; Redis connection lifecycle events hooked in wiring.
+- [x] E2E coverage in `tests/e2e/wallet/wallet-lock.e2e.test.ts`: 50/100 concurrent deposits, cross-wallet parallelism preservation, mixed deposit/withdraw/adjust on same wallet, forced contention via external Redis holder to validate the 409 `LOCK_CONTENDED` wire path.
 
 ## What's Left to Build
 
@@ -90,6 +97,7 @@
 - [ ] Integration tests
 - [x] Idempotency record TTL cleanup job (60s interval) — implemented as command dispatched via bus
 - [x] API documentation (auto-generated OpenAPI + Scalar UI at /docs)
+- [ ] **System wallet contention** (follow-up to the distributed lock): under cross-wallet concurrency on the same `platform+currency`, the shared system-wallet row remains a hot spot (`adjustSystemWalletBalance` + SERIALIZABLE abort). Candidate approaches: sharded system wallets (`system-EUR-0…N`), extending `LockRunner` to `system-wallet:<id>`, or moving the counterpart update out of the tx. Not addressed by the current lock feature.
 
 ## Known Issues
 

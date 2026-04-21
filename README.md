@@ -22,6 +22,7 @@ Standalone backend service providing digital wallet functionality as a platform 
 | IDs | UUID v7 (RFC 9562) |
 | Testing | Vitest |
 | Linting | Biome |
+| Distributed lock (optional) | Redis 7 + ioredis — per-wallet write serialization; feature-toggled |
 
 ## Architecture
 
@@ -30,7 +31,7 @@ Standalone backend service providing digital wallet functionality as a platform 
 - **Double-entry bookkeeping** — every financial operation produces exactly 2 ledger entries
 - **Integer cents** — all amounts stored as BIGINT (smallest currency unit, like Stripe)
 - **Immutable ledger** — `ledger_entries` is append-only (PostgreSQL trigger prevents UPDATE/DELETE)
-- **Concurrency safety** — optimistic locking, idempotency keys, DB constraints
+- **Concurrency safety** — two layers: Redis-backed `LockRunner` (per-resource mutex, optional) wrapping optimistic locking (version field); plus idempotency keys and DB constraints. See `docs/architecture/systemPatterns.md` § "Distributed Lock".
 
 - **Auto-generated API docs** — OpenAPI 3.1 spec at `/openapi`, interactive Scalar UI at `/docs`
 - **Stripe-style listing** — flat filters, dynamic multi-field sorting, keyset cursor pagination
@@ -45,12 +46,14 @@ See `docs/architecture/` for full details.
 
 ### Option A: Everything in Docker (recommended)
 
-One command — starts PostgreSQL + App with hot reload, applies schema, constraints, and seed:
+One command — starts PostgreSQL + Redis + App with hot reload, applies schema, constraints, and seed:
 
 ```bash
 pnpm install          # First time only
-pnpm dev:docker       # PostgreSQL :5432 + App :3000 (hot reload)
+pnpm dev:docker       # PostgreSQL :5432 + Redis :6379 + App :3000 (hot reload)
 ```
+
+Redis is bundled because `docker-compose.dev.yml` sets `WALLET_LOCK_ENABLED=true` by default (per-wallet write serialization). If you run without Docker, the lock is disabled by `.env.example` and optimistic locking alone handles concurrency.
 
 ```bash
 pnpm dev:docker:logs  # Tail app logs
@@ -115,6 +118,7 @@ E2E tests are fully self-contained — `pnpm test:e2e` starts isolated Docker co
 | **Compose** | `docker-compose.dev.yml` | `docker-compose.test.yml` | `Dockerfile` |
 | **Project** | `wallet-dev` | `wallet-test` | — |
 | **PostgreSQL** | `:5432` / `wallet` | `:5433` / `wallet_test` | Managed DB |
+| **Redis** | `:6379` | `:6380` | Managed (e.g. Upstash) or omitted |
 | **App** | `:3000` (hot reload) | `:3333` (built) | `:3000` (built) |
 
 ### Test documentation

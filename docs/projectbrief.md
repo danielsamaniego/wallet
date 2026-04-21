@@ -9,9 +9,10 @@
 - **Platform type**: Backend microservice — no UI; API-only
 - **Framework**: Hono (TypeScript) — fast, lightweight HTTP
 - **Database**: PostgreSQL with Prisma ORM
+- **Distributed lock** (optional): Redis (ioredis) for per-wallet write serialization; feature-toggled via `WALLET_LOCK_ENABLED`
 - **Architecture**: DDD + Hexagonal + CQRS (with CommandBus/QueryBus dispatch)
 - **Integration**: REST API; platforms authenticate with API keys
-- **Deployment**: Plain Node.js process + managed PostgreSQL (no Docker in production)
+- **Deployment**: Plain Node.js process + managed PostgreSQL (no Docker in production). Redis is optional in prod; if absent, the lock falls through and optimistic locking takes over.
 
 ## Key Features
 
@@ -22,7 +23,7 @@
 - **Holds/authorizations**: Reserve funds without moving; capture, void, or expire
 - **Transaction ledger**: Double-entry, append-only, immutable audit trail
 - **Idempotency**: Safe retries for mutations via idempotency keys
-- **Race-condition protection**: Optimistic locking (version field), idempotency keys, DB constraints
+- **Race-condition protection**: Two-layer concurrency — outer Redis-backed `LockRunner` (per-resource mutex, feature-toggled) + inner optimistic locking (version field) with TransactionManager retries. Plus idempotency keys and DB constraints as safety nets.
 
 ## Technical Conventions
 

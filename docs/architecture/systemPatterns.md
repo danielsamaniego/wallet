@@ -122,6 +122,7 @@ Paginated GET endpoints use a **reusable listing system** (`utils/kernel/listing
 
 | Control | Use |
 |---------|-----|
+| Distributed lock (LockRunner) | **Outer serialization layer** for mutating use cases. Acquires a Redis mutex keyed by resource ID (`wallet-lock:<walletId>`) before the transaction starts, so concurrent writers queue instead of racing. Optional (feature-flagged). If the backend is unreachable the runner falls through transparently and optimistic locking remains as the safety net. See § "Distributed Lock" below. |
 | Optimistic locking | User wallet mutations (single and multi-wallet), **including PlaceHold and VoidHold** which call `wallet.touchForHoldChange()` + `walletRepo.save()` to participate in version contention. `version` field checked on save; mismatch → VERSION_CONFLICT. TransactionManager retries internally (3 attempts, exponential backoff); if exhausted, escalates `409 VERSION_CONFLICT` to client, who retries with same idempotency key. **System wallets** use `adjustSystemWalletBalance()` with atomic increment instead — no version check needed, eliminates hot-row contention. |
 | Idempotency keys | All mutations. Atomic acquire pattern: INSERT pending record before execution; concurrent duplicates get `409 IDEMPOTENCY_KEY_IN_PROGRESS` or cached response. Transient errors (5xx, 409) are released, not cached. Request hash includes `method:path:body` so the same key on a different endpoint is rejected. Payload mismatch → `422 IDEMPOTENCY_PAYLOAD_MISMATCH`. |
 | DB constraints | Uniqueness, referential integrity, positive amounts, balance rules as safety net. |
@@ -137,6 +138,113 @@ We use optimistic locking (version field) for **user wallet** mutations, includi
 3. **Better for low-contention workloads**: Pessimistic locks hold rows locked for the duration of the transaction, blocking other readers. Optimistic locking only fails on actual conflict, which is rare for typical wallet workloads.
 
 4. **Trade-off**: Under very high contention (many concurrent operations on the same wallet), optimistic locking causes more retries. If this becomes a problem, pessimistic locking can be added **inside the Prisma adapter** (implementation detail) without changing the domain port. The adapter could internally use `SELECT FOR UPDATE` before save, transparent to the domain.
+
+## Distributed Lock (per-resource serialization)
+
+An **outer serialization layer** in front of optimistic locking. Eliminates the 409 VERSION_CONFLICT storm that hits when many writers queue on the same aggregate by making them wait on a shared Redis key instead of racing on the DB version. **The distributed lock does not replace optimistic locking — it funnels writers so they hit the DB one at a time.** If the lock layer is disabled or Redis is unreachable, optimistic locking still catches conflicts.
+
+### Components
+
+| Layer | File | Responsibility |
+|---|---|---|
+| Port | `src/utils/application/distributed.lock.ts` | `IDistributedLock` (`acquire` / `withLock` / `withLocks`), plus `LockContendedError` and `LockBackendUnavailableError`. Pure application contract — zero third-party imports. |
+| App service | `src/utils/application/lock.runner.ts` | `LockRunner` — the thing use cases inject. Wraps the port with `LockOptions` + `ILogger`, applies the feature toggle (`lock=undefined` → run `fn` directly), translates `LockContendedError` to `AppError.conflict("LOCK_CONTENDED")`, and degrades on backend failure by running `fn` without the lock. |
+| Adapter | `src/utils/infrastructure/redis.distributed.lock.ts` | `RedisDistributedLock` — ioredis-backed. `SET NX PX` poll loop with transient-error reclassification (`Command timed out` keeps retrying within `waitMs`; real connection errors escalate). Token-aware release via Lua script so TTL expiry mid-critical-section cannot release someone else's lock. |
+
+### Contract
+
+- **Feature toggle**: `LockRunner` with `lock = undefined` is the ONLY supported way to express "feature disabled". Application code and tests must never construct one manually to bypass the lock; use `createMockLockRunner()` from `test/helpers/mocks/` in tests.
+- **Keys are opaque**: the runner doesn't know about wallets. Callers pass namespaced strings (`wallet-lock:<walletId>`, `hold-lock:<holdId>`, …). Prefix per resource type prevents collisions across features.
+- **Ordering**: `withLocks(keys)` sorts + dedupes the key list before acquiring, so two callers that need the same pair (transfer A→B vs B→A) acquire in the same order and cannot deadlock.
+- **Release** always runs a token-aware Lua script — a stale call after TTL expiry returns `deleted=0`, which is logged at `warn` with `lock.token_mismatch` incremented. This is a correctness signal: the critical section was longer than the TTL and a second holder may have overlapped.
+
+### Usage pattern
+
+Inside a command use case, wrap the transactional body:
+
+```ts
+await this.lockRunner.run(ctx, [`wallet-lock:${cmd.walletId}`], async () => {
+  await this.txManager.run(ctx, async (txCtx) => {
+    const wallet = await this.walletRepo.findById(txCtx, cmd.walletId);
+    if (!wallet) throw ErrWalletNotFound(cmd.walletId);
+    // ... mutate, persist ...
+  });
+});
+```
+
+**Lock order**: `lockRunner.run()` **wraps** `txManager.run()`, never the other way around. The Redis lock exists to *prevent* the tx from even starting under contention; holding a DB transaction while waiting for a Redis mutex would multiply resource pressure.
+
+Multi-key example (transfer locks both wallets):
+
+```ts
+await this.lockRunner.run(
+  ctx,
+  [`wallet-lock:${cmd.sourceWalletId}`, `wallet-lock:${cmd.targetWalletId}`],
+  async () => {
+    await this.txManager.run(ctx, async (txCtx) => { /* ... */ });
+  },
+);
+```
+
+### When to use it
+
+Use the distributed lock when **both** conditions hold:
+
+1. The use case performs concurrent mutations to the same logical resource that today produce `VERSION_CONFLICT` under real load, or that have a race window you want to close.
+2. The resource is addressable by a stable ID (wallet, account, hold's wallet, external entity ID).
+
+Currently wired on all 12 mutation use cases that touch user wallets: `deposit`, `withdraw`, `transfer`, `charge`, `adjustBalance`, `placeHold`, `captureHold`, `voidHold`, `freezeWallet`, `unfreezeWallet`, `closeWallet`, `importHistoricalEntry`. `createWallet` and read-side use cases are NOT locked.
+
+**Don't use it for**:
+
+- Read-only operations (query side) — no contention to serialize.
+- Commands without a natural per-resource key (e.g. `ExpireHoldsUseCase` processes a batch; no single lock key makes sense).
+- Hot global resources like the platform-level system wallet — locking it globally would serialize the whole platform. The current code handles system-wallet concurrency via atomic increments (`adjustSystemWalletBalance`) instead.
+
+### Security invariants (pre-lock validation)
+
+Acquiring a lock on a key derived from user-supplied input is a small but real DoS vector: an attacker can force the service to take a lock on a victim's resource for a few milliseconds. **Always validate ownership before acquiring the lock.** Examples:
+
+- `captureHold` / `voidHold` resolve `holdId → walletId` outside the transaction to build the lock key, then **validate `wallet.platformId === cmd.platformId`** before calling `lockRunner.run`. A mismatch throws `HOLD_NOT_FOUND` with no information leak and no lock is taken.
+- Commands with a direct `walletId` from the path parameter rely on the inner tx's platform check (the walletId came from an authenticated route with no cross-tenant read path).
+
+### Fallthrough behavior
+
+- `WALLET_LOCK_ENABLED=false` or `REDIS_URL` missing → wiring injects a no-op runner. No lock, no warns, no canonical metrics emitted.
+- `WALLET_LOCK_ENABLED=true` but Redis unreachable → `RedisDistributedLock` throws `LockBackendUnavailableError`. `LockRunner` catches it, logs `warn` ("backend down, proceeding without lock"), increments `lock.fallthrough`, and runs `fn` without serialization. Optimistic locking remains the safety net.
+- Contention exhausts `waitMs` → `LockContendedError` → `AppError.conflict("LOCK_CONTENDED")` → HTTP 409. Client retries with the **same** `Idempotency-Key`. The idempotency middleware releases the key on 409 so the retry is accepted.
+
+### Configuration (see techContext.md for the full table)
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `WALLET_LOCK_ENABLED` | `false` | Feature toggle. |
+| `REDIS_URL` | unset | `redis://host:port` (local) or `rediss://default:TOKEN@host:port` (Upstash, etc.). Required when enabled. |
+| `WALLET_LOCK_TTL_MS` | `10000` | Lock auto-expiry. Must exceed the longest legitimate critical section. |
+| `WALLET_LOCK_WAIT_MS` | `5000` | How long a waiter blocks before rejecting with `LOCK_CONTENDED`. Must be shorter than the HTTP request timeout. |
+| `WALLET_LOCK_RETRY_MS` | `50` | Polling interval between `SET NX` attempts while waiting. |
+
+### Observability (per-request canonical metrics)
+
+Seven additive counters on the request's canonical log line:
+
+| Field | Source | Meaning |
+|---|---|---|
+| `lock.attempts` | adapter | `SET NX` calls made (retries included) |
+| `lock.transient_errors` | adapter | `Command timed out` retries absorbed by the classifier |
+| `lock.token_mismatch` | adapter (release) | TTL expired mid-critical-section — potential invariant break |
+| `lock.acquired` | runner | Successful run |
+| `lock.contended` | runner | 409 LOCK_CONTENDED emitted |
+| `lock.fallthrough` | runner | Backend down, ran without the lock |
+| `lock.duration_ms` | runner | Total time in `lockRunner.run` |
+
+Plus structured logs at every transition (acquire start/ok/contended/backend-error, release ok/token-mismatch/backend-error, Redis connection lifecycle in wiring).
+
+### Testing notes
+
+- Use cases: mock `LockRunner` via `createMockLockRunner()` (pass-through — executes `fn` directly without touching the real port).
+- Adapter: unit-tested against a `mock<Redis>` from `vitest-mock-extended`.
+- E2E: [tests/e2e/wallet/wallet-lock.e2e.test.ts](../../tests/e2e/wallet/wallet-lock.e2e.test.ts) covers happy-path concurrency, cross-wallet parallelism, mixed mutations, and **forced contention via an external Redis holder** (connects to Redis at `localhost:6380` and holds the key with a foreign token) to validate the 409 LOCK_CONTENDED wire path.
 
 ## BigInt Serialization
 
