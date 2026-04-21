@@ -15,7 +15,7 @@ import { Movement } from "@/wallet/domain/movement/movement.entity.js";
 import { Transaction } from "@/wallet/domain/transaction/transaction.entity.js";
 import { AppError } from "@/utils/kernel/appError.js";
 import { createTestContext } from "@test/helpers/builders/index.js";
-import { createMockLogger } from "@test/helpers/mocks/index.js";
+import { createMockIDGenerator, createMockLogger } from "@test/helpers/mocks/index.js";
 import type { ListingQuery } from "@/utils/kernel/listing.js";
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
@@ -83,6 +83,7 @@ function buildWalletRow(overrides?: Partial<Record<string, unknown>>) {
     status: "active",
     version: 1,
     isSystem: false,
+    shardIndex: 0,
     createdAt: 1700000000000n,
     updatedAt: 1700000000000n,
     ...overrides,
@@ -685,15 +686,19 @@ describe("PrismaWalletRepo", () => {
   function buildRepo() {
     const walletModel = {
       create: vi.fn(),
+      createMany: vi.fn(),
       updateMany: vi.fn(),
       update: vi.fn(),
       findUnique: vi.fn(),
+      findMany: vi.fn(),
+      aggregate: vi.fn(),
       count: vi.fn(),
     };
     const prisma = { wallet: walletModel } as any;
     const logger = createMockLogger();
-    const repo = new PrismaWalletRepo(prisma, logger);
-    return { repo, walletModel, logger };
+    const idGen = createMockIDGenerator();
+    const repo = new PrismaWalletRepo(prisma, logger, idGen);
+    return { repo, walletModel, logger, idGen };
   }
 
   describe("save — new wallet (version 1)", () => {
@@ -727,7 +732,7 @@ describe("PrismaWalletRepo", () => {
       // Given
       const { repo, walletModel } = buildRepo();
       walletModel.updateMany.mockResolvedValue({ count: 1 });
-      const wallet = Wallet.reconstruct("w-1", "owner-1", "platform-1", "USD", 5000n, "active", 2, false, 1700000000000, 1700000000000);
+      const wallet = Wallet.reconstruct("w-1", "owner-1", "platform-1", "USD", 5000n, "active", 2, false, 0, 1700000000000, 1700000000000);
 
       // When
       await repo.save(ctx, wallet);
@@ -747,7 +752,7 @@ describe("PrismaWalletRepo", () => {
       // Given
       const { repo, walletModel } = buildRepo();
       walletModel.updateMany.mockResolvedValue({ count: 0 });
-      const wallet = Wallet.reconstruct("w-1", "owner-1", "platform-1", "USD", 5000n, "active", 3, false, 1700000000000, 1700000000000);
+      const wallet = Wallet.reconstruct("w-1", "owner-1", "platform-1", "USD", 5000n, "active", 3, false, 0, 1700000000000, 1700000000000);
 
       // When / Then
       await expect(repo.save(ctx, wallet)).rejects.toSatisfy((err: unknown) => {
@@ -756,23 +761,59 @@ describe("PrismaWalletRepo", () => {
     });
   });
 
-  describe("adjustSystemWalletBalance", () => {
-    it("Given a system wallet, When adjustSystemWalletBalance is called, Then increments balance", async () => {
-      // Given
+  describe("adjustSystemShardBalance", () => {
+    it("Given the shard exists, Then UPDATE targets the 4-tuple unique and returns walletId + post-balance", async () => {
       const { repo, walletModel } = buildRepo();
-      walletModel.update.mockResolvedValue({});
+      walletModel.update.mockResolvedValue({
+        id: "sys-wallet-17",
+        cachedBalanceMinor: -5000n,
+      });
 
-      // When
-      await repo.adjustSystemWalletBalance(ctx, "sys-wallet", 5000n, 1700000000000);
+      const result = await repo.adjustSystemShardBalance(
+        ctx,
+        "platform-1",
+        "eur",
+        17,
+        -5000n,
+        1700000000000,
+      );
 
-      // Then
+      expect(result).toEqual({ walletId: "sys-wallet-17", cachedBalanceMinor: -5000n });
       expect(walletModel.update).toHaveBeenCalledWith({
-        where: { id: "sys-wallet" },
+        where: {
+          ownerId_platformId_currencyCode_shardIndex: {
+            ownerId: "SYSTEM",
+            platformId: "platform-1",
+            currencyCode: "EUR",
+            shardIndex: 17,
+          },
+        },
         data: {
-          cachedBalanceMinor: { increment: 5000n },
+          cachedBalanceMinor: { increment: -5000n },
           updatedAt: 1700000000000n,
         },
+        select: { id: true, cachedBalanceMinor: true },
       });
+    });
+
+    it("Given Prisma throws P2025 (record not found), Then maps to SYSTEM_WALLET_NOT_FOUND", async () => {
+      const { repo, walletModel } = buildRepo();
+      const err = Object.assign(new Error("No record found"), { code: "P2025" });
+      walletModel.update.mockRejectedValue(err);
+
+      await expect(
+        repo.adjustSystemShardBalance(ctx, "platform-1", "USD", 3, 100n, 1700000000000),
+      ).rejects.toSatisfy((e: unknown) => {
+        return (e as AppError).code === "SYSTEM_WALLET_NOT_FOUND";
+      });
+    });
+
+    it("Given Prisma throws an unrelated error, Then it propagates", async () => {
+      const { repo, walletModel } = buildRepo();
+      walletModel.update.mockRejectedValue(new Error("connection reset"));
+      await expect(
+        repo.adjustSystemShardBalance(ctx, "platform-1", "USD", 3, 100n, 1700000000000),
+      ).rejects.toThrow("connection reset");
     });
   });
 
@@ -822,10 +863,11 @@ describe("PrismaWalletRepo", () => {
       expect(result!.ownerId).toBe("owner-1");
       expect(walletModel.findUnique).toHaveBeenCalledWith({
         where: {
-          ownerId_platformId_currencyCode: {
+          ownerId_platformId_currencyCode_shardIndex: {
             ownerId: "owner-1",
             platformId: "platform-1",
             currencyCode: "USD",
+            shardIndex: 0,
           },
         },
       });
@@ -854,100 +896,135 @@ describe("PrismaWalletRepo", () => {
       // Then
       expect(walletModel.findUnique).toHaveBeenCalledWith({
         where: {
-          ownerId_platformId_currencyCode: {
+          ownerId_platformId_currencyCode_shardIndex: {
             ownerId: "owner-1",
             platformId: "platform-1",
             currencyCode: "USD",
+            shardIndex: 0,
           },
         },
       });
     });
   });
 
-  describe("findSystemWallet", () => {
-    it("Given a system wallet exists, When findSystemWallet is called, Then returns domain aggregate", async () => {
-      // Given
+  describe("ensureSystemWalletShards", () => {
+    it("Given no shards exist, Then inserts all N with skipDuplicates", async () => {
       const { repo, walletModel } = buildRepo();
-      walletModel.findUnique.mockResolvedValue(buildWalletRow({ ownerId: "SYSTEM", isSystem: true }));
-
-      // When
-      const result = await repo.findSystemWallet(ctx, "platform-1", "USD");
-
-      // Then
-      expect(result).not.toBeNull();
-      expect(result!.ownerId).toBe("SYSTEM");
-      expect(result!.isSystem).toBe(true);
-    });
-
-    it("Given no system wallet, When findSystemWallet is called, Then returns null", async () => {
-      // Given
-      const { repo, walletModel } = buildRepo();
-      walletModel.findUnique.mockResolvedValue(null);
-
-      // When
-      const result = await repo.findSystemWallet(ctx, "platform-1", "USD");
-
-      // Then
-      expect(result).toBeNull();
-    });
-
-    it("Given lowercase currency code, When findSystemWallet is called, Then uppercases it", async () => {
-      // Given
-      const { repo, walletModel } = buildRepo();
-      walletModel.findUnique.mockResolvedValue(null);
-
-      // When
-      await repo.findSystemWallet(ctx, "platform-1", "eur");
-
-      // Then
-      expect(walletModel.findUnique).toHaveBeenCalledWith({
-        where: {
-          ownerId_platformId_currencyCode: {
-            ownerId: "SYSTEM",
-            platformId: "platform-1",
-            currencyCode: "EUR",
-          },
-        },
+      walletModel.findMany.mockResolvedValue([]);
+      walletModel.createMany.mockResolvedValue({ count: 4 });
+      await repo.ensureSystemWalletShards(ctx, "platform-1", "eur", 4, 1700000000000);
+      expect(walletModel.findMany).toHaveBeenCalledWith({
+        where: { platformId: "platform-1", currencyCode: "EUR", isSystem: true },
+        select: { shardIndex: true },
       });
+      expect(walletModel.createMany).toHaveBeenCalledTimes(1);
+      const call = walletModel.createMany.mock.calls[0]![0];
+      expect(call.skipDuplicates).toBe(true);
+      expect(call.data).toHaveLength(4);
+      const indexes = call.data.map((r: { shardIndex: number }) => r.shardIndex).sort();
+      expect(indexes).toEqual([0, 1, 2, 3]);
+    });
+
+    it("Given shards 0 and 1 already exist, Then inserts only 2 and 3", async () => {
+      const { repo, walletModel } = buildRepo();
+      walletModel.findMany.mockResolvedValue([{ shardIndex: 0 }, { shardIndex: 1 }]);
+      walletModel.createMany.mockResolvedValue({ count: 2 });
+      await repo.ensureSystemWalletShards(ctx, "platform-1", "EUR", 4, 1700000000000);
+      const call = walletModel.createMany.mock.calls[0]![0];
+      const indexes = call.data.map((r: { shardIndex: number }) => r.shardIndex).sort();
+      expect(indexes).toEqual([2, 3]);
+    });
+
+    it("Given all shards already exist, Then skips createMany entirely (no-op)", async () => {
+      const { repo, walletModel } = buildRepo();
+      walletModel.findMany.mockResolvedValue([
+        { shardIndex: 0 },
+        { shardIndex: 1 },
+        { shardIndex: 2 },
+        { shardIndex: 3 },
+      ]);
+      await repo.ensureSystemWalletShards(ctx, "platform-1", "EUR", 4, 1700000000000);
+      expect(walletModel.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("sumSystemWalletBalance", () => {
+    it("Given system shards, Then returns their total balance and count", async () => {
+      const { repo, walletModel } = buildRepo();
+      walletModel.aggregate.mockResolvedValue({
+        _sum: { cachedBalanceMinor: -15000n },
+        _count: { _all: 4 },
+      });
+      const result = await repo.sumSystemWalletBalance(ctx, "platform-1", "eur");
+      expect(result).toEqual({ cachedBalanceMinor: -15000n, shardCount: 4 });
+      expect(walletModel.aggregate).toHaveBeenCalledWith({
+        where: { platformId: "platform-1", currencyCode: "EUR", isSystem: true },
+        _sum: { cachedBalanceMinor: true },
+        _count: { _all: true },
+      });
+    });
+
+    it("Given no shards (fresh platform), Then returns 0n balance and 0 shards", async () => {
+      const { repo, walletModel } = buildRepo();
+      walletModel.aggregate.mockResolvedValue({
+        _sum: { cachedBalanceMinor: null },
+        _count: { _all: 0 },
+      });
+      const result = await repo.sumSystemWalletBalance(ctx, "platform-1", "EUR");
+      expect(result).toEqual({ cachedBalanceMinor: 0n, shardCount: 0 });
+    });
+  });
+
+  describe("listSystemWalletCurrencies", () => {
+    it("Given the platform has system wallets in several currencies, Then returns distinct codes", async () => {
+      const { repo, walletModel } = buildRepo();
+      walletModel.findMany.mockResolvedValue([{ currencyCode: "EUR" }, { currencyCode: "USD" }]);
+      const result = await repo.listSystemWalletCurrencies(ctx, "platform-1");
+      expect(result).toEqual(["EUR", "USD"]);
+      expect(walletModel.findMany).toHaveBeenCalledWith({
+        where: { platformId: "platform-1", isSystem: true },
+        select: { currencyCode: true },
+        distinct: ["currencyCode"],
+      });
+    });
+
+    it("Given no system wallets, Then returns an empty array", async () => {
+      const { repo, walletModel } = buildRepo();
+      walletModel.findMany.mockResolvedValue([]);
+      const result = await repo.listSystemWalletCurrencies(ctx, "platform-1");
+      expect(result).toEqual([]);
     });
   });
 
   describe("existsByOwner", () => {
     it("Given a wallet exists for owner, When existsByOwner is called, Then returns true", async () => {
-      // Given
       const { repo, walletModel } = buildRepo();
-      walletModel.count.mockResolvedValue(1);
-
-      // When
+      walletModel.findUnique.mockResolvedValue(buildWalletRow({ ownerId: "owner-1" }));
       const result = await repo.existsByOwner(ctx, "owner-1", "platform-1", "USD");
-
-      // Then
       expect(result).toBe(true);
     });
 
     it("Given no wallet for owner, When existsByOwner is called, Then returns false", async () => {
-      // Given
       const { repo, walletModel } = buildRepo();
-      walletModel.count.mockResolvedValue(0);
-
-      // When
+      walletModel.findUnique.mockResolvedValue(null);
       const result = await repo.existsByOwner(ctx, "owner-x", "platform-1", "USD");
-
-      // Then
       expect(result).toBe(false);
     });
 
-    it("Given lowercase currency code, When existsByOwner is called, Then uppercases it", async () => {
-      // Given
+    it("Given lowercase currency code, When existsByOwner is called, Then queries via unique index with shardIndex 0 and uppercased currency", async () => {
       const { repo, walletModel } = buildRepo();
-      walletModel.count.mockResolvedValue(0);
-
-      // When
+      walletModel.findUnique.mockResolvedValue(null);
       await repo.existsByOwner(ctx, "owner-1", "platform-1", "usd");
-
-      // Then
-      expect(walletModel.count).toHaveBeenCalledWith({
-        where: { ownerId: "owner-1", platformId: "platform-1", currencyCode: "USD" },
+      expect(walletModel.findUnique).toHaveBeenCalledWith({
+        where: {
+          ownerId_platformId_currencyCode_shardIndex: {
+            ownerId: "owner-1",
+            platformId: "platform-1",
+            currencyCode: "USD",
+            shardIndex: 0,
+          },
+        },
+        select: { id: true },
       });
     });
   });

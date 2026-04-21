@@ -72,9 +72,9 @@ describe("ChargeUseCase", () => {
           .withBalance(10000n)
           .build(),
       );
-      walletRepo.findSystemWallet.mockResolvedValue(systemWallet);
+      walletRepo.adjustSystemShardBalance.mockResolvedValue({ walletId: systemWallet.id, cachedBalanceMinor: 503000n });
       walletRepo.save.mockResolvedValue(undefined);
-      walletRepo.adjustSystemWalletBalance.mockResolvedValue(undefined);
+      
       holdRepo.sumActiveHolds.mockResolvedValue(0n);
       transactionRepo.save.mockResolvedValue(undefined);
       ledgerEntryRepo.saveMany.mockResolvedValue(undefined);
@@ -82,7 +82,7 @@ describe("ChargeUseCase", () => {
     });
 
     describe("When charging 3000 cents", () => {
-      const cmd = new ChargeCommand("wallet-1", "platform-1", 3000n, "idem-1", "COMMISSION");
+      const cmd = new ChargeCommand("wallet-1", "platform-1", 3000n, "idem-1", 32, "COMMISSION");
 
       it("Then it returns the transactionId and movementId", async () => {
         const result = await sut.handle(ctx, cmd);
@@ -100,11 +100,13 @@ describe("ChargeUseCase", () => {
       it("Then the system wallet balance is adjusted with positive delta", async () => {
         await sut.handle(ctx, cmd);
 
-        expect(walletRepo.adjustSystemWalletBalance).toHaveBeenCalledWith(
+        expect(walletRepo.adjustSystemShardBalance).toHaveBeenCalledWith(
           expect.anything(),
-          "system-wallet-1",
-          3000n,
+          "platform-1",
+          "USD",
           expect.any(Number),
+                    3000n,
+                    expect.any(Number),
         );
       });
 
@@ -157,7 +159,7 @@ describe("ChargeUseCase", () => {
     });
 
     describe("When charging the exact available balance (boundary)", () => {
-      const cmd = new ChargeCommand("wallet-1", "platform-1", 10000n, "idem-boundary");
+      const cmd = new ChargeCommand("wallet-1", "platform-1", 10000n, "idem-boundary", 32);
 
       it("Then it succeeds and returns transactionId and movementId", async () => {
         const result = await sut.handle(ctx, cmd);
@@ -184,19 +186,12 @@ describe("ChargeUseCase", () => {
           .withBalance(5000n)
           .build(),
       );
-      walletRepo.findSystemWallet.mockResolvedValue(
-        new WalletBuilder()
-          .withId("system-wallet-1")
-          .withPlatformId("platform-1")
-          .withCurrency("USD")
-          .asSystem()
-          .build(),
-      );
+      walletRepo.adjustSystemShardBalance.mockResolvedValue({ walletId: "system-wallet-1", cachedBalanceMinor: 0n });
       holdRepo.sumActiveHolds.mockResolvedValue(3000n);
     });
 
     describe("When charging more than available balance", () => {
-      const cmd = new ChargeCommand("wallet-1", "platform-1", 3000n, "idem-insuf");
+      const cmd = new ChargeCommand("wallet-1", "platform-1", 3000n, "idem-insuf", 32);
 
       it("Then it throws INSUFFICIENT_FUNDS", async () => {
         await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
@@ -225,9 +220,9 @@ describe("ChargeUseCase", () => {
         .build();
 
       walletRepo.findById.mockResolvedValue(systemWalletAsUser);
-      walletRepo.findSystemWallet.mockResolvedValue(counterpartSystem);
+      walletRepo.adjustSystemShardBalance.mockResolvedValue({ walletId: counterpartSystem.id, cachedBalanceMinor: counterpartSystem.cachedBalanceMinor });
       walletRepo.save.mockResolvedValue(undefined);
-      walletRepo.adjustSystemWalletBalance.mockResolvedValue(undefined);
+      
       holdRepo.sumActiveHolds.mockResolvedValue(0n);
       transactionRepo.save.mockResolvedValue(undefined);
       ledgerEntryRepo.saveMany.mockResolvedValue(undefined);
@@ -235,7 +230,7 @@ describe("ChargeUseCase", () => {
     });
 
     describe("When charging 5000 cents (exceeding balance)", () => {
-      const cmd = new ChargeCommand("system-wallet-1", "platform-1", 5000n, "idem-sys");
+      const cmd = new ChargeCommand("system-wallet-1", "platform-1", 5000n, "idem-sys", 32);
 
       it("Then it succeeds because system wallets bypass the funds check", async () => {
         const result = await sut.handle(ctx, cmd);
@@ -262,19 +257,12 @@ describe("ChargeUseCase", () => {
           .asFrozen()
           .build(),
       );
-      walletRepo.findSystemWallet.mockResolvedValue(
-        new WalletBuilder()
-          .withId("system-wallet-1")
-          .withPlatformId("platform-1")
-          .withCurrency("USD")
-          .asSystem()
-          .build(),
-      );
+      walletRepo.adjustSystemShardBalance.mockResolvedValue({ walletId: "system-wallet-1", cachedBalanceMinor: 0n });
       holdRepo.sumActiveHolds.mockResolvedValue(0n);
     });
 
     describe("When charging", () => {
-      const cmd = new ChargeCommand("wallet-1", "platform-1", 1000n, "idem-frozen");
+      const cmd = new ChargeCommand("wallet-1", "platform-1", 1000n, "idem-frozen", 32);
 
       it("Then it throws WALLET_NOT_ACTIVE", async () => {
         await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
@@ -296,7 +284,7 @@ describe("ChargeUseCase", () => {
     });
 
     describe("When charging with platformId 'platform-1'", () => {
-      const cmd = new ChargeCommand("wallet-1", "platform-1", 1000n, "idem-plat");
+      const cmd = new ChargeCommand("wallet-1", "platform-1", 1000n, "idem-plat", 32);
 
       it("Then it throws WALLET_NOT_FOUND (platform mismatch)", async () => {
         await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
@@ -312,7 +300,7 @@ describe("ChargeUseCase", () => {
     });
 
     describe("When charging", () => {
-      const cmd = new ChargeCommand("nonexistent", "platform-1", 1000n, "idem-nf");
+      const cmd = new ChargeCommand("nonexistent", "platform-1", 1000n, "idem-nf", 32);
 
       it("Then it throws WALLET_NOT_FOUND", async () => {
         await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
@@ -329,13 +317,20 @@ describe("ChargeUseCase", () => {
           .withId("wallet-1")
           .withPlatformId("platform-1")
           .withCurrency("USD")
+          .withBalance(10000n)
           .build(),
       );
-      walletRepo.findSystemWallet.mockResolvedValue(null);
+      holdRepo.sumActiveHolds.mockResolvedValue(0n);
+      walletRepo.adjustSystemShardBalance.mockRejectedValue(
+        AppError.internal(
+          "SYSTEM_WALLET_NOT_FOUND",
+          "system wallet not found for platform platform-1, currency USD",
+        ),
+      );
     });
 
     describe("When charging", () => {
-      const cmd = new ChargeCommand("wallet-1", "platform-1", 1000n, "idem-sys-nf");
+      const cmd = new ChargeCommand("wallet-1", "platform-1", 1000n, "idem-sys-nf", 32);
 
       it("Then it throws SYSTEM_WALLET_NOT_FOUND", async () => {
         await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {

@@ -85,15 +85,15 @@ describe("CaptureHoldUseCase", () => {
 
         holdRepo.findById.mockResolvedValue(hold);
         walletRepo.findById.mockResolvedValue(wallet);
-        walletRepo.findSystemWallet.mockResolvedValue(systemWallet);
+        walletRepo.adjustSystemShardBalance.mockResolvedValue({ walletId: systemWallet.id, cachedBalanceMinor: systemWallet.cachedBalanceMinor });
         holdRepo.transitionStatus.mockResolvedValue(undefined);
         walletRepo.save.mockResolvedValue(undefined);
-        walletRepo.adjustSystemWalletBalance.mockResolvedValue(undefined);
+        
         transactionRepo.save.mockResolvedValue(undefined);
         ledgerEntryRepo.saveMany.mockResolvedValue(undefined);
         movementRepo.save.mockResolvedValue(undefined);
 
-        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
+        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY, 32);
         const result = await useCase.handle(ctx, cmd);
 
         expect(result).toEqual({ transactionId: TX_ID, movementId: MOVEMENT_ID });
@@ -108,7 +108,7 @@ describe("CaptureHoldUseCase", () => {
         expect(movementRepo.save).toHaveBeenCalledOnce();
         expect(holdRepo.transitionStatus).toHaveBeenCalledOnce();
         expect(walletRepo.save).toHaveBeenCalledOnce();
-        expect(walletRepo.adjustSystemWalletBalance).toHaveBeenCalledOnce();
+        expect(walletRepo.adjustSystemShardBalance).toHaveBeenCalledOnce();
         expect(transactionRepo.save).toHaveBeenCalledOnce();
         expect(ledgerEntryRepo.saveMany).toHaveBeenCalledOnce();
 
@@ -124,7 +124,7 @@ describe("CaptureHoldUseCase", () => {
       it("Then throws HOLD_NOT_FOUND from the pre-lookup and never enters the transaction", async () => {
         holdRepo.findById.mockResolvedValue(null);
 
-        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
+        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY, 32);
 
         await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
           return AppError.is(err) && err.kind === ErrorKind.NotFound && err.code === "HOLD_NOT_FOUND";
@@ -154,7 +154,7 @@ describe("CaptureHoldUseCase", () => {
         holdRepo.findById.mockResolvedValueOnce(hold).mockResolvedValueOnce(null);
         walletRepo.findById.mockResolvedValueOnce(wallet);
 
-        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
+        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY, 32);
 
         await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
           return AppError.is(err) && err.kind === ErrorKind.NotFound && err.code === "HOLD_NOT_FOUND";
@@ -186,7 +186,7 @@ describe("CaptureHoldUseCase", () => {
         holdRepo.findById.mockResolvedValueOnce(hold);
         walletRepo.findById.mockResolvedValueOnce(victimWallet);
 
-        const cmd = new CaptureHoldCommand(HOLD_ID, attackerPlatformId, IDEMPOTENCY_KEY);
+        const cmd = new CaptureHoldCommand(HOLD_ID, attackerPlatformId, IDEMPOTENCY_KEY, 32);
 
         await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
           return AppError.is(err) && err.kind === ErrorKind.NotFound && err.code === "HOLD_NOT_FOUND";
@@ -225,10 +225,10 @@ describe("CaptureHoldUseCase", () => {
 
         holdRepo.findById.mockResolvedValue(hold);
         walletRepo.findById.mockResolvedValue(wallet);
-        walletRepo.findSystemWallet.mockResolvedValue(systemWallet);
+        walletRepo.adjustSystemShardBalance.mockResolvedValue({ walletId: systemWallet.id, cachedBalanceMinor: systemWallet.cachedBalanceMinor });
         holdRepo.transitionStatus.mockResolvedValue(undefined);
 
-        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
+        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY, 32);
 
         await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
           return AppError.is(err) && err.kind === ErrorKind.DomainRule && err.code === "HOLD_EXPIRED";
@@ -269,9 +269,9 @@ describe("CaptureHoldUseCase", () => {
 
         holdRepo.findById.mockResolvedValue(hold);
         walletRepo.findById.mockResolvedValue(wallet);
-        walletRepo.findSystemWallet.mockResolvedValue(systemWallet);
+        walletRepo.adjustSystemShardBalance.mockResolvedValue({ walletId: systemWallet.id, cachedBalanceMinor: systemWallet.cachedBalanceMinor });
 
-        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
+        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY, 32);
 
         // hold.capture(now) will throw HOLD_NOT_ACTIVE because status is "captured"
         await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
@@ -308,9 +308,9 @@ describe("CaptureHoldUseCase", () => {
 
         holdRepo.findById.mockResolvedValue(hold);
         walletRepo.findById.mockResolvedValue(wallet);
-        walletRepo.findSystemWallet.mockResolvedValue(systemWallet);
+        walletRepo.adjustSystemShardBalance.mockResolvedValue({ walletId: systemWallet.id, cachedBalanceMinor: systemWallet.cachedBalanceMinor });
 
-        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
+        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY, 32);
 
         await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
           return AppError.is(err) && err.kind === ErrorKind.DomainRule && err.code === "HOLD_NOT_ACTIVE";
@@ -339,13 +339,13 @@ describe("CaptureHoldUseCase", () => {
           .mockResolvedValueOnce(wallet) // pre-lock guard
           .mockResolvedValueOnce(null); // inner tx race
 
-        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
+        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY, 32);
 
         await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
           return AppError.is(err) && err.kind === ErrorKind.NotFound && err.code === "WALLET_NOT_FOUND";
         });
 
-        expect(walletRepo.findSystemWallet).not.toHaveBeenCalled();
+        expect(walletRepo.findOrCreateSystemShard).not.toHaveBeenCalled();
       });
     });
   });
@@ -362,13 +362,13 @@ describe("CaptureHoldUseCase", () => {
         holdRepo.findById.mockResolvedValue(hold);
         walletRepo.findById.mockResolvedValue(null);
 
-        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
+        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY, 32);
 
         await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
           return AppError.is(err) && err.kind === ErrorKind.NotFound && err.code === "HOLD_NOT_FOUND";
         });
 
-        expect(walletRepo.findSystemWallet).not.toHaveBeenCalled();
+        expect(walletRepo.findOrCreateSystemShard).not.toHaveBeenCalled();
       });
     });
   });
@@ -390,9 +390,14 @@ describe("CaptureHoldUseCase", () => {
 
         holdRepo.findById.mockResolvedValue(hold);
         walletRepo.findById.mockResolvedValue(wallet);
-        walletRepo.findSystemWallet.mockResolvedValue(null);
+        walletRepo.adjustSystemShardBalance.mockRejectedValue(
+          AppError.internal(
+            "SYSTEM_WALLET_NOT_FOUND",
+            `system wallet not found for platform ${PLATFORM_ID}, currency USD`,
+          ),
+        );
 
-        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY);
+        const cmd = new CaptureHoldCommand(HOLD_ID, PLATFORM_ID, IDEMPOTENCY_KEY, 32);
 
         await expect(useCase.handle(ctx, cmd)).rejects.toSatisfy((err: unknown) => {
           return AppError.is(err) && err.kind === ErrorKind.Internal && err.code === "SYSTEM_WALLET_NOT_FOUND";

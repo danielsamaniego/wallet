@@ -11,12 +11,6 @@ export type HonoVariables = {
   trackingId: string;
   platformId: string | undefined;
   allowNegativeBalance: boolean | undefined;
-  /**
-   * Number of shards for the authenticated platform's system wallets.
-   * Populated by `apiKeyAuth`; undefined before auth runs. Mutation HTTP
-   * handlers read this and pass it into the command constructor so the use
-   * case can hash the user wallet id → shard index.
-   */
   systemWalletShardCount: number | undefined;
   startTs: number;
   canonical: CanonicalAccumulator;

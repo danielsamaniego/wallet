@@ -5,18 +5,18 @@ import { AppError, ErrorKind } from "@/utils/kernel/appError.js";
 const NOW = 1700000000000;
 const LATER = NOW + 1000;
 
-// Helper: creates a fresh active wallet with given balance via reconstruct
+// Helpers: pass shardIndex=0 by default (user wallets); system helper uses 0 too (shard 0).
 const activeWallet = (balance = 0n, id = "w-1") =>
-  Wallet.reconstruct(id, "owner-1", "platform-1", "USD", balance, "active", 1, false, NOW, NOW);
+  Wallet.reconstruct(id, "owner-1", "platform-1", "USD", balance, "active", 1, false, 0, NOW, NOW);
 
 const systemWallet = (balance = 0n) =>
-  Wallet.reconstruct("sys-1", "SYSTEM", "platform-1", "USD", balance, "active", 1, true, NOW, NOW);
+  Wallet.reconstruct("sys-1", "SYSTEM", "platform-1", "USD", balance, "active", 1, true, 0, NOW, NOW);
 
 const frozenWallet = (balance = 0n) =>
-  Wallet.reconstruct("w-1", "owner-1", "platform-1", "USD", balance, "frozen", 1, false, NOW, NOW);
+  Wallet.reconstruct("w-1", "owner-1", "platform-1", "USD", balance, "frozen", 1, false, 0, NOW, NOW);
 
 const closedWallet = () =>
-  Wallet.reconstruct("w-1", "owner-1", "platform-1", "USD", 0n, "closed", 1, false, NOW, NOW);
+  Wallet.reconstruct("w-1", "owner-1", "platform-1", "USD", 0n, "closed", 1, false, 0, NOW, NOW);
 
 describe("Wallet Aggregate", () => {
   // ── create ───────────────────────────────────────────────────────────
@@ -24,14 +24,14 @@ describe("Wallet Aggregate", () => {
     describe("Given valid parameters", () => {
       describe("When creating a new wallet", () => {
         it("Then creates with status active and version 1", () => {
-          const w = Wallet.create("w-1", "owner-1", "plat-1", "USD", false, NOW);
+          const w = Wallet.create("w-1", "owner-1", "plat-1", "USD", NOW);
           expect(w.status).toBe("active");
           expect(w.version).toBe(1);
           expect(w.cachedBalanceMinor).toBe(0n);
         });
 
         it("Then sets all identity fields correctly", () => {
-          const w = Wallet.create("w-1", "owner-1", "plat-1", "USD", false, NOW);
+          const w = Wallet.create("w-1", "owner-1", "plat-1", "USD", NOW);
           expect(w.id).toBe("w-1");
           expect(w.ownerId).toBe("owner-1");
           expect(w.platformId).toBe("plat-1");
@@ -39,7 +39,7 @@ describe("Wallet Aggregate", () => {
         });
 
         it("Then sets createdAt and updatedAt to now", () => {
-          const w = Wallet.create("w-1", "owner-1", "plat-1", "USD", false, NOW);
+          const w = Wallet.create("w-1", "owner-1", "plat-1", "USD", NOW);
           expect(w.createdAt).toBe(NOW);
           expect(w.updatedAt).toBe(NOW);
         });
@@ -49,7 +49,7 @@ describe("Wallet Aggregate", () => {
     describe("Given a lowercase currency code", () => {
       describe("When creating a wallet", () => {
         it("Then uppercases the currency code", () => {
-          const w = Wallet.create("w-1", "owner-1", "plat-1", "usd", false, NOW);
+          const w = Wallet.create("w-1", "owner-1", "plat-1", "usd", NOW);
           expect(w.currencyCode).toBe("USD");
         });
       });
@@ -58,17 +58,18 @@ describe("Wallet Aggregate", () => {
     describe("Given a mixed-case currency code", () => {
       describe("When creating a wallet", () => {
         it("Then uppercases the currency code", () => {
-          const w = Wallet.create("w-1", "owner-1", "plat-1", "eUr", false, NOW);
+          const w = Wallet.create("w-1", "owner-1", "plat-1", "eUr", NOW);
           expect(w.currencyCode).toBe("EUR");
         });
       });
     });
 
-    describe("Given a system wallet flag", () => {
-      describe("When creating", () => {
-        it("Then isSystem is true", () => {
-          const w = Wallet.create("sys-1", "SYSTEM", "plat-1", "USD", true, NOW);
-          expect(w.isSystem).toBe(true);
+    describe("Given a user wallet", () => {
+      describe("When created", () => {
+        it("Then shardIndex is 0 and isSystem is false", () => {
+          const w = Wallet.create("u-1", "alice", "plat-1", "USD", NOW);
+          expect(w.shardIndex).toBe(0);
+          expect(w.isSystem).toBe(false);
         });
       });
     });
@@ -76,7 +77,7 @@ describe("Wallet Aggregate", () => {
     describe("Given an invalid currency code (2 chars)", () => {
       describe("When creating a wallet", () => {
         it("Then throws INVALID_CURRENCY validation error", () => {
-          expect(() => Wallet.create("w-1", "o-1", "p-1", "US", false, NOW))
+          expect(() => Wallet.create("w-1", "o-1", "p-1", "US", NOW))
             .toThrowAppError(ErrorKind.Validation, "INVALID_CURRENCY");
         });
       });
@@ -85,7 +86,7 @@ describe("Wallet Aggregate", () => {
     describe("Given an invalid currency code (4 chars)", () => {
       describe("When creating a wallet", () => {
         it("Then throws INVALID_CURRENCY", () => {
-          expect(() => Wallet.create("w-1", "o-1", "p-1", "USDX", false, NOW))
+          expect(() => Wallet.create("w-1", "o-1", "p-1", "USDX", NOW))
             .toThrowAppError(ErrorKind.Validation, "INVALID_CURRENCY");
         });
       });
@@ -94,7 +95,7 @@ describe("Wallet Aggregate", () => {
     describe("Given a numeric currency code", () => {
       describe("When creating a wallet", () => {
         it("Then throws INVALID_CURRENCY", () => {
-          expect(() => Wallet.create("w-1", "o-1", "p-1", "123", false, NOW))
+          expect(() => Wallet.create("w-1", "o-1", "p-1", "123", NOW))
             .toThrowAppError(ErrorKind.Validation, "INVALID_CURRENCY");
         });
       });
@@ -103,7 +104,7 @@ describe("Wallet Aggregate", () => {
     describe("Given an empty currency code", () => {
       describe("When creating a wallet", () => {
         it("Then throws INVALID_CURRENCY", () => {
-          expect(() => Wallet.create("w-1", "o-1", "p-1", "", false, NOW))
+          expect(() => Wallet.create("w-1", "o-1", "p-1", "", NOW))
             .toThrowAppError(ErrorKind.Validation, "INVALID_CURRENCY");
         });
       });
@@ -112,7 +113,7 @@ describe("Wallet Aggregate", () => {
     describe("Given a valid-format but unsupported currency code 'JPY'", () => {
       describe("When creating a wallet", () => {
         it("Then throws UNSUPPORTED_CURRENCY validation error", () => {
-          expect(() => Wallet.create("w-1", "o-1", "p-1", "JPY", false, NOW))
+          expect(() => Wallet.create("w-1", "o-1", "p-1", "JPY", NOW))
             .toThrowAppError(ErrorKind.Validation, "UNSUPPORTED_CURRENCY");
         });
       });
@@ -121,7 +122,7 @@ describe("Wallet Aggregate", () => {
     describe("Given a valid-format but unsupported currency code 'GBP'", () => {
       describe("When creating a wallet", () => {
         it("Then throws UNSUPPORTED_CURRENCY validation error", () => {
-          expect(() => Wallet.create("w-1", "o-1", "p-1", "GBP", false, NOW))
+          expect(() => Wallet.create("w-1", "o-1", "p-1", "GBP", NOW))
             .toThrowAppError(ErrorKind.Validation, "UNSUPPORTED_CURRENCY");
         });
       });
@@ -130,7 +131,7 @@ describe("Wallet Aggregate", () => {
     describe("Given a valid-format but unsupported currency code 'CHF'", () => {
       describe("When creating a wallet", () => {
         it("Then throws UNSUPPORTED_CURRENCY validation error", () => {
-          expect(() => Wallet.create("w-1", "o-1", "p-1", "CHF", false, NOW))
+          expect(() => Wallet.create("w-1", "o-1", "p-1", "CHF", NOW))
             .toThrowAppError(ErrorKind.Validation, "UNSUPPORTED_CURRENCY");
         });
       });
@@ -721,9 +722,9 @@ describe("Wallet Aggregate", () => {
   describe("reconstruct", () => {
     describe("Given arbitrary field values", () => {
       describe("When reconstructing", () => {
-        it("Then all getters return the provided values", () => {
+        it("Then all getters return the provided values including shardIndex", () => {
           const w = Wallet.reconstruct(
-            "r-id", "r-owner", "r-plat", "EUR", 999n, "frozen", 42, true, 111, 222,
+            "r-id", "r-owner", "r-plat", "EUR", 999n, "frozen", 42, true, 7, 111, 222,
           );
           expect(w.id).toBe("r-id");
           expect(w.ownerId).toBe("r-owner");
@@ -733,6 +734,7 @@ describe("Wallet Aggregate", () => {
           expect(w.status).toBe("frozen");
           expect(w.version).toBe(42);
           expect(w.isSystem).toBe(true);
+          expect(w.shardIndex).toBe(7);
           expect(w.createdAt).toBe(111);
           expect(w.updatedAt).toBe(222);
         });

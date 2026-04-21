@@ -297,3 +297,10 @@ ALTER TABLE transactions
 ALTER TABLE ledger_entries
   DROP CONSTRAINT IF EXISTS ledger_entries_valid_entry_type,
   ADD CONSTRAINT ledger_entries_valid_entry_type CHECK (entry_type IN ('CREDIT', 'DEBIT'));
+
+-- shard_index bounds: [0, MAX_SYSTEM_WALLET_SHARD_COUNT). The lower bound was
+-- added in the sharding migration; this script tightens it with the upper bound
+-- so the DB enforces the same limit as the domain (MAX = 1024, indices 0..1023).
+ALTER TABLE wallets
+  DROP CONSTRAINT IF EXISTS ck_wallet_shard_index_non_negative,
+  ADD CONSTRAINT ck_wallet_shard_index_non_negative CHECK (shard_index >= 0 AND shard_index < 1024);

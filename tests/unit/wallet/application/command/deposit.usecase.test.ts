@@ -75,16 +75,18 @@ describe("DepositUseCase", () => {
           .withBalance(10000n)
           .build(),
       );
-      walletRepo.findSystemWallet.mockResolvedValue(systemWallet);
+      walletRepo.adjustSystemShardBalance.mockResolvedValue({
+        walletId: systemWallet.id,
+        cachedBalanceMinor: systemWallet.cachedBalanceMinor - 5000n,
+      });
       walletRepo.save.mockResolvedValue(undefined);
-      walletRepo.adjustSystemWalletBalance.mockResolvedValue(undefined);
       transactionRepo.save.mockResolvedValue(undefined);
       ledgerEntryRepo.saveMany.mockResolvedValue(undefined);
       movementRepo.save.mockResolvedValue(undefined);
     });
 
     describe("When depositing 5000 cents", () => {
-      const cmd = new DepositCommand("wallet-1", "platform-1", 5000n, "idem-1", "ref-1");
+      const cmd = new DepositCommand("wallet-1", "platform-1", 5000n, "idem-1", 32, "ref-1");
 
       it("Then it returns the transactionId and movementId", async () => {
         const result = await sut.handle(ctx, cmd);
@@ -99,12 +101,14 @@ describe("DepositUseCase", () => {
         expect(savedWallet.cachedBalanceMinor).toBe(15000n);
       });
 
-      it("Then the system wallet balance is adjusted with negative delta", async () => {
+      it("Then the system wallet shard is adjusted with a negative delta via adjustSystemShardBalance", async () => {
         await sut.handle(ctx, cmd);
 
-        expect(walletRepo.adjustSystemWalletBalance).toHaveBeenCalledWith(
+        expect(walletRepo.adjustSystemShardBalance).toHaveBeenCalledWith(
           expect.anything(),
-          "system-wallet-1",
+          "platform-1",
+          "USD",
+          expect.any(Number),
           -5000n,
           expect.any(Number),
         );
@@ -159,7 +163,7 @@ describe("DepositUseCase", () => {
     });
 
     describe("When depositing 1 cent (minimum amount)", () => {
-      const cmd = new DepositCommand("wallet-1", "platform-1", 1n, "idem-min");
+      const cmd = new DepositCommand("wallet-1", "platform-1", 1n, "idem-min", 32);
 
       it("Then it succeeds and returns transactionId and movementId", async () => {
         const result = await sut.handle(ctx, cmd);
@@ -182,7 +186,7 @@ describe("DepositUseCase", () => {
     });
 
     describe("When depositing", () => {
-      const cmd = new DepositCommand("nonexistent", "platform-1", 1000n, "idem-2");
+      const cmd = new DepositCommand("nonexistent", "platform-1", 1000n, "idem-2", 32);
 
       it("Then it throws WALLET_NOT_FOUND", async () => {
         await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
@@ -201,11 +205,16 @@ describe("DepositUseCase", () => {
           .withCurrency("USD")
           .build(),
       );
-      walletRepo.findSystemWallet.mockResolvedValue(null);
+      walletRepo.adjustSystemShardBalance.mockRejectedValue(
+        AppError.internal(
+          "SYSTEM_WALLET_NOT_FOUND",
+          "system wallet not found for platform platform-1, currency USD",
+        ),
+      );
     });
 
     describe("When depositing", () => {
-      const cmd = new DepositCommand("wallet-1", "platform-1", 1000n, "idem-3");
+      const cmd = new DepositCommand("wallet-1", "platform-1", 1000n, "idem-3", 32);
 
       it("Then it throws SYSTEM_WALLET_NOT_FOUND", async () => {
         await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
@@ -225,18 +234,14 @@ describe("DepositUseCase", () => {
           .asFrozen()
           .build(),
       );
-      walletRepo.findSystemWallet.mockResolvedValue(
-        new WalletBuilder()
-          .withId("system-wallet-1")
-          .withPlatformId("platform-1")
-          .withCurrency("USD")
-          .asSystem()
-          .build(),
-      );
+      walletRepo.adjustSystemShardBalance.mockResolvedValue({
+        walletId: "system-wallet-1",
+        cachedBalanceMinor: 0n,
+      });
     });
 
     describe("When depositing", () => {
-      const cmd = new DepositCommand("wallet-1", "platform-1", 1000n, "idem-4");
+      const cmd = new DepositCommand("wallet-1", "platform-1", 1000n, "idem-4", 32);
 
       it("Then it throws WALLET_NOT_ACTIVE", async () => {
         await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
@@ -258,7 +263,7 @@ describe("DepositUseCase", () => {
     });
 
     describe("When depositing with platformId 'platform-1'", () => {
-      const cmd = new DepositCommand("wallet-1", "platform-1", 1000n, "idem-5");
+      const cmd = new DepositCommand("wallet-1", "platform-1", 1000n, "idem-5", 32);
 
       it("Then it throws WALLET_NOT_FOUND (platform mismatch)", async () => {
         await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {

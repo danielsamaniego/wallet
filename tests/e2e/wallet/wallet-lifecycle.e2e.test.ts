@@ -56,10 +56,13 @@ describe("Wallet Lifecycle E2E", () => {
       });
       expect(createRes.status).toBe(201);
 
-      // Find the system wallet directly in the DB
+      // Find shard 0 of the system wallet directly in the DB.
+      // After sharding, there are N (default 32) shards per (platform, currency);
+      // shard 0 is the original row preserved from the pre-sharding era and a
+      // stable anchor for tests that just need "the system wallet" to probe.
       const prisma = getTestPrisma();
       const sysWallet = await prisma.wallet.findFirst({
-        where: { ownerId: "SYSTEM", currencyCode: "USD", isSystem: true },
+        where: { ownerId: "SYSTEM", currencyCode: "USD", isSystem: true, shardIndex: 0 },
       });
       expect(sysWallet).not.toBeNull();
       systemWalletId = sysWallet!.id;

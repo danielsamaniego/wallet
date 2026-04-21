@@ -4,7 +4,6 @@ import {
   createMockLogger,
   createMockTransactionManager,
 } from "@test/helpers/mocks/index.js";
-import { WalletBuilder } from "@test/helpers/builders/wallet.builder.js";
 import { createTestContext } from "@test/helpers/builders/context.builder.js";
 import { CreateWalletUseCase } from "@/wallet/application/command/createWallet/usecase.js";
 import { CreateWalletCommand } from "@/wallet/application/command/createWallet/command.js";
@@ -17,9 +16,9 @@ import type { Wallet } from "@/wallet/domain/wallet/wallet.aggregate.js";
 const PLATFORM = "platform-1";
 const CURRENCY = "USD";
 const OWNER = "owner-1";
+const SHARD_COUNT = 32;
 
 const USER_WALLET_ID = "wallet-user-1";
-const SYSTEM_WALLET_ID = "wallet-system-1";
 
 // ── Test suite ─────────────────────────────────────────────────────
 
@@ -35,95 +34,85 @@ describe("CreateWalletUseCase", () => {
     mockReset(walletRepo);
   });
 
-  // ── First wallet of a platform: auto-creates system wallet ─────
-
+  // ── Happy path: user wallet created; system shards materialised via ensureSystemWalletShards
   describe("Given no wallets exist for the platform yet", () => {
-    beforeEach(() => {
-      // walletId for user, then sysId for system wallet
-      idGen = createMockIDGenerator([USER_WALLET_ID, SYSTEM_WALLET_ID]);
-      useCase = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
-
-      walletRepo.existsByOwner.mockResolvedValue(false);
-      walletRepo.findSystemWallet.mockResolvedValue(null);
-    });
-
-    describe("When a wallet is created", () => {
-      it("Then it auto-creates the system wallet and the user wallet (2 saves)", async () => {
-        const cmd = new CreateWalletCommand(OWNER, PLATFORM, CURRENCY);
-
-        const result = await useCase.handle(ctx, cmd);
-
-        expect(result).toEqual({ walletId: USER_WALLET_ID });
-        expect(walletRepo.save).toHaveBeenCalledTimes(2);
-
-        // First save: system wallet
-        const firstSaved = walletRepo.save.mock.calls[0]![1] as Wallet;
-        expect(firstSaved.isSystem).toBe(true);
-        expect(firstSaved.id).toBe(SYSTEM_WALLET_ID);
-        expect(firstSaved.ownerId).toBe("SYSTEM");
-        expect(firstSaved.platformId).toBe(PLATFORM);
-        expect(firstSaved.currencyCode).toBe(CURRENCY);
-
-        // Second save: user wallet
-        const secondSaved = walletRepo.save.mock.calls[1]![1] as Wallet;
-        expect(secondSaved.isSystem).toBe(false);
-        expect(secondSaved.id).toBe(USER_WALLET_ID);
-        expect(secondSaved.ownerId).toBe(OWNER);
-        expect(secondSaved.platformId).toBe(PLATFORM);
-        expect(secondSaved.currencyCode).toBe(CURRENCY);
-      });
-    });
-  });
-
-  // ── Second wallet: reuses existing system wallet ───────────────
-
-  describe("Given a system wallet already exists for the platform", () => {
-    const existingSystemWallet = new WalletBuilder()
-      .withId("existing-sys-wallet")
-      .asSystem()
-      .withPlatformId(PLATFORM)
-      .withCurrency(CURRENCY)
-      .build();
-
     beforeEach(() => {
       idGen = createMockIDGenerator([USER_WALLET_ID]);
       useCase = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
 
       walletRepo.existsByOwner.mockResolvedValue(false);
-      walletRepo.findSystemWallet.mockResolvedValue(existingSystemWallet);
+      walletRepo.ensureSystemWalletShards.mockResolvedValue(undefined);
     });
 
-    describe("When a second wallet is created for the same platform", () => {
-      it("Then it only saves the user wallet (1 save), reusing the existing system wallet", async () => {
-        const cmd = new CreateWalletCommand("owner-2", PLATFORM, CURRENCY);
+    describe("When a wallet is created", () => {
+      it("Then it materialises the system wallet shards and saves one user wallet", async () => {
+        const cmd = new CreateWalletCommand(OWNER, PLATFORM, CURRENCY, SHARD_COUNT);
 
         const result = await useCase.handle(ctx, cmd);
 
         expect(result).toEqual({ walletId: USER_WALLET_ID });
+        expect(walletRepo.ensureSystemWalletShards).toHaveBeenCalledWith(
+          expect.anything(),
+          PLATFORM,
+          CURRENCY,
+          SHARD_COUNT,
+          expect.any(Number),
+        );
+        // Only the user wallet is saved here; shards are created via createMany
+        // inside ensureSystemWalletShards, not through save().
         expect(walletRepo.save).toHaveBeenCalledOnce();
+        const saved = walletRepo.save.mock.calls[0]![1] as Wallet;
+        expect(saved.isSystem).toBe(false);
+        expect(saved.id).toBe(USER_WALLET_ID);
+        expect(saved.ownerId).toBe(OWNER);
+        expect(saved.platformId).toBe(PLATFORM);
+        expect(saved.currencyCode).toBe(CURRENCY);
+        expect(saved.shardIndex).toBe(0);
+      });
+    });
+  });
 
-        // The only save is the user wallet
-        const savedWallet = walletRepo.save.mock.calls[0]![1] as Wallet;
-        expect(savedWallet.isSystem).toBe(false);
-        expect(savedWallet.id).toBe(USER_WALLET_ID);
-        expect(savedWallet.ownerId).toBe("owner-2");
+  // ── Second wallet: ensureSystemWalletShards is a no-op but still invoked
+  describe("Given system shards already exist for the (platform, currency)", () => {
+    beforeEach(() => {
+      idGen = createMockIDGenerator([USER_WALLET_ID]);
+      useCase = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
+
+      walletRepo.existsByOwner.mockResolvedValue(false);
+      // ensureSystemWalletShards is idempotent — returns undefined whether
+      // it inserted new shards or found them all existing.
+      walletRepo.ensureSystemWalletShards.mockResolvedValue(undefined);
+    });
+
+    describe("When a second user wallet is created", () => {
+      it("Then ensureSystemWalletShards is still invoked (idempotent) and the user wallet is saved", async () => {
+        const cmd = new CreateWalletCommand("owner-2", PLATFORM, CURRENCY, SHARD_COUNT);
+
+        const result = await useCase.handle(ctx, cmd);
+
+        expect(result).toEqual({ walletId: USER_WALLET_ID });
+        expect(walletRepo.ensureSystemWalletShards).toHaveBeenCalledOnce();
+        expect(walletRepo.save).toHaveBeenCalledOnce();
+        const saved = walletRepo.save.mock.calls[0]![1] as Wallet;
+        expect(saved.isSystem).toBe(false);
+        expect(saved.ownerId).toBe("owner-2");
       });
     });
   });
 
   // ── Duplicate owner ────────────────────────────────────────────
-
   describe("Given a wallet already exists for the same owner/platform/currency", () => {
     beforeEach(() => {
       idGen = createMockIDGenerator([USER_WALLET_ID]);
       useCase = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
 
       walletRepo.existsByOwner.mockResolvedValue(true);
+      walletRepo.ensureSystemWalletShards.mockResolvedValue(undefined);
     });
 
     describe("When a wallet creation is attempted", () => {
-      it("Then it throws WALLET_ALREADY_EXISTS", async () => {
-        const cmd = new CreateWalletCommand(OWNER, PLATFORM, CURRENCY);
+      it("Then it throws WALLET_ALREADY_EXISTS and does not save a user wallet", async () => {
+        const cmd = new CreateWalletCommand(OWNER, PLATFORM, CURRENCY, SHARD_COUNT);
 
         const err = await useCase.handle(ctx, cmd).catch((e: unknown) => e);
         expect(err).toBeInstanceOf(AppError);
@@ -131,34 +120,45 @@ describe("CreateWalletUseCase", () => {
           code: "WALLET_ALREADY_EXISTS",
           kind: ErrorKind.Conflict,
         });
+        // ensureSystemWalletShards runs before the existence check so that
+        // concurrent createWallet requests don't hit SERIALIZABLE conflicts on
+        // the shard rows inside the tx. It is idempotent; invoking it here is
+        // harmless even though the user wallet is rejected.
+        expect(walletRepo.ensureSystemWalletShards).toHaveBeenCalledOnce();
+        expect(walletRepo.save).not.toHaveBeenCalled();
       });
     });
   });
 
   // ── Currency uppercased ────────────────────────────────────────
-
   describe("Given a valid owner with no existing wallet", () => {
     beforeEach(() => {
-      idGen = createMockIDGenerator([USER_WALLET_ID, SYSTEM_WALLET_ID]);
+      idGen = createMockIDGenerator([USER_WALLET_ID]);
       useCase = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
 
       walletRepo.existsByOwner.mockResolvedValue(false);
-      walletRepo.findSystemWallet.mockResolvedValue(null);
+      walletRepo.ensureSystemWalletShards.mockResolvedValue(undefined);
     });
 
     describe("When a wallet is created with lowercase currency 'usd'", () => {
-      it("Then the saved wallet has uppercased currency 'USD'", async () => {
-        const cmd = new CreateWalletCommand(OWNER, PLATFORM, "usd");
+      it("Then the user wallet and the ensureSystemWalletShards call both use the uppercase form", async () => {
+        const cmd = new CreateWalletCommand(OWNER, PLATFORM, "usd", SHARD_COUNT);
 
         await useCase.handle(ctx, cmd);
 
-        // The user wallet (second save) should have uppercased currency
-        const userWallet = walletRepo.save.mock.calls[1]![1] as Wallet;
-        expect(userWallet.currencyCode).toBe("USD");
-
-        // The system wallet (first save) should also have uppercased currency
-        const sysWallet = walletRepo.save.mock.calls[0]![1] as Wallet;
-        expect(sysWallet.currencyCode).toBe("USD");
+        const saved = walletRepo.save.mock.calls[0]![1] as Wallet;
+        expect(saved.currencyCode).toBe("USD");
+        // The use case forwards cmd.currencyCode as-is to the repo; the adapter
+        // uppercases. Here we verify the contract at the use-case boundary:
+        // the value passed is what the caller sent (the adapter handles the
+        // normalisation). If the caller sent "usd" the repo gets "usd".
+        expect(walletRepo.ensureSystemWalletShards).toHaveBeenCalledWith(
+          expect.anything(),
+          PLATFORM,
+          "usd",
+          SHARD_COUNT,
+          expect.any(Number),
+        );
       });
     });
   });

@@ -73,9 +73,14 @@ describe("AdjustBalanceUseCase", () => {
           .withBalance(10000n)
           .build(),
       );
-      walletRepo.findSystemWallet.mockResolvedValue(systemWallet);
+      // Mock returns the post-increment balance — mirrors the adapter's
+      // UPDATE ... RETURNING semantics.
+      walletRepo.adjustSystemShardBalance.mockImplementation(async (_ctx, _p, _c, _s, delta, _n) => ({
+        walletId: systemWallet.id,
+        cachedBalanceMinor: systemWallet.cachedBalanceMinor + delta,
+      }));
       walletRepo.save.mockResolvedValue(undefined);
-      walletRepo.adjustSystemWalletBalance.mockResolvedValue(undefined);
+      
       transactionRepo.save.mockResolvedValue(undefined);
       ledgerEntryRepo.saveMany.mockResolvedValue(undefined);
       movementRepo.save.mockResolvedValue(undefined);
@@ -89,6 +94,7 @@ describe("AdjustBalanceUseCase", () => {
         "Promotional credit",
         "idem-1",
         false,
+        32,
         "ref-1",
       );
 
@@ -108,11 +114,13 @@ describe("AdjustBalanceUseCase", () => {
       it("Then the system wallet balance is adjusted with negative delta", async () => {
         await sut.handle(ctx, cmd);
 
-        expect(walletRepo.adjustSystemWalletBalance).toHaveBeenCalledWith(
+        expect(walletRepo.adjustSystemShardBalance).toHaveBeenCalledWith(
           expect.anything(),
-          "system-wallet-1",
-          -5000n,
+          "platform-1",
+          "USD",
           expect.any(Number),
+                    -5000n,
+                    expect.any(Number),
         );
       });
 
@@ -184,6 +192,7 @@ describe("AdjustBalanceUseCase", () => {
         "Error correction",
         "idem-2",
         false,
+        32,
       );
 
       it("Then it returns the transactionId and movementId", async () => {
@@ -202,11 +211,13 @@ describe("AdjustBalanceUseCase", () => {
       it("Then the system wallet balance is adjusted with positive delta", async () => {
         await sut.handle(ctx, cmd);
 
-        expect(walletRepo.adjustSystemWalletBalance).toHaveBeenCalledWith(
+        expect(walletRepo.adjustSystemShardBalance).toHaveBeenCalledWith(
           expect.anything(),
-          "system-wallet-1",
-          3000n,
+          "platform-1",
+          "USD",
           expect.any(Number),
+                    3000n,
+                    expect.any(Number),
         );
       });
 
@@ -255,6 +266,7 @@ describe("AdjustBalanceUseCase", () => {
         "Large correction",
         "idem-3",
         false,
+        32,
       );
 
       it("Then throws INSUFFICIENT_FUNDS", async () => {
@@ -277,6 +289,7 @@ describe("AdjustBalanceUseCase", () => {
         "Dispute chargeback",
         "idem-neg",
         true,
+        32,
       );
 
       it("Then it succeeds and results in a negative balance", async () => {
@@ -301,6 +314,7 @@ describe("AdjustBalanceUseCase", () => {
         "Dispute chargeback",
         "idem-holds",
         true,
+        32,
       );
 
       it("Then it fails with ADJUST_WOULD_BREAK_ACTIVE_HOLDS", async () => {
@@ -323,6 +337,7 @@ describe("AdjustBalanceUseCase", () => {
         "Fee within available",
         "idem-within",
         true,
+        32,
       );
 
       it("Then it succeeds and balance decreases correctly", async () => {
@@ -347,16 +362,9 @@ describe("AdjustBalanceUseCase", () => {
           .asFrozen()
           .build(),
       );
-      walletRepo.findSystemWallet.mockResolvedValue(
-        new WalletBuilder()
-          .withId("system-wallet-1")
-          .withPlatformId("platform-1")
-          .withCurrency("USD")
-          .asSystem()
-          .build(),
-      );
+      walletRepo.adjustSystemShardBalance.mockResolvedValue({ walletId: "system-wallet-1", cachedBalanceMinor: 0n });
       walletRepo.save.mockResolvedValue(undefined);
-      walletRepo.adjustSystemWalletBalance.mockResolvedValue(undefined);
+      
       transactionRepo.save.mockResolvedValue(undefined);
       ledgerEntryRepo.saveMany.mockResolvedValue(undefined);
       movementRepo.save.mockResolvedValue(undefined);
@@ -370,6 +378,7 @@ describe("AdjustBalanceUseCase", () => {
         "Admin correction on frozen wallet",
         "idem-frozen",
         false,
+        32,
       );
 
       it("Then it succeeds (adjustments allowed on frozen wallets)", async () => {
@@ -394,6 +403,7 @@ describe("AdjustBalanceUseCase", () => {
         "reason",
         "idem-4",
         false,
+        32,
       );
 
       it("Then it throws WALLET_NOT_FOUND", async () => {
@@ -414,7 +424,12 @@ describe("AdjustBalanceUseCase", () => {
           .withCurrency("USD")
           .build(),
       );
-      walletRepo.findSystemWallet.mockResolvedValue(null);
+      walletRepo.adjustSystemShardBalance.mockRejectedValue(
+        AppError.internal(
+          "SYSTEM_WALLET_NOT_FOUND",
+          "system wallet not found for platform platform-1, currency USD",
+        ),
+      );
     });
 
     describe("When adjusting", () => {
@@ -425,6 +440,7 @@ describe("AdjustBalanceUseCase", () => {
         "reason",
         "idem-5",
         false,
+        32,
       );
 
       it("Then it throws SYSTEM_WALLET_NOT_FOUND", async () => {
@@ -455,6 +471,7 @@ describe("AdjustBalanceUseCase", () => {
         "reason",
         "idem-6",
         false,
+        32,
       );
 
       it("Then it throws WALLET_NOT_FOUND (platform mismatch)", async () => {

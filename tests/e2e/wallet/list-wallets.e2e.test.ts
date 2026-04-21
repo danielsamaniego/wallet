@@ -83,10 +83,11 @@ describe("List Wallets E2E", () => {
 
         expect(res.status).toBe(200);
         const body = await res.json();
-        const userWallets = body.wallets.filter((w: { is_system: boolean }) => !w.is_system);
-        expect(userWallets).toHaveLength(1);
-        expect(userWallets[0].currency_code).toBe("EUR");
-        expect(userWallets[0].owner_id).toBe("owner-3");
+        // System wallet shards are filtered out at the readstore; only user
+        // wallets are returned to the API consumer.
+        expect(body.wallets).toHaveLength(1);
+        expect(body.wallets[0].currency_code).toBe("EUR");
+        expect(body.wallets[0].owner_id).toBe("owner-3");
       });
     });
 

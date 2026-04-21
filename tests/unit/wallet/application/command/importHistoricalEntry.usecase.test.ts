@@ -79,9 +79,12 @@ describe("ImportHistoricalEntryUseCase", () => {
           .withBalance(10000n)
           .build(),
       );
-      walletRepo.findSystemWallet.mockResolvedValue(systemWallet);
+      walletRepo.adjustSystemShardBalance.mockImplementation(async (_ctx, _p, _c, _s, delta, _n) => ({
+        walletId: systemWallet.id,
+        cachedBalanceMinor: systemWallet.cachedBalanceMinor + delta,
+      }));
       walletRepo.save.mockResolvedValue(undefined);
-      walletRepo.adjustSystemWalletBalance.mockResolvedValue(undefined);
+      
       transactionRepo.save.mockResolvedValue(undefined);
       ledgerEntryRepo.saveMany.mockResolvedValue(undefined);
       movementRepo.save.mockResolvedValue(undefined);
@@ -98,6 +101,7 @@ describe("ImportHistoricalEntryUseCase", () => {
         "Venta producto X",
         "idem-1",
         HISTORICAL_AT,
+        32,
         { migratedFrom: "legacy-system" },
       );
 
@@ -117,11 +121,13 @@ describe("ImportHistoricalEntryUseCase", () => {
       it("Then the system wallet balance is adjusted with negative delta at the historical timestamp", async () => {
         await sut.handle(ctx, cmd);
 
-        expect(walletRepo.adjustSystemWalletBalance).toHaveBeenCalledWith(
+        expect(walletRepo.adjustSystemShardBalance).toHaveBeenCalledWith(
           expect.anything(),
-          "system-wallet-1",
-          -5000n,
-          HISTORICAL_AT,
+          "platform-1",
+          "USD",
+          expect.any(Number),
+                    -5000n,
+                    HISTORICAL_AT,
         );
       });
 
@@ -183,6 +189,7 @@ describe("ImportHistoricalEntryUseCase", () => {
         "reference",
         "idem-nometa",
         HISTORICAL_AT,
+        32,
       );
 
       it("Then the Transaction stores metadata as null", async () => {
@@ -205,6 +212,7 @@ describe("ImportHistoricalEntryUseCase", () => {
         "Retiro bancario #42",
         "idem-2",
         HISTORICAL_AT,
+        32,
       );
 
       it("Then it returns the transactionId and movementId", async () => {
@@ -223,11 +231,13 @@ describe("ImportHistoricalEntryUseCase", () => {
       it("Then the system wallet balance is adjusted with positive delta at the historical timestamp", async () => {
         await sut.handle(ctx, cmd);
 
-        expect(walletRepo.adjustSystemWalletBalance).toHaveBeenCalledWith(
+        expect(walletRepo.adjustSystemShardBalance).toHaveBeenCalledWith(
           expect.anything(),
-          "system-wallet-1",
-          3000n,
-          HISTORICAL_AT,
+          "platform-1",
+          "USD",
+          expect.any(Number),
+                    3000n,
+                    HISTORICAL_AT,
         );
       });
 
@@ -273,6 +283,7 @@ describe("ImportHistoricalEntryUseCase", () => {
         "ref",
         "idem-3",
         HISTORICAL_AT,
+        32,
       );
 
       it("Then succeeds and balance goes negative (no holds to protect)", async () => {
@@ -301,6 +312,7 @@ describe("ImportHistoricalEntryUseCase", () => {
         "ref",
         "idem-hold-break",
         HISTORICAL_AT,
+        32,
       );
 
       it("Then fails with ADJUST_WOULD_BREAK_ACTIVE_HOLDS (void holds first)", async () => {
@@ -326,6 +338,7 @@ describe("ImportHistoricalEntryUseCase", () => {
         "ref",
         "idem-within-available",
         HISTORICAL_AT,
+        32,
       );
 
       it("Then succeeds (adjustment stays within available balance)", async () => {
@@ -347,16 +360,9 @@ describe("ImportHistoricalEntryUseCase", () => {
           .asFrozen()
           .build(),
       );
-      walletRepo.findSystemWallet.mockResolvedValue(
-        new WalletBuilder()
-          .withId("system-wallet-1")
-          .withPlatformId("platform-1")
-          .withCurrency("USD")
-          .asSystem()
-          .build(),
-      );
+      walletRepo.adjustSystemShardBalance.mockResolvedValue({ walletId: "system-wallet-1", cachedBalanceMinor: 0n });
       walletRepo.save.mockResolvedValue(undefined);
-      walletRepo.adjustSystemWalletBalance.mockResolvedValue(undefined);
+      
       transactionRepo.save.mockResolvedValue(undefined);
       ledgerEntryRepo.saveMany.mockResolvedValue(undefined);
       movementRepo.save.mockResolvedValue(undefined);
@@ -371,6 +377,7 @@ describe("ImportHistoricalEntryUseCase", () => {
         "ref",
         "idem-frozen",
         HISTORICAL_AT,
+        32,
       );
 
       it("Then it succeeds (imports allowed on frozen wallets, same as adjust)", async () => {
@@ -396,6 +403,7 @@ describe("ImportHistoricalEntryUseCase", () => {
         "ref",
         "idem-4",
         HISTORICAL_AT,
+        32,
       );
 
       it("Then it throws WALLET_NOT_FOUND", async () => {
@@ -416,7 +424,12 @@ describe("ImportHistoricalEntryUseCase", () => {
           .withCurrency("USD")
           .build(),
       );
-      walletRepo.findSystemWallet.mockResolvedValue(null);
+      walletRepo.adjustSystemShardBalance.mockRejectedValue(
+        AppError.internal(
+          "SYSTEM_WALLET_NOT_FOUND",
+          "system wallet not found for platform platform-1, currency USD",
+        ),
+      );
     });
 
     describe("When importing", () => {
@@ -428,6 +441,7 @@ describe("ImportHistoricalEntryUseCase", () => {
         "ref",
         "idem-5",
         HISTORICAL_AT,
+        32,
       );
 
       it("Then it throws SYSTEM_WALLET_NOT_FOUND", async () => {
@@ -459,6 +473,7 @@ describe("ImportHistoricalEntryUseCase", () => {
         "ref",
         "idem-6",
         HISTORICAL_AT,
+        32,
       );
 
       it("Then it throws WALLET_NOT_FOUND (platform mismatch — no leak)", async () => {

@@ -47,34 +47,35 @@ export class UpdatePlatformConfigUseCase
       }
 
       if (cmd.systemWalletShardCount !== undefined) {
-        // Domain enforces only-increase and bounds. If validation fails, the tx
-        // rolls back before any shards are touched.
         platform.setSystemWalletShardCount(cmd.systemWalletShardCount, now);
       }
 
       await this.platformRepo.save(txCtx, platform);
-
-      // If the shard count changed, eagerly materialise the new shards for
-      // every currency the platform already uses. Idempotent via
-      // ensureSystemWalletShards' ON CONFLICT DO NOTHING.
-      if (cmd.systemWalletShardCount !== undefined) {
-        const currencies = await this.walletRepo.listSystemWalletCurrencies(txCtx, cmd.platformId);
-        for (const currency of currencies) {
-          await this.walletRepo.ensureSystemWalletShards(
-            txCtx,
-            cmd.platformId,
-            currency,
-            cmd.systemWalletShardCount,
-            now,
-          );
-        }
-        this.logger.info(txCtx, `${methodLogTag} shards materialised`, {
-          platform_id: cmd.platformId,
-          shard_count: cmd.systemWalletShardCount,
-          currencies_updated: currencies.length,
-        });
-      }
     });
+
+    // Materialise new shards OUTSIDE the SERIALIZABLE tx — same rationale as
+    // createWallet: concurrent mutations on shard rows inside a SERIALIZABLE tx
+    // create read-write dependencies that abort each other. Idempotent via
+    // INSERT ... ON CONFLICT DO NOTHING; partial failure self-heals on the next
+    // createWallet call for that currency.
+    if (cmd.systemWalletShardCount !== undefined) {
+      const now = Date.now();
+      const currencies = await this.walletRepo.listSystemWalletCurrencies(ctx, cmd.platformId);
+      for (const currency of currencies) {
+        await this.walletRepo.ensureSystemWalletShards(
+          ctx,
+          cmd.platformId,
+          currency,
+          cmd.systemWalletShardCount,
+          now,
+        );
+      }
+      this.logger.info(ctx, `${methodLogTag} shards materialised`, {
+        platform_id: cmd.platformId,
+        shard_count: cmd.systemWalletShardCount,
+        currencies_updated: currencies.length,
+      });
+    }
 
     this.logger.info(ctx, `${methodLogTag} config updated`, {
       platform_id: cmd.platformId,
