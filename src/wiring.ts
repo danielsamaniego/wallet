@@ -33,6 +33,7 @@ import type { IDistributedLock } from "./utils/application/distributed.lock.js";
 import type { IIDGenerator } from "./utils/application/id.generator.js";
 import { LockRunner } from "./utils/application/lock.runner.js";
 import type { ITransactionManager } from "./utils/application/transaction.manager.js";
+import { connectionRetryExtension } from "./utils/infrastructure/connection.retry.extension.js";
 import { CommandBus, QueryBus } from "./utils/infrastructure/cqrs.js";
 import { PinoAdapter } from "./utils/infrastructure/observability/pino.adapter.js";
 import { SafeLogger } from "./utils/infrastructure/observability/safe.logger.js";
@@ -121,12 +122,24 @@ export function wire(config: Config): Dependencies {
   if (_deps) return _deps;
 
   // ── Shared infrastructure ────────────────
-  const adapter = new PrismaPg({ connectionString: config.databaseUrl });
-  const prisma = new PrismaClient({ adapter });
+  // Order matters: logger + idGen + bootCtx must exist BEFORE Prisma so the
+  // connection-retry extension can wire them in and log retry events.
   const idGen = new UUIDV7Generator();
   const rawLogger = new PinoAdapter(config.logLevel);
   const filtered = new SensitiveKeysFilter(rawLogger, sensitiveKeys);
   const logger = new SafeLogger(filtered);
+  // `bootCtx` gives wiring-level logs a real trackingId so startup events,
+  // Redis connection lifecycle events, and Prisma connection retries are
+  // correlatable across the module.
+  const bootCtx = createAppContext(idGen);
+
+  const adapter = new PrismaPg({ connectionString: config.databaseUrl });
+  // Every query goes through the connection-retry extension: transient
+  // EMAXCONN / "too many clients" / ECONNRESET failures retry transparently
+  // with exponential backoff before surfacing to the caller as 500.
+  const prisma = new PrismaClient({ adapter }).$extends(
+    connectionRetryExtension(logger, bootCtx),
+  ) as unknown as PrismaClient;
   const txManager = new PrismaTransactionManager(prisma, logger);
 
   const idempotencyStore = new PrismaIdempotencyStore(prisma, idGen);
@@ -136,10 +149,6 @@ export function wire(config: Config): Dependencies {
   // `distributedLock` is undefined and `lockRunner` falls through transparently
   // — use cases keep working without any serialization. Optimistic locking on
   // Wallet.version remains as a safety net either way.
-  //
-  // `bootCtx` gives wiring-level logs a real trackingId so startup events and
-  // Redis connection lifecycle events are correlatable across the module.
-  const bootCtx = createAppContext(idGen);
   let distributedLock: IDistributedLock | undefined;
   const lockOptions = {
     ttlMs: config.walletLock?.ttlMs ?? 10_000,
