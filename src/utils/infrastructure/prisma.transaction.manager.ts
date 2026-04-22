@@ -3,6 +3,7 @@ import type { ITransactionManager } from "../application/transaction.manager.js"
 import { AppError } from "../kernel/appError.js";
 import type { AppContext } from "../kernel/context.js";
 import type { ILogger } from "../kernel/observability/logger.port.js";
+import { isConnectionError } from "./connection.retry.extension.js";
 
 const mainLogTag = "PrismaTransactionManager";
 
@@ -10,22 +11,50 @@ const mainLogTag = "PrismaTransactionManager";
 const MAX_RETRIES = 5;
 
 /**
- * Base delay in ms for the exponential backoff ceiling between retries.
- * Actual delay uses "full jitter": uniform random in [1, BASE * 2^(n-1)] ms.
+ * Base delay in ms for exponential backoff ceiling on VERSION_CONFLICT /
+ * serialization retries. Full-jitter: uniform random in [1, BASE * 2^(n-1)].
  * Per-attempt ceiling: 30, 60, 120, 240 ms.
  *
- * Jitter desynchronises waves of losing transactions that would otherwise
- * retry at the same clock tick and collide again.
+ * Tight schedule on purpose — these conflicts resolve fast once the losing
+ * transactions desynchronise via jitter.
  */
-const BASE_DELAY_MS = 30;
+const CONFLICT_BASE_DELAY_MS = 30;
+
+/**
+ * Backoff for connection-level errors on the `$transaction` boundary (e.g.
+ * EMAXCONN when Prisma opens a fresh TCP to PgBouncer after discarding a
+ * rolled-back connection). Exponential with cap:
+ *
+ *   Attempt 1 fail → sleep min(200,  cap) + j = ~250ms
+ *   Attempt 2 fail → sleep min(400,  cap) + j = ~450ms
+ *   Attempt 3 fail → sleep min(800,  cap) + j = ~850ms
+ *   Attempt 4 fail → sleep min(1600, cap) + j = ~1650ms
+ *   Attempt 5     → last attempt, throws on failure
+ *
+ * Total wait budget ~3.2s across 5 attempts, well within the 25s
+ * `maxDuration` even combined with ~5s of actual transaction work.
+ *
+ * These delays are longer than the conflict backoff because connection
+ * saturation at PgBouncer takes hundreds of ms (not tens) to drain as
+ * other instances finish their transactions and release TCPs.
+ */
+const CONNECTION_BASE_DELAY_MS = 200;
+const CONNECTION_MAX_DELAY_MS = 2000;
+const CONNECTION_JITTER_MS = 100;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function retryDelayMs(attempt: number): number {
-  const ceiling = BASE_DELAY_MS * 2 ** (attempt - 1);
+function conflictDelayMs(attempt: number): number {
+  const ceiling = CONFLICT_BASE_DELAY_MS * 2 ** (attempt - 1);
   return Math.floor(Math.random() * ceiling) + 1;
+}
+
+function connectionDelayMs(attempt: number): number {
+  const expDelayMs = CONNECTION_BASE_DELAY_MS * 2 ** (attempt - 1);
+  const cappedDelayMs = Math.min(expDelayMs, CONNECTION_MAX_DELAY_MS);
+  return cappedDelayMs + Math.floor(Math.random() * CONNECTION_JITTER_MS);
 }
 
 /**
@@ -83,13 +112,38 @@ export class PrismaTransactionManager implements ITransactionManager {
         this.logger.debug(ctx, `${methodLogTag} commit`);
         return result;
       } catch (err) {
-        if (isRetryable(err) && attempt < MAX_RETRIES) {
-          const delayMs = retryDelayMs(attempt);
-          this.logger.info(ctx, `${methodLogTag} retryable conflict, retrying internally`, {
+        // Two retryable error families at the $transaction boundary:
+        //
+        //  1. Domain / serialization conflict (VERSION_CONFLICT, P2034, ...)
+        //     — covered previously. Backoff is tight (30-240ms) because
+        //     these clear as soon as concurrent txs desynchronise.
+        //  2. Connection-level (EMAXCONN, too many clients, ECONNRESET, ...)
+        //     — NEW. Surfaces when Prisma opens a fresh TCP for this tx
+        //     attempt (e.g. because the previous rollback discarded the
+        //     pooled connection) and PgBouncer is at its client-conn cap.
+        //     `connection.retry.extension.ts` covers model operations but
+        //     CANNOT cover `$transaction` itself, since BEGIN fails before
+        //     any query hook fires. This layer closes that gap.
+        //
+        // Both use the same MAX_RETRIES budget so the worst case stays
+        // bounded even when both error types alternate.
+        const conflictRetryable = isRetryable(err);
+        const connectionRetryable = isConnectionError(err);
+        if ((conflictRetryable || connectionRetryable) && attempt < MAX_RETRIES) {
+          const delayMs = connectionRetryable
+            ? connectionDelayMs(attempt)
+            : conflictDelayMs(attempt);
+          const reason = connectionRetryable
+            ? "connection_error"
+            : AppError.is(err)
+              ? err.code
+              : "serialization_failure";
+          this.logger.info(ctx, `${methodLogTag} retryable error, retrying internally`, {
             attempt,
             max_retries: MAX_RETRIES,
             delay_ms: delayMs,
-            reason: AppError.is(err) ? err.code : "serialization_failure",
+            reason,
+            error: err instanceof Error ? err.message : "unknown",
           });
           await sleep(delayMs);
           continue;
@@ -103,7 +157,7 @@ export class PrismaTransactionManager implements ITransactionManager {
         // If all retries exhausted on a serialization failure, wrap it as
         // a VERSION_CONFLICT so the HTTP layer returns 409 (retryable by
         // client) instead of 500.
-        if (isRetryable(err) && !AppError.is(err)) {
+        if (conflictRetryable && !AppError.is(err)) {
           this.logger.warn(
             ctx,
             `${methodLogTag} retries exhausted, escalating as VERSION_CONFLICT`,

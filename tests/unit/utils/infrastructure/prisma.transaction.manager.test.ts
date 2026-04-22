@@ -271,4 +271,112 @@ describe("PrismaTransactionManager", () => {
       expect(logger.warn).toHaveBeenCalled();
     });
   });
+
+  describe("run — retry on EMAXCONN at the $transaction boundary", () => {
+    it("Given EMAXCONN thrown by $transaction (PgBouncer cap) on first attempt, When run is called, Then retries and succeeds", async () => {
+      const { manager, prisma, logger } = buildManager();
+      let callCount = 0;
+      (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(async (fn: Function) => {
+        callCount++;
+        if (callCount === 1) {
+          throw new Error("(EMAXCONN) max client connections reached, limit: 200");
+        }
+        return fn({});
+      });
+
+      const result = await manager.run(ctx, async () => "ok");
+
+      expect(result).toBe("ok");
+      expect(callCount).toBe(2);
+      // The retry log should include reason: "connection_error" so operators
+      // can tell this apart from serialization retries in the logs.
+      expect(logger.info).toHaveBeenCalledWith(
+        ctx,
+        expect.stringContaining("retryable error"),
+        expect.objectContaining({ reason: "connection_error" }),
+      );
+    });
+  });
+
+  describe("run — retry on ECONNRESET at the $transaction boundary", () => {
+    it("Given ECONNRESET thrown by $transaction (transient socket drop), When run is called, Then retries and succeeds", async () => {
+      const { manager, prisma } = buildManager();
+      let callCount = 0;
+      (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(async (fn: Function) => {
+        callCount++;
+        if (callCount === 1) {
+          throw new Error("ECONNRESET: connection reset by peer");
+        }
+        return fn({});
+      });
+
+      const result = await manager.run(ctx, async () => "ok");
+
+      expect(result).toBe("ok");
+      expect(callCount).toBe(2);
+    });
+  });
+
+  describe("run — mixed retry sequence (conflict, then connection error, then success)", () => {
+    it("Given a VERSION_CONFLICT then EMAXCONN on subsequent attempts, When run is called, Then both retries fire and the third attempt succeeds", async () => {
+      const { manager, prisma } = buildManager();
+      let callCount = 0;
+      (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(async (fn: Function) => {
+        callCount++;
+        if (callCount === 1) {
+          throw AppError.conflict("VERSION_CONFLICT", "stale version");
+        }
+        if (callCount === 2) {
+          throw new Error("(EMAXCONN) max client connections reached, limit: 200");
+        }
+        return fn({});
+      });
+
+      const result = await manager.run(ctx, async () => "ok");
+
+      expect(result).toBe("ok");
+      expect(callCount).toBe(3);
+    });
+  });
+
+  describe("run — non-Error object that is retryable (plain object with P2034 code)", () => {
+    it("Given a plain object { code: 'P2034' } (not an Error instance) on first attempt, When run is called, Then retries and logs 'unknown' as the error message", async () => {
+      // Exercises the `err instanceof Error ? err.message : 'unknown'` branch
+      // in the retry log path. `isRetryable` accepts any object with the
+      // right shape, so thrown non-Errors still reach the retry branch.
+      const { manager, prisma, logger } = buildManager();
+      let callCount = 0;
+      (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(async (fn: Function) => {
+        callCount++;
+        if (callCount === 1) {
+          throw { code: "P2034", name: "SomeError", message: 12345 };
+        }
+        return fn({});
+      });
+
+      const result = await manager.run(ctx, async () => "ok");
+
+      expect(result).toBe("ok");
+      expect(callCount).toBe(2);
+      expect(logger.info).toHaveBeenCalledWith(
+        ctx,
+        expect.stringContaining("retryable error"),
+        expect.objectContaining({ error: "unknown" }),
+      );
+    });
+  });
+
+  describe("run — connection-error retries exhausted", () => {
+    it("Given EMAXCONN on every attempt, When run exhausts retries, Then re-throws the original connection error (not escalated to VERSION_CONFLICT)", async () => {
+      // Rationale: a connection error after MAX_RETRIES is a genuine infra
+      // failure; returning VERSION_CONFLICT would mislead the caller into
+      // thinking it's a data race. The original error surfaces so the
+      // global onError maps it to 500 and observability captures it raw.
+      const { manager, prisma } = buildManager();
+      const connErr = new Error("(EMAXCONN) max client connections reached, limit: 200");
+      (prisma.$transaction as ReturnType<typeof vi.fn>).mockRejectedValue(connErr);
+
+      await expect(manager.run(ctx, async () => "never")).rejects.toBe(connErr);
+    });
+  });
 });
