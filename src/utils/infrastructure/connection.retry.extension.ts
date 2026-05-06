@@ -14,9 +14,11 @@ const DEFAULT_JITTER_MS = 100;
  *
  * The match is substring-based on the error message because the exact
  * surface varies across the stack: `pg` raises libpq-style codes,
- * PgBouncer forwards server-side strings verbatim, and `@prisma/adapter-pg`
- * wraps them with its own prefix. Covered signals:
+ * PgBouncer forwards server-side strings verbatim, `@prisma/adapter-pg`
+ * wraps them with its own prefix, and Prisma Accelerate emits its own
+ * `P2024` / `P5xxx` / `P6xxx` error codes. Covered signals:
  *
+ *   Direct-TCP / pooler family:
  *   - `EMAXCONN` / `max client connections` — Supabase PgBouncer cap reached
  *     (compute size fixes `max_client_conn`; under burst of cold serverless
  *     invocations the pooler rejects new clients until existing ones release)
@@ -25,14 +27,23 @@ const DEFAULT_JITTER_MS = 100;
  *     drops, usually during pool rotation or brief network hiccups
  *   - `ECONNREFUSED` — pooler restarted or briefly unavailable
  *
+ *   Prisma Accelerate family:
+ *   - `P2024` — timed out fetching a connection from Accelerate's pool
+ *     (pool exhaustion under burst; identical role to EMAXCONN upstream)
+ *   - `P5009` / `P6004` — engine/query timeout reaching the database
+ *   - `P5011` — too many requests, Accelerate rate-limited
+ *   - `P6008` — Accelerate engine couldn't connect to the database
+ *
  * Domain errors (VERSION_CONFLICT, unique constraint violations, validation)
  * do NOT match — they belong to higher layers (TransactionManager,
- * use cases) and must not be retried blindly at the infra level.
+ * use cases) and must not be retried blindly at the infra level. Same for
+ * `P6009` (response size exceeded) — that's a query bug, not a transient
+ * failure; retrying would just burn the budget.
  */
 export function isConnectionError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
-  return (
+  if (
     msg.includes("emaxconn") ||
     msg.includes("max client connections") ||
     msg.includes("too many clients") ||
@@ -41,6 +52,29 @@ export function isConnectionError(err: unknown): boolean {
     msg.includes("econnrefused") ||
     msg.includes("econnreset") ||
     msg.includes("etimedout")
+  ) {
+    return true;
+  }
+  // Prisma error codes — match either via the typed `code` field (preferred,
+  // exact) or via substring on the message (fallback for wrapped errors).
+  const code = (err as { code?: unknown }).code;
+  if (typeof code === "string") {
+    if (
+      code === "P2024" ||
+      code === "P5009" ||
+      code === "P5011" ||
+      code === "P6004" ||
+      code === "P6008"
+    ) {
+      return true;
+    }
+  }
+  return (
+    msg.includes("p2024") ||
+    msg.includes("p5009") ||
+    msg.includes("p5011") ||
+    msg.includes("p6004") ||
+    msg.includes("p6008")
   );
 }
 

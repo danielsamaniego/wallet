@@ -76,6 +76,45 @@ describe("isConnectionError", () => {
       });
     });
   });
+
+  describe("Given a Prisma Accelerate error surfaced via the typed `.code` field", () => {
+    describe("When classified", () => {
+      it("Then returns true for every transient code (P2024, P5009, P5011, P6004, P6008)", () => {
+        for (const code of ["P2024", "P5009", "P5011", "P6004", "P6008"]) {
+          const err = Object.assign(new Error("Accelerate transient failure"), { code });
+          expect(isConnectionError(err)).toBe(true);
+        }
+      });
+
+      it("Then returns false for non-transient Prisma codes (e.g. P6009 response-size, P2002 unique)", () => {
+        for (const code of ["P6009", "P2002", "P9999"]) {
+          const err = Object.assign(new Error("non-transient"), { code });
+          expect(isConnectionError(err)).toBe(false);
+        }
+      });
+
+      it("Then ignores `.code` when it is not a string and falls back to message matching", () => {
+        // .code is numeric (libpq sometimes attaches numeric codes) — must
+        // skip the typed-code branch and fall through to substring matching.
+        const err = Object.assign(new Error("nothing transient here"), { code: 123 });
+        expect(isConnectionError(err)).toBe(false);
+      });
+    });
+  });
+
+  describe("Given an Accelerate error surfaced only in the message string (wrapped error)", () => {
+    describe("When classified", () => {
+      it("Then returns true via substring match for every code", () => {
+        expect(isConnectionError(new Error("P2024: Timed out fetching a connection from the pool"))).toBe(
+          true,
+        );
+        expect(isConnectionError(new Error("P5009 query engine timeout"))).toBe(true);
+        expect(isConnectionError(new Error("rate limited (P5011)"))).toBe(true);
+        expect(isConnectionError(new Error("P6004 timeout reaching database"))).toBe(true);
+        expect(isConnectionError(new Error("P6008 cannot connect to database"))).toBe(true);
+      });
+    });
+  });
 });
 
 describe("retryOnConnectionError", () => {
