@@ -36,6 +36,29 @@ describe("PrismaTransactionManager", () => {
       // Then
       expect(result).toBe(42);
     });
+
+    it("Given any transaction, When run is called, Then passes Serializable + maxWait + timeout to $transaction", async () => {
+      // The defaults Prisma uses for maxWait (2s) and timeout (5s) are too
+      // tight for Accelerate under load — the load test surfaced 846
+      // 'Unable to start a transaction' and 105 'transaction expired'
+      // errors. We pass explicit values sized to fit inside Vercel's
+      // maxDuration with headroom for the rest of the request lifecycle.
+      const { manager, prisma } = buildManager();
+      (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(async (fn: Function) =>
+        fn({}),
+      );
+
+      await manager.run(ctx, async () => "ok");
+
+      expect(prisma.$transaction).toHaveBeenCalledWith(
+        expect.any(Function),
+        expect.objectContaining({
+          isolationLevel: "Serializable",
+          maxWait: 5000,
+          timeout: 30000,
+        }),
+      );
+    });
   });
 
   describe("run — retry on VERSION_CONFLICT (domain optimistic lock)", () => {

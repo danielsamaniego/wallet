@@ -1,11 +1,11 @@
 {
   "version": 2,
-  "regions": ["dub1"],
-  "builds": [
-    { "src": "api/index.ts", "use": "@vercel/node", "config": { "maxDuration": 25 } }
-  ],
-  "routes": [
-    { "src": "/(.*)", "dest": "api/index.ts" }
+  "regions": ["iad1"],
+  "functions": {
+    "api/index.ts": { "maxDuration": 55 }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api/index.ts" }
   ],
   "crons": [
     {

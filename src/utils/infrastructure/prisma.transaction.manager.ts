@@ -42,6 +42,28 @@ const CONNECTION_BASE_DELAY_MS = 200;
 const CONNECTION_MAX_DELAY_MS = 2000;
 const CONNECTION_JITTER_MS = 100;
 
+/**
+ * Options passed to `prisma.$transaction()`.
+ *
+ *  - `maxWait` (5s): time Prisma waits to allocate a connection from the
+ *    Accelerate pool before failing with "Unable to start a transaction in
+ *    the given time". The default of 2s is too aggressive when Accelerate
+ *    is under load — the load test saw 846 hits of this error class.
+ *
+ *  - `timeout` (30s): hard cap on how long a single transaction body may
+ *    run before Prisma forces a rollback. The default of 5s caused 105
+ *    "transaction has expired" errors when use cases ran longer than
+ *    expected under serverless cold-start + Accelerate latency.
+ *
+ * Sized to fit inside Vercel `maxDuration: 55s` together with the other
+ * timeouts in the request lifecycle (idempotency.acquire, lockRunner.wait,
+ * lockRunner.body, idempotency.complete) — see vercel.json for the full
+ * timeline. Worst-case sum stays around ~40s, leaving ~15s of buffer for
+ * cold-start, GC pauses, and network jitter.
+ */
+const TX_MAX_WAIT_MS = 5000;
+const TX_TIMEOUT_MS = 30000;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -106,7 +128,11 @@ export class PrismaTransactionManager implements ITransactionManager {
           async (tx) => {
             return fn({ ...ctx, opCtx: tx });
           },
-          { isolationLevel: "Serializable" },
+          {
+            isolationLevel: "Serializable",
+            maxWait: TX_MAX_WAIT_MS,
+            timeout: TX_TIMEOUT_MS,
+          },
         );
 
         this.logger.debug(ctx, `${methodLogTag} commit`);
