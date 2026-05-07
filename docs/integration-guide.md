@@ -38,6 +38,21 @@ as a new request.
 defeats the purpose — the server cannot tell two retries from two
 distinct deposits, and you risk double-charging on transient failures.
 
+**Persist the key before sending the request.** Generating it inside
+the call site means a client crash between "request sent" and "response
+received" loses the key — the operation may have committed on the
+server but you have no way to recover the result without potentially
+double-charging on the next attempt. Persist (DB row, queue, log line)
+the `Idempotency-Key` together with whatever business state you need
+to track the operation, **then** send the request. If the client dies,
+the next process run reads the persisted key and retries with it
+safely.
+
+**Log the Idempotency-Key alongside every business event** in your
+own systems. Support investigations almost always start with "what
+happened to operation X" and the Idempotency-Key is the unique handle
+that lets the wallet team trace the request end-to-end in our logs.
+
 ## Error response shape
 
 All errors return JSON in this shape:
@@ -74,6 +89,52 @@ machine-driven branching. The `message` is for humans.
 retryable **provided you reuse the same `Idempotency-Key`**. Everything
 else (4xx domain or validation errors) is permanent for the given
 request and retrying without changes will produce the same response.
+
+## Handling uncertain failures (the central guarantee)
+
+When you receive a `5xx`, a network error, or your HTTP client times
+out, **you don't know whether the operation committed on the server**.
+The wire was cut after the server received the request but before you
+saw the response. Three cases are possible:
+
+1. The server received the request and committed it; the response was
+   lost in transit.
+2. The server received the request and the handler errored mid-way
+   (transaction rolled back; nothing committed).
+3. The server never received the request.
+
+You cannot distinguish these from the client side. **You also do not
+need to.** The contract of the API is:
+
+> Retrying the same request with the same `Idempotency-Key` is **always
+> safe**. If the operation committed on a previous attempt, the server
+> will replay the cached response. If it did not commit, the retry will
+> execute it. Either way, the operation runs **exactly once**.
+
+This is why generating a fresh key per attempt is dangerous — it forces
+the server to treat the retry as a new operation and you risk
+double-execution. Generate the key **once per logical operation**, persist
+it before sending, and reuse it across every retry.
+
+## Client timeout configuration
+
+The server caps each request at **`maxDuration: 55s`** (Vercel
+serverless). Set your HTTP client timeout to **at least 60 s** —
+ideally 65–90 s — so you never abandon a request that the server is
+still processing. Aborting the client connection at 30 s does not
+cancel the server-side work; the request continues to completion and
+the next retry (with the same `Idempotency-Key`) will replay the
+result.
+
+| Layer | Recommended timeout |
+|---|---|
+| HTTP client per-request | **60–90 s** (≥ server `maxDuration`) |
+| Per-attempt application logic | 60–90 s |
+| Total budget across retries | tune to your SLO; 5 attempts ≈ 6 s of backoff + 5 × per-request |
+
+If you must cap clients tighter than 60 s for SLO reasons, accept
+that tail-latency requests will look like timeouts to your client; the
+retry-with-same-key logic still recovers correctness.
 
 ## Recommended retry strategy
 
@@ -125,6 +186,42 @@ async function callWalletApi(
 - **Total budget:** keep it under your client's request timeout; the
   server caps each request at ~55 s
 
+## Sustained overload — what to do after retries are exhausted
+
+The 5-attempt loop above handles transient contention (a few hundred
+milliseconds to a couple of seconds). It does **not** help when the
+service is degraded for minutes — Accelerate is rate-limited, the DB
+is saturated, the lambda is queue-throttled, etc. After exhausting
+retries you have these options, in order of preference:
+
+1. **Persist the operation as "pending" with its `Idempotency-Key`**
+   and surface it to a background worker that retries asynchronously
+   with longer backoffs (minutes). The key guarantees that even if the
+   original attempt eventually committed, the worker's retry replays
+   the cached response instead of double-executing.
+2. **Trip a circuit breaker** at your client side once the failure rate
+   over a recent window crosses a threshold. While the breaker is
+   open, fail fast at your edge instead of forwarding traffic that has
+   no chance of succeeding — this protects the wallet service from
+   thundering-herd retries that prolong the outage.
+3. **Page on-call** when pending operations exceed an SLO threshold.
+   Per-operation retries cannot fix a sustained outage; humans need to
+   know.
+
+**Don't:** raise per-attempt timeouts or attempt counts to "wait it
+out". You compound the load problem and tie up your own resources.
+Fail fast, persist, retry asynchronously.
+
+### Distinguishing transient blip from sustained outage
+
+| Signal | Likely cause | Action |
+|---|---|---|
+| Single 5xx, then 200 on retry 1-2 | Cold start / blip | Default loop handles it |
+| `429 RATE_LIMIT_EXCEEDED` with `Retry-After` | Wallet service rate limit | Honour `Retry-After` |
+| Repeated `409 LOCK_CONTENDED` on the **same wallet** | Wallet is hot — a long-running operation has it | Continue retrying; per-wallet contention resolves |
+| Repeated 5xx across **different wallets** for >30 s | Service degradation | Trip circuit breaker, queue async |
+| `503` on `/health` | Database unreachable | Stop retrying, alert; exponential client-side backoff |
+
 ## Concurrency model — what to expect under load
 
 Each wallet is serialized by a per-wallet distributed lock. Concurrent
@@ -135,6 +232,26 @@ clients indefinitely. Reusing the same `Idempotency-Key` on the retry
 guarantees no double-spend even when the server is busy.
 
 Operations on **different** wallets do not block each other.
+
+## Holds and expiration
+
+Holds (authorization-style reservations) carry an `expires_at`
+timestamp. The server runs an expiry job every minute that voids
+expired holds and releases the reserved balance. Practical
+implications for clients:
+
+- **A capture against an expired hold returns `409 HOLD_EXPIRED`.**
+  This is **not** retryable — the hold is gone. The client must place
+  a fresh hold (with a new `Idempotency-Key`) if it still needs the
+  authorization.
+- **Set `expires_at` long enough** to absorb the full
+  authorize→capture window plus client retries. Holds shorter than 60
+  seconds are risky because a single round of server-side timeouts
+  plus client retries can consume that budget.
+- **Voiding an already-expired hold** is a no-op (returns success).
+  Safe to call even if you're not sure of the current state.
+- **Capturing an already-captured hold** returns `409
+  HOLD_ALREADY_CAPTURED` — domain rule, not retryable.
 
 ## Health and status
 
