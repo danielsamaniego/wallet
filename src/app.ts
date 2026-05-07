@@ -112,6 +112,27 @@ export function createApp(deps: Dependencies) {
     return c.json({ status, version: "1.0.1", db }, httpCode);
   });
 
+  // ─── TEMPORARY DEBUG ENDPOINT — DELETE AFTER VERIFYING ACCELERATE URL ───
+  // Reports the Postgres session-level timeouts as seen from a query that
+  // runs through Accelerate. If we set ?options=-c statement_timeout=20s on
+  // the Accelerate datasource URL and Accelerate respects it, this endpoint
+  // returns "20s"; if Accelerate ignores it, returns Postgres' default ("0").
+  // TODO: remove once verified.
+  app.get("/internal/debug/db-timeouts", async (c) => {
+    type Row = {
+      statement_timeout: string;
+      idle_in_transaction_session_timeout: string;
+    };
+    const rows = await deps.prisma.$queryRaw<Row[]>`
+      SELECT current_setting('statement_timeout') AS statement_timeout,
+             current_setting('idle_in_transaction_session_timeout') AS idle_in_transaction_session_timeout
+    `;
+    return c.json({
+      timeouts: rows[0] ?? null,
+      note: "Values reflect the active Postgres session settings observed from the wallet runtime (queries route through Accelerate). '0' = unlimited; otherwise (e.g. '20s') Postgres aborts queries past that limit.",
+    });
+  });
+
   // Route groups
   const v1 = app.basePath("/v1");
   v1.route("/wallets", walletRoutes(deps));
