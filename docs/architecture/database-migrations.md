@@ -164,6 +164,39 @@ pnpm start
 - For large tables, consider `CREATE INDEX CONCURRENTLY` (requires custom SQL migration; cannot run inside Prisma transaction).
 - Schedule heavy migrations outside peak hours.
 
+### 4b) Production timeout regime — and why migrations bypass it
+
+Production sets two server-side timeouts on the runtime role to bound how long
+a query can keep running on Postgres after a serverless lambda dies (the last-
+line defence against ghost executions):
+
+```sql
+ALTER ROLE postgres SET statement_timeout = '20s';
+ALTER ROLE postgres SET idle_in_transaction_session_timeout = '5s';
+```
+
+These caps protect the wallet API and cron jobs but would be **fatal for
+migrations** — a `CREATE INDEX` on a multi-million-row table, a backfill, or
+any DDL that legitimately exceeds 20 s would abort midway. Migration sessions
+must therefore disable both caps for their connection.
+
+**Two paths, both already wired:**
+
+- **`prisma migrate deploy`** uses `prisma/prisma.config.ts`, whose `migrate.url()`
+  appends `?options=-c statement_timeout=0 -c idle_in_transaction_session_timeout=0`
+  to the connection string. Libpq passes these flags to the server scoped to the
+  session. No further action needed for Prisma migrations.
+- **`psql $DATABASE_URL -f prisma/immutable_ledger.sql`** (constraints + triggers)
+  starts with `SET statement_timeout = 0;` and `SET idle_in_transaction_session_timeout = 0;`
+  at the top of the file, applying to the current psql session only.
+
+**For ad-hoc SQL** run by an operator outside these two paths (e.g. emergency
+fix via Supabase SQL editor or `psql`):
+- For a single statement: prefix with `SET statement_timeout = 0;` in the same
+  session.
+- For a transaction: use `SET LOCAL statement_timeout = 0;` inside `BEGIN/COMMIT`
+  to scope the override to the transaction.
+
 ### 5) Dirty state
 
 If a migration fails, Prisma marks the database as dirty. Do not apply further migrations until the issue is fixed. Fix the migration or create a forward-fix before proceeding.
