@@ -92,16 +92,64 @@ describe("createApp", () => {
       );
     });
 
-    it("Given a Prisma-shaped error with .code, When thrown, Then logs include code so operators can bucket P-codes", async () => {
-      // Prisma errors carry `.code` (e.g. P2024 = pool timeout). The previous
-      // logger shape stripped this and made the load-test post-mortem buckets
-      // for `error.code` and `error.name` come back empty.
+    it("Given a transient infra error (EMAXCONN), When thrown, Then returns 503 SERVICE_UNAVAILABLE with Retry-After", async () => {
+      // EMAXCONN is the canonical "pool exhausted" error from pgBouncer/Supabase;
+      // it's transient and idempotent retries succeed once load drops. The
+      // client-facing signal must be 503 (not 500) so HTTP-conventional clients
+      // auto-retry without needing our integration-guide.md.
+      const deps = buildDeps();
+      const app = createApp(deps);
+      app.get("/test-emaxconn", () => {
+        throw new Error("(EMAXCONN) max client connections reached, limit: 200");
+      });
+
+      const res = await app.request("/test-emaxconn");
+
+      expect(res.status).toBe(503);
+      expect(res.headers.get("Retry-After")).toBe("1");
+      const body = await res.json();
+      expect(body).toEqual({
+        error: "SERVICE_UNAVAILABLE",
+        message: "service temporarily unavailable; retry with the same Idempotency-Key",
+      });
+      expect(deps.logger.error).toHaveBeenCalledWith(
+        expect.anything(),
+        "Service unavailable — transient infra error",
+        expect.objectContaining({ error: expect.stringContaining("EMAXCONN") }),
+      );
+    });
+
+    it("Given a Prisma P2024 (pool timeout), When thrown, Then returns 503 SERVICE_UNAVAILABLE", async () => {
+      // P2024 is Prisma Accelerate's "couldn't fetch a connection from the pool
+      // in time" — the same family as EMAXCONN at the engine level. Both should
+      // map to 503.
+      const deps = buildDeps();
+      const app = createApp(deps);
+      app.get("/test-p2024", () => {
+        const err = new Error("Timed out fetching a new connection from the connection pool") as Error & { code: string };
+        err.code = "P2024";
+        throw err;
+      });
+
+      const res = await app.request("/test-p2024");
+
+      expect(res.status).toBe(503);
+      expect(res.headers.get("Retry-After")).toBe("1");
+      const body = await res.json();
+      expect(body.error).toBe("SERVICE_UNAVAILABLE");
+    });
+
+    it("Given a Prisma-shaped error with non-transient .code, When thrown, Then logs include code as INTERNAL_ERROR 500", async () => {
+      // Prisma errors carry `.code`. Non-transient codes (e.g. P2002 = unique
+      // constraint violation) should NOT be downgraded to 503 — those are
+      // bugs, not infra saturation. Test uses P9999 (synthetic, definitely
+      // not in isConnectionError's retryable list).
       const deps = buildDeps();
       const app = createApp(deps);
       app.get("/test-prisma-code", () => {
-        const err = new Error("connection pool timeout") as Error & { code: string };
+        const err = new Error("some non-transient prisma failure") as Error & { code: string };
         err.name = "PrismaClientKnownRequestError";
-        err.code = "P2024";
+        err.code = "P9999";
         throw err;
       });
 
@@ -112,7 +160,7 @@ describe("createApp", () => {
         "Unhandled exception",
         expect.objectContaining({
           name: "PrismaClientKnownRequestError",
-          code: "P2024",
+          code: "P9999",
         }),
       );
     });

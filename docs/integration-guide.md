@@ -81,14 +81,22 @@ machine-driven branching. The `message` is for humans.
 | `422` | `IDEMPOTENCY_PAYLOAD_MISMATCH` | ❌ No | Same key was used with a different body. Generate a new key |
 | `422` | `INSUFFICIENT_FUNDS` / `INVALID_AMOUNT` / `CURRENCY_MISMATCH` | ❌ No | Domain rule violation |
 | `429` | `RATE_LIMIT_EXCEEDED` | ✅ Yes | Honour `Retry-After` if present, otherwise back off |
-| `500` | `INTERNAL_ERROR` | ✅ **Yes — same key** | Unexpected server failure. The original request may or may not have committed; the same key guarantees no double-execution on retry |
-| `502/503/504` | (no body) | ✅ **Yes — same key** | Transient infra error (gateway, lambda timeout, DB blip) |
+| `500` | `INTERNAL_ERROR` | ✅ **Yes — same key** | Unexpected server bug. Rare. The original request may or may not have committed; the same key guarantees no double-execution on retry |
+| **`503`** | **`SERVICE_UNAVAILABLE`** | ✅ **Yes — same key** | **Transient infra saturation (DB pool exhausted, Accelerate engine error, network blip). Server signals this explicitly. Honour `Retry-After` header (seconds).** |
+| `502/504` | (no body) | ✅ **Yes — same key** | Transient gateway / lambda timeout |
 
 **Rule of thumb:** anything that returns 409 with `LOCK_CONTENDED` /
 `VERSION_CONFLICT` / `IDEMPOTENCY_KEY_IN_PROGRESS`, plus all 5xx, is
 retryable **provided you reuse the same `Idempotency-Key`**. Everything
 else (4xx domain or validation errors) is permanent for the given
 request and retrying without changes will produce the same response.
+
+**503 vs 500:** when the server can identify the failure as transient
+infrastructure (pool exhausted, query timeout, etc.) it returns **503
+SERVICE_UNAVAILABLE with a `Retry-After` header**. 500 INTERNAL_ERROR is
+reserved for genuinely unexpected bugs. Both are retryable, but 503 is
+the explicit "this WILL succeed when retried in a moment" signal —
+honour the `Retry-After` (in seconds) when present.
 
 ## Handling uncertain failures (the central guarantee)
 
@@ -170,8 +178,13 @@ async function callWalletApi(
     }
 
     if (attempt === maxAttempts) return res;
-    const delayMs = baseDelayMs * 2 ** (attempt - 1)
-                  + Math.floor(Math.random() * 100);    // exponential + jitter
+
+    // Honour Retry-After when the server suggests one (typical on 503).
+    const retryAfter = Number(res.headers.get("Retry-After"));
+    const baseDelay = Number.isFinite(retryAfter) && retryAfter > 0
+      ? retryAfter * 1000
+      : baseDelayMs * 2 ** (attempt - 1);
+    const delayMs = baseDelay + Math.floor(Math.random() * 100);    // + jitter
     await new Promise((r) => setTimeout(r, delayMs));
   }
 

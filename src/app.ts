@@ -6,6 +6,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { openAPIRouteHandler } from "hono-openapi";
 import { CleanupIdempotencyCommand } from "./common/idempotency/application/command/cleanupIdempotency/command.js";
 import { platformRoutes } from "./platform/infrastructure/adapters/inbound/http/platforms.routes.js";
+import { isConnectionError } from "./utils/infrastructure/connection.retry.extension.js";
 import type { HonoVariables } from "./utils/infrastructure/hono.context.js";
 import { buildAppContext } from "./utils/infrastructure/hono.context.js";
 import { errorResponse, httpStatus } from "./utils/infrastructure/hono.error.js";
@@ -46,12 +47,19 @@ export function createApp(deps: Dependencies) {
 
   // Global error handler — maps AppError to HTTP status, catches unhandled exceptions.
   //
+  // Three branches:
+  //  1. AppError: maps Kind → status with httpStatus().
+  //  2. Transient infra error that escaped the retry layer
+  //     (EMAXCONN, ECONNRESET, P2024 pool timeout, P6000 Accelerate engine
+  //     error, …): SERVICE_UNAVAILABLE 503 + Retry-After. The standard
+  //     "this is transient, retry" signal — clients that follow HTTP
+  //     conventions auto-retry 503; clients that follow integration-guide.md
+  //     retry the same way they would for 500. Either client wins.
+  //  3. Anything else: INTERNAL_ERROR 500. Treated as a server bug.
+  //
   // Logs include `code`, `name`, and a truncated `stack` so operators can
   // bucket errors by Prisma code (P2024, P5009, etc.) and pinpoint the
-  // origin without needing the full transcript. The previous shape only
-  // emitted `error: <message>` and made it impossible to group errors
-  // mechanically — see the load-test post-mortem where `error.code` and
-  // `error.name` aggregations came back empty.
+  // origin without needing the full transcript.
   app.onError((err, c) => {
     const ctx = buildAppContext(c);
 
@@ -67,6 +75,22 @@ export function createApp(deps: Dependencies) {
         deps.logger.warn(ctx, err.code);
       }
       return errorResponse(c, err.code, err.msg, status);
+    }
+
+    if (isConnectionError(err)) {
+      deps.logger.error(ctx, "Service unavailable — transient infra error", {
+        error: err.message,
+        ...errorDetails(err),
+      });
+      // Retry-After is in seconds; 1s is conservative — the client backs off
+      // exponentially from there if subsequent attempts also return 503.
+      c.header("Retry-After", "1");
+      return errorResponse(
+        c,
+        "SERVICE_UNAVAILABLE",
+        "service temporarily unavailable; retry with the same Idempotency-Key",
+        503,
+      );
     }
 
     deps.logger.error(ctx, "Unhandled exception", {
