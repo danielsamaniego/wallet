@@ -232,6 +232,73 @@ describe("createApp", () => {
 
   // ── root redirect ───────────────────────────────────────────────────
 
+  // ─── TEMPORARY: tests for /internal/debug/config (delete with the route) ───
+
+  describe("GET /internal/debug/config (temporary)", () => {
+    it("Given a deploy with lock enabled, When called, Then returns timings + region + accelerate flag without secrets", async () => {
+      const deps = buildDeps({
+        config: {
+          databaseUrl: "prisma://accelerate.prisma-data.net/?api_key=secret-token",
+          directUrl: "postgresql://user:pwd@host/db",
+          httpPort: 3000,
+          logLevel: "info",
+          cronSecret: "",
+          walletLock: {
+            redisUrl: "rediss://default:secret@host:6379",
+            transport: "rest",
+            ttlMs: 90000,
+            waitMs: 5000,
+            retryMs: 100,
+          },
+        },
+      });
+      const app = createApp(deps);
+
+      const res = await app.request("/internal/debug/config");
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.lock).toEqual({
+        enabled: true,
+        transport: "rest",
+        ttl_ms: 90000,
+        wait_ms: 5000,
+        retry_ms: 100,
+      });
+      expect(body.db.accelerate_active).toBe(true);
+      // Secrets must not leak — only short prefixes + length
+      expect(body.db.database_url_prefix).not.toContain("secret-token");
+      expect(body.redis.url_prefix).not.toContain("secret");
+    });
+
+    it("Given lock disabled, When called, Then reports disabled with null timings", async () => {
+      const deps = buildDeps();
+      const app = createApp(deps);
+
+      const res = await app.request("/internal/debug/config");
+
+      const body = await res.json();
+      expect(body.lock.enabled).toBe(false);
+      expect(body.lock.ttl_ms).toBeNull();
+    });
+
+    it("Given config with non-prisma scheme, When called, Then accelerate_active is false", async () => {
+      const deps = buildDeps({
+        config: {
+          databaseUrl: "postgresql://user:pwd@host/db",
+          directUrl: "postgresql://user:pwd@host/db",
+          httpPort: 3000,
+          logLevel: "info",
+          cronSecret: "",
+        },
+      });
+      const app = createApp(deps);
+      const res = await app.request("/internal/debug/config");
+      const body = await res.json();
+      expect(body.db.accelerate_active).toBe(false);
+    });
+  });
+
   describe("root redirect", () => {
     it("Given a request to /, When called, Then redirects to /docs", async () => {
       const deps = buildDeps();
