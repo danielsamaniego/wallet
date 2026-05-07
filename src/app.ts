@@ -138,6 +138,34 @@ export function createApp(deps: Dependencies) {
 
   // Route groups
   const v1 = app.basePath("/v1");
+
+  // Serverless-only: close Prisma connections at the end of every wallet
+  // request. Long-lived servers benefit from a warm connection pool, but
+  // Vercel Lambdas stay "warm" for minutes after a request — and each warm
+  // Lambda's idle Prisma connections still occupy slots in the pgBouncer
+  // client cap (max_client_conn=200 on Supabase Micro). Under bursts that
+  // create dozens of Lambdas, idle warm Lambdas saturate the pool for
+  // minutes after the burst is over, breaking unrelated requests like
+  // /health.
+  //
+  // Disconnecting per request adds ~10-30ms latency at the pgBouncer
+  // handshake, but pgBouncer keeps its server-side pool to Postgres
+  // persistent — so the real DB connection is hot, only the client→pgBouncer
+  // hop is paid each time. Net effect: predictable behaviour under bursts
+  // at a small steady-state latency cost.
+  //
+  // Detected via `process.env.VERCEL` (set to "1" by Vercel runtime). Local
+  // dev and tests run as long-lived Node processes and skip this.
+  if (process.env.VERCEL) {
+    v1.use("*", async (_c, next) => {
+      try {
+        await next();
+      } finally {
+        await deps.prisma.$disconnect().catch(() => {});
+      }
+    });
+  }
+
   v1.route("/wallets", walletRoutes(deps));
   v1.route("/transfers", transferRoutes(deps));
   v1.route("/holds", holdRoutes(deps));
