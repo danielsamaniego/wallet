@@ -261,9 +261,12 @@ Start the server and visit **http://localhost:3000/docs** for the interactive Sc
 
 Documentation is auto-generated from Zod schemas and `describeRoute()` metadata in each handler — no manual API docs to maintain.
 
+**For platforms integrating against the API, see [docs/integration-guide.md](docs/integration-guide.md)** — covers idempotency contract, error codes, and retry strategy (in particular: which 409s should be retried with the same `Idempotency-Key` to recover from contention without double-charging).
+
 ## Documentation
 
 - `docs/projectbrief.md` — Project summary
+- `docs/integration-guide.md` — **Guide for API consumers**: idempotency, error codes, retry strategy
 - `docs/domain.md` — Domain model and business rules
 - `docs/datamodel.md` — Data model and entities
 - `docs/architecture/` — Architecture, patterns, tech context, migrations
