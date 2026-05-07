@@ -232,42 +232,6 @@ describe("createApp", () => {
 
   // ── root redirect ───────────────────────────────────────────────────
 
-  // ─── TEMPORARY: tests for /internal/debug/db-timeouts (delete with the route) ───
-
-  describe("GET /internal/debug/db-timeouts (temporary)", () => {
-    it("Given a Postgres session with caps applied, When called, Then returns the values verbatim", async () => {
-      const deps = buildDeps({
-        prisma: {
-          $queryRaw: vi.fn().mockResolvedValue([
-            { statement_timeout: "20s", idle_in_transaction_session_timeout: "5s" },
-          ]),
-        } as any,
-      });
-      const app = createApp(deps);
-
-      const res = await app.request("/internal/debug/db-timeouts");
-
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.timeouts).toEqual({
-        statement_timeout: "20s",
-        idle_in_transaction_session_timeout: "5s",
-      });
-    });
-
-    it("Given an empty result row (defensive), When called, Then timeouts is null", async () => {
-      const deps = buildDeps({
-        prisma: { $queryRaw: vi.fn().mockResolvedValue([]) } as any,
-      });
-      const app = createApp(deps);
-
-      const res = await app.request("/internal/debug/db-timeouts");
-
-      const body = await res.json();
-      expect(body.timeouts).toBeNull();
-    });
-  });
-
   describe("root redirect", () => {
     it("Given a request to /, When called, Then redirects to /docs", async () => {
       const deps = buildDeps();
