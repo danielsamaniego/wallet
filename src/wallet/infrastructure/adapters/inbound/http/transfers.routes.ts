@@ -8,7 +8,7 @@ import { transferRoute } from "./transfer/handler.js";
 export function transferRoutes(deps: Dependencies) {
   const router = new Hono<{ Variables: HonoVariables }>();
   const auth = apiKeyAuth(deps.prisma);
-  const idemp = idempotency(deps.idempotencyStore);
+  const idemp = idempotency(deps.idempotencyStore, deps.logger);
 
   router.post("/", auth, idemp, ...transferRoute(deps.commandBus));
 

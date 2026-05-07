@@ -4,6 +4,7 @@ import { idempotency } from "@/utils/infrastructure/middleware/idempotency.js";
 import type { IIdempotencyStore, IdempotencyRecord } from "@/common/idempotency/application/ports/idempotency.store.js";
 import type { HonoVariables } from "@/utils/infrastructure/hono.context.js";
 import { CanonicalAccumulator } from "@/utils/kernel/observability/canonical.js";
+import { createMockLogger } from "@test/helpers/mocks/index.js";
 
 function createMockStore(): IIdempotencyStore {
   return {
@@ -18,7 +19,12 @@ function createMockStore(): IIdempotencyStore {
  * Builds a Hono test app with tracking context middleware (simulating trackingCanonical),
  * platformId set, and the idempotency middleware installed on POST /test.
  */
-function buildApp(store: IIdempotencyStore, handlerStatus = 201, handlerBody = { id: "txn-1" }) {
+function buildApp(
+  store: IIdempotencyStore,
+  logger: ReturnType<typeof createMockLogger>,
+  handlerStatus = 201,
+  handlerBody = { id: "txn-1" },
+) {
   const app = new Hono<{ Variables: HonoVariables }>();
 
   // Simulate tracking middleware that sets required context variables
@@ -30,7 +36,7 @@ function buildApp(store: IIdempotencyStore, handlerStatus = 201, handlerBody = {
     await next();
   });
 
-  app.use("/test", idempotency(store));
+  app.use("/test", idempotency(store, logger));
 
   app.post("/test", (c) => c.json(handlerBody, handlerStatus as any));
   app.get("/test", (c) => c.json({ ok: true }));
@@ -40,9 +46,11 @@ function buildApp(store: IIdempotencyStore, handlerStatus = 201, handlerBody = {
 
 describe("idempotency middleware", () => {
   let store: IIdempotencyStore;
+  let logger: ReturnType<typeof createMockLogger>;
 
   beforeEach(() => {
     store = createMockStore();
+    logger = createMockLogger();
   });
 
   // ── GET/HEAD passthrough ──────────────────────────────────────────
@@ -50,7 +58,7 @@ describe("idempotency middleware", () => {
   describe("GET/HEAD passthrough", () => {
     it("Given a GET request, When middleware runs, Then passes through without checking idempotency", async () => {
       // Given
-      const app = buildApp(store);
+      const app = buildApp(store, logger);
 
       // When
       const res = await app.request("/test", { method: "GET" });
@@ -66,7 +74,7 @@ describe("idempotency middleware", () => {
   describe("Missing Idempotency-Key header", () => {
     it("Given a POST without Idempotency-Key header, When middleware runs, Then returns 400", async () => {
       // Given
-      const app = buildApp(store);
+      const app = buildApp(store, logger);
 
       // When
       const res = await app.request("/test", {
@@ -95,7 +103,7 @@ describe("idempotency middleware", () => {
         // platformId NOT set
         await next();
       });
-      app.use("/test", idempotency(store));
+      app.use("/test", idempotency(store, logger));
       app.post("/test", (c) => c.json({ ok: true }, 201));
 
       // When
@@ -122,7 +130,7 @@ describe("idempotency middleware", () => {
       // Given
       (store.acquire as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
-      const app = buildApp(store);
+      const app = buildApp(store, logger);
 
       // When
       const res = await app.request("/test", {
@@ -139,8 +147,6 @@ describe("idempotency middleware", () => {
       const body = await res.json();
       expect(body).toEqual({ id: "txn-1" });
       expect(store.acquire).toHaveBeenCalledOnce();
-      // complete is called asynchronously (fire-and-forget), wait for microtask
-      await new Promise((r) => setTimeout(r, 10));
       expect(store.complete).toHaveBeenCalledOnce();
     });
   });
@@ -168,7 +174,7 @@ describe("idempotency middleware", () => {
 
       (store.acquire as ReturnType<typeof vi.fn>).mockResolvedValue(existing);
 
-      const app = buildApp(store);
+      const app = buildApp(store, logger);
 
       // When
       const res = await app.request("/test", {
@@ -204,7 +210,7 @@ describe("idempotency middleware", () => {
       };
       (store.acquire as ReturnType<typeof vi.fn>).mockResolvedValue(existing);
 
-      const app = buildApp(store);
+      const app = buildApp(store, logger);
 
       // When
       const res = await app.request("/test", {
@@ -239,7 +245,7 @@ describe("idempotency middleware", () => {
       };
       (store.acquire as ReturnType<typeof vi.fn>).mockResolvedValue(existing);
 
-      const app = buildApp(store);
+      const app = buildApp(store, logger);
 
       // When
       const res = await app.request("/test", {
@@ -272,7 +278,7 @@ describe("idempotency middleware", () => {
         c.set("platformId", "platform-1");
         await next();
       });
-      app.use("/test", idempotency(store));
+      app.use("/test", idempotency(store, logger));
       app.post("/test", (c) => c.json({ error: "boom" }, 500));
 
       // When
@@ -287,7 +293,6 @@ describe("idempotency middleware", () => {
 
       // Then
       expect(res.status).toBe(500);
-      await new Promise((r) => setTimeout(r, 10));
       expect(store.release).toHaveBeenCalledOnce();
       expect(store.complete).not.toHaveBeenCalled();
     });
@@ -307,7 +312,7 @@ describe("idempotency middleware", () => {
         c.set("platformId", "platform-1");
         await next();
       });
-      app.use("/test", idempotency(store));
+      app.use("/test", idempotency(store, logger));
       app.post("/test", (c) => c.json({ error: "conflict" }, 409));
 
       // When
@@ -322,7 +327,6 @@ describe("idempotency middleware", () => {
 
       // Then
       expect(res.status).toBe(409);
-      await new Promise((r) => setTimeout(r, 10));
       expect(store.release).toHaveBeenCalledOnce();
       expect(store.complete).not.toHaveBeenCalled();
     });
@@ -342,7 +346,7 @@ describe("idempotency middleware", () => {
         c.set("platformId", "platform-1");
         await next();
       });
-      app.use("/test", idempotency(store));
+      app.use("/test", idempotency(store, logger));
       app.post("/test", (c) => c.json({ error: "validation" }, 400));
 
       // When
@@ -357,17 +361,16 @@ describe("idempotency middleware", () => {
 
       // Then
       expect(res.status).toBe(400);
-      await new Promise((r) => setTimeout(r, 10));
       // 4xx (except 409) is deterministic -> should be cached
       expect(store.complete).toHaveBeenCalledOnce();
       expect(store.release).not.toHaveBeenCalled();
     });
   });
 
-  // ── release error is swallowed ──────────────────────────────────
+  // ── release error is swallowed but logged ─────────────────────────
 
   describe("release error handling", () => {
-    it("Given store.release rejects, When a 5xx response triggers release, Then the error is swallowed", async () => {
+    it("Given store.release rejects, When a 5xx response triggers release, Then the error is swallowed and logged as warn", async () => {
       // Given
       (store.acquire as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       (store.release as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("release failed"));
@@ -379,7 +382,7 @@ describe("idempotency middleware", () => {
         c.set("platformId", "platform-1");
         await next();
       });
-      app.use("/test", idempotency(store));
+      app.use("/test", idempotency(store, logger));
       app.post("/test", (c) => c.json({ error: "boom" }, 500));
 
       // When
@@ -392,21 +395,27 @@ describe("idempotency middleware", () => {
         body: JSON.stringify({}),
       });
 
-      // Then - should not throw
+      // Then - should not throw, and the failure must be logged so the
+      // operator can detect stale pending records before retries surface
+      // 409 IDEMPOTENCY_KEY_IN_PROGRESS to the client.
       expect(res.status).toBe(500);
-      await new Promise((r) => setTimeout(r, 10));
       expect(store.release).toHaveBeenCalledOnce();
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.stringContaining("release failed"),
+        expect.objectContaining({ status: 500, error: "release failed" }),
+      );
     });
   });
 
-  // ── complete error is swallowed ─────────────────────────────────
+  // ── complete error is swallowed but logged ────────────────────────
 
   describe("complete error handling", () => {
-    it("Given store.complete rejects, When a 2xx response triggers complete, Then the error is swallowed", async () => {
+    it("Given store.complete rejects, When a 2xx response triggers complete, Then the error is swallowed and logged as warn", async () => {
       // Given
       (store.acquire as ReturnType<typeof vi.fn>).mockResolvedValue(null);
       (store.complete as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("complete failed"));
-      const app = buildApp(store);
+      const app = buildApp(store, logger);
 
       // When
       const res = await app.request("/test", {
@@ -418,10 +427,73 @@ describe("idempotency middleware", () => {
         body: JSON.stringify({ amount: 100 }),
       });
 
-      // Then - should not throw
+      // Then - should not throw, and the failure must be logged so the
+      // operator can detect that the response was sent but not cached.
       expect(res.status).toBe(201);
-      await new Promise((r) => setTimeout(r, 10));
       expect(store.complete).toHaveBeenCalledOnce();
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.stringContaining("complete failed"),
+        expect.objectContaining({ status: 201, error: "complete failed" }),
+      );
+    });
+
+    it("Given store.complete rejects with a non-Error value, When middleware logs, Then falls back to error=unknown and name=undefined", async () => {
+      // Given — non-Error rejections (string, plain object, etc.) must
+      // still log without crashing. Covers the `instanceof Error` else branch.
+      (store.acquire as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (store.complete as ReturnType<typeof vi.fn>).mockRejectedValue("not-an-error");
+      const app = buildApp(store, logger);
+
+      // When
+      const res = await app.request("/test", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "key-1" },
+        body: JSON.stringify({ amount: 100 }),
+      });
+
+      // Then
+      expect(res.status).toBe(201);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.stringContaining("complete failed"),
+        expect.objectContaining({ status: 201, error: "unknown", name: undefined }),
+      );
+    });
+  });
+
+  // ── release error with non-Error value covers else branch ─────────
+
+  describe("release error with non-Error value", () => {
+    it("Given store.release rejects with a non-Error value, When middleware logs, Then falls back to error=unknown and name=undefined", async () => {
+      // Given
+      (store.acquire as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (store.release as ReturnType<typeof vi.fn>).mockRejectedValue("not-an-error");
+      const app = new Hono<{ Variables: HonoVariables }>();
+      app.use("*", async (c, next) => {
+        c.set("trackingId", "test-tracking");
+        c.set("startTs", Date.now());
+        c.set("canonical", new CanonicalAccumulator());
+        c.set("platformId", "platform-1");
+        await next();
+      });
+      app.use("/test", idempotency(store, logger));
+      app.post("/test", (c) => c.json({ error: "boom" }, 500));
+
+      // When
+      const res = await app.request("/test", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "key-1" },
+        body: JSON.stringify({}),
+      });
+
+      // Then
+      expect(res.status).toBe(500);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.stringContaining("release failed"),
+        expect.objectContaining({ status: 500, error: "unknown", name: undefined }),
+      );
     });
   });
 
@@ -439,7 +511,7 @@ describe("idempotency middleware", () => {
         c.set("platformId", "platform-1");
         await next();
       });
-      app.use("/test", idempotency(store));
+      app.use("/test", idempotency(store, logger));
       app.post("/test", (c) => c.text("plain text response", 200));
 
       // When
@@ -454,7 +526,6 @@ describe("idempotency middleware", () => {
 
       // Then
       expect(res.status).toBe(200);
-      await new Promise((r) => setTimeout(r, 10));
       expect(store.complete).toHaveBeenCalledOnce();
       const completeCall = (store.complete as ReturnType<typeof vi.fn>).mock.calls[0]!;
       expect(completeCall[3]).toBe(200); // responseStatus

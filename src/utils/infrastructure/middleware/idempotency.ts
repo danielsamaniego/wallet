@@ -2,10 +2,12 @@ import { createHash } from "node:crypto";
 import type { MiddlewareHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { IIdempotencyStore } from "../../../common/idempotency/application/ports/idempotency.store.js";
+import type { ILogger } from "../../kernel/observability/logger.port.js";
 import type { HonoVariables } from "../hono.context.js";
 import { buildAppContext } from "../hono.context.js";
 import { errorResponse } from "../hono.error.js";
 
+const mainLogTag = "IdempotencyMiddleware";
 const IDEMPOTENCY_HEADER = "idempotency-key";
 
 /**
@@ -24,6 +26,7 @@ const IDEMPOTENCY_HEADER = "idempotency-key";
  */
 export function idempotency(
   store: IIdempotencyStore,
+  logger: ILogger,
 ): MiddlewareHandler<{ Variables: HonoVariables }> {
   return async (c, next) => {
     if (c.req.method === "GET" || c.req.method === "HEAD") {
@@ -96,8 +99,26 @@ export function idempotency(
 
     // Transient errors (5xx, 409 Conflict) must NOT be cached —
     // release the key so clients can retry with the same idempotency key.
+    //
+    // We MUST await release/complete on serverless: when the middleware
+    // returns Hono sends the response and the platform may freeze the
+    // function immediately. A dangling promise leaves the record pending
+    // until the 48h TTL — future retries with the same key see
+    // responseStatus=0 and get 409 IDEMPOTENCY_KEY_IN_PROGRESS, blinding
+    // the client to a deposit that may have already committed.
     if (status >= 500 || status === 409) {
-      store.release(ctx, key, platformId).catch(() => {});
+      try {
+        await store.release(ctx, key, platformId);
+      } catch (err) {
+        // Best-effort — leaving a stale pending record is recoverable via
+        // the hourly cleanup cron, but the client may receive 409
+        // IDEMPOTENCY_KEY_IN_PROGRESS on retries until cleanup runs.
+        logger.warn(ctx, `${mainLogTag} | release failed`, {
+          status,
+          error: err instanceof Error ? err.message : "unknown",
+          name: err instanceof Error ? err.name : undefined,
+        });
+      }
       return;
     }
 
@@ -107,8 +128,18 @@ export function idempotency(
       .json()
       .catch(() => null);
 
-    store.complete(ctx, key, platformId, status, responseBody).catch(() => {
-      // Non-critical: record stays pending; will be overwritten on next acquire after TTL
-    });
+    try {
+      await store.complete(ctx, key, platformId, status, responseBody);
+    } catch (err) {
+      // Best-effort — the response was already sent successfully to the
+      // client, but the cache write failed. Future retries with the same
+      // key will see responseStatus=0 (pending) and get 409
+      // IDEMPOTENCY_KEY_IN_PROGRESS until the 48h TTL expires.
+      logger.warn(ctx, `${mainLogTag} | complete failed`, {
+        status,
+        error: err instanceof Error ? err.message : "unknown",
+        name: err instanceof Error ? err.name : undefined,
+      });
+    }
   };
 }

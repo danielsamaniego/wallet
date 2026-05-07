@@ -35,7 +35,7 @@ export function historicalImportGate(c: Context, next: Next) {
 export function walletRoutes(deps: Dependencies) {
   const router = new Hono<{ Variables: HonoVariables }>();
   const auth = apiKeyAuth(deps.prisma);
-  const idemp = idempotency(deps.idempotencyStore);
+  const idemp = idempotency(deps.idempotencyStore, deps.logger);
 
   // Commands
   router.post("/", auth, idemp, ...createWalletRoute(deps.commandBus));

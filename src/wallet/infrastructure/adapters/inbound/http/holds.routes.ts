@@ -12,7 +12,7 @@ import { voidHoldRoute } from "./voidHold/handler.js";
 export function holdRoutes(deps: Dependencies) {
   const router = new Hono<{ Variables: HonoVariables }>();
   const auth = apiKeyAuth(deps.prisma);
-  const idemp = idempotency(deps.idempotencyStore);
+  const idemp = idempotency(deps.idempotencyStore, deps.logger);
 
   // Commands
   router.post("/", auth, idemp, ...placeHoldRoute(deps.commandBus));
