@@ -233,8 +233,13 @@ describe("loadConfig", () => {
         expect(() => loadConfig()).toThrow("Invalid environment configuration");
       });
 
-      it("Then loadConfig throws for WALLET_LOCK_WAIT_MS above 30000", () => {
-        process.env.WALLET_LOCK_WAIT_MS = "40000";
+      it("Then loadConfig throws for WALLET_LOCK_WAIT_MS above 60000", () => {
+        process.env.WALLET_LOCK_WAIT_MS = "70000";
+        expect(() => loadConfig()).toThrow("Invalid environment configuration");
+      });
+
+      it("Then loadConfig throws for WALLET_LOCK_TTL_MS above 600000", () => {
+        process.env.WALLET_LOCK_TTL_MS = "700000";
         expect(() => loadConfig()).toThrow("Invalid environment configuration");
       });
 
@@ -255,18 +260,59 @@ describe("loadConfig", () => {
       it("Then they override the defaults", () => {
         process.env.WALLET_LOCK_ENABLED = "true";
         process.env.REDIS_URL = "redis://localhost:6379";
-        process.env.WALLET_LOCK_TTL_MS = "15000";
-        process.env.WALLET_LOCK_WAIT_MS = "7000";
+        process.env.WALLET_LOCK_TTL_MS = "90000";
+        process.env.WALLET_LOCK_WAIT_MS = "5000";
         process.env.WALLET_LOCK_RETRY_MS = "100";
 
         const config = loadConfig();
         expect(config.walletLock).toEqual({
           redisUrl: "redis://localhost:6379",
           transport: "tcp",
-          ttlMs: 15000,
-          waitMs: 7000,
+          ttlMs: 90000,
+          waitMs: 5000,
           retryMs: 100,
         });
+      });
+    });
+
+    describe("Boot-time invariants on lock timings", () => {
+      it("Given wait_ms*2 exceeds ttl_ms, When loadConfig runs, Then throws so the lock cannot expire mid-acquire", () => {
+        process.env.WALLET_LOCK_ENABLED = "true";
+        process.env.REDIS_URL = "redis://localhost:6379";
+        process.env.WALLET_LOCK_TTL_MS = "10000";
+        process.env.WALLET_LOCK_WAIT_MS = "8000"; // 8000 * 2 = 16000 > 10000
+
+        expect(() => loadConfig()).toThrow(/2 exceeds WALLET_LOCK_TTL_MS/);
+      });
+
+      it("Given ttl_ms below 30s floor, When loadConfig runs, Then logs a warn but does not throw", () => {
+        process.env.WALLET_LOCK_ENABLED = "true";
+        process.env.REDIS_URL = "redis://localhost:6379";
+        process.env.WALLET_LOCK_TTL_MS = "20000";
+        process.env.WALLET_LOCK_WAIT_MS = "5000";
+        const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+          loadConfig();
+          expect(warnSpy).toHaveBeenCalledWith(
+            expect.stringContaining("below the 30s"),
+          );
+        } finally {
+          warnSpy.mockRestore();
+        }
+      });
+
+      it("Given a healthy serverless config (TTL=90s, wait=5s), When loadConfig runs, Then no warn or throw", () => {
+        process.env.WALLET_LOCK_ENABLED = "true";
+        process.env.REDIS_URL = "redis://localhost:6379";
+        process.env.WALLET_LOCK_TTL_MS = "90000";
+        process.env.WALLET_LOCK_WAIT_MS = "5000";
+        const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+          expect(() => loadConfig()).not.toThrow();
+          expect(warnSpy).not.toHaveBeenCalled();
+        } finally {
+          warnSpy.mockRestore();
+        }
       });
     });
   });

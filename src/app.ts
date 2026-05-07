@@ -21,6 +21,22 @@ import { walletRoutes } from "./wallet/infrastructure/adapters/inbound/http/wall
 import type { Dependencies } from "./wiring.js";
 
 /**
+ * Extracts `name`, `code` (Prisma error codes like P2024 land here) and a
+ * truncated `stack` from any Error-like value for structured logging.
+ * Returns an empty object for non-Error inputs so the caller can spread
+ * unconditionally.
+ */
+function errorDetails(err: unknown): Record<string, unknown> {
+  if (!(err instanceof Error)) return {};
+  const code = (err as { code?: unknown }).code;
+  return {
+    name: err.name,
+    ...(typeof code === "string" || typeof code === "number" ? { code: String(code) } : {}),
+    ...(err.stack ? { stack: err.stack.split("\n").slice(0, 5).join("\n") } : {}),
+  };
+}
+
+/**
  * Creates the Hono app with all middleware, routes, and error handling.
  * Pure HTTP app — no server, no scheduled jobs, no startup verification.
  * Used by both the local dev server (src/index.ts) and the Vercel handler (api/index.ts).
@@ -29,20 +45,34 @@ export function createApp(deps: Dependencies) {
   const app = new Hono<{ Variables: HonoVariables }>();
 
   // Global error handler — maps AppError to HTTP status, catches unhandled exceptions.
+  //
+  // Logs include `code`, `name`, and a truncated `stack` so operators can
+  // bucket errors by Prisma code (P2024, P5009, etc.) and pinpoint the
+  // origin without needing the full transcript. The previous shape only
+  // emitted `error: <message>` and made it impossible to group errors
+  // mechanically — see the load-test post-mortem where `error.code` and
+  // `error.name` aggregations came back empty.
   app.onError((err, c) => {
     const ctx = buildAppContext(c);
 
     if (AppError.is(err)) {
       const status = httpStatus(err.kind);
       if (status >= 500) {
-        deps.logger.error(ctx, err.code, { error: err.message });
+        deps.logger.error(ctx, err.code, {
+          error: err.message,
+          kind: err.kind,
+          ...errorDetails(err.cause),
+        });
       } else {
         deps.logger.warn(ctx, err.code);
       }
       return errorResponse(c, err.code, err.msg, status);
     }
 
-    deps.logger.error(ctx, "Unhandled exception", { error: err.message });
+    deps.logger.error(ctx, "Unhandled exception", {
+      error: err.message,
+      ...errorDetails(err),
+    });
     return errorResponse(c, "INTERNAL_ERROR", "an unexpected error occurred", 500);
   });
 

@@ -17,8 +17,14 @@ const configSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
-  WALLET_LOCK_TTL_MS: z.coerce.number().int().min(100).max(60_000).default(10_000),
-  WALLET_LOCK_WAIT_MS: z.coerce.number().int().min(0).max(30_000).default(5_000),
+  // TTL must exceed Vercel `maxDuration` so the lock cannot expire while
+  // the function is still alive (the original 60s ceiling broke that
+  // invariant: with maxDuration=55s a body that took >60s left the lock
+  // free for another Lambda to grab — 345 token_mismatch events in the
+  // load test). Capped at 10 min as a sanity bound for any future plan.
+  WALLET_LOCK_TTL_MS: z.coerce.number().int().min(100).max(600_000).default(10_000),
+  // Wait should stay well under TTL — see boot-time invariant check below.
+  WALLET_LOCK_WAIT_MS: z.coerce.number().int().min(0).max(60_000).default(5_000),
   WALLET_LOCK_RETRY_MS: z.coerce.number().int().min(1).max(1_000).default(50),
   // Transport for the distributed lock. Default `tcp` uses ioredis against
   // `REDIS_URL`. `rest` uses @upstash/redis over HTTPS — stateless per-request,
@@ -76,6 +82,34 @@ export function loadConfig(): Config {
   let walletLock: Config["walletLock"];
   if (env.WALLET_LOCK_ENABLED) {
     if (env.REDIS_URL) {
+      // Boot-time invariants on lock timings.
+      // wait_ms < ttl_ms is essential: if a request waits longer than
+      // the TTL, the lock it eventually grabs may already have expired,
+      // defeating mutual exclusion. We require a 2x margin to absorb
+      // jitter (acquire latency, GC pauses, retry intervals) without
+      // tripping the invariant in degenerate cases.
+      if (env.WALLET_LOCK_WAIT_MS * 2 > env.WALLET_LOCK_TTL_MS) {
+        throw new Error(
+          `Invalid lock configuration: WALLET_LOCK_WAIT_MS (${env.WALLET_LOCK_WAIT_MS}ms) ` +
+            `* 2 exceeds WALLET_LOCK_TTL_MS (${env.WALLET_LOCK_TTL_MS}ms). ` +
+            `TTL must comfortably exceed wait time so a lock cannot expire while another ` +
+            `request is still waiting to acquire it. Recommend ttl >= 2 * wait.`,
+        );
+      }
+      // TTL must exceed Vercel's maxDuration so the lock outlives any
+      // function instance that holds it. We cannot read maxDuration
+      // from the runtime environment, so we warn loudly when TTL drops
+      // below a sensible serverless floor (30s = below maxDuration of
+      // even small Vercel plans). Operators must keep TTL > maxDuration
+      // every time maxDuration is changed in vercel.json.
+      if (env.WALLET_LOCK_TTL_MS < 30_000) {
+        console.warn(
+          `[config] WALLET_LOCK_TTL_MS=${env.WALLET_LOCK_TTL_MS}ms is below the 30s ` +
+            `floor recommended for serverless deployments. Vercel maxDuration is currently ` +
+            `55s in vercel.json — TTL must exceed it (recommend >= 90000ms) to prevent ` +
+            `lock expiry while a function is still alive.`,
+        );
+      }
       walletLock = {
         redisUrl: env.REDIS_URL,
         transport: env.WALLET_LOCK_TRANSPORT,

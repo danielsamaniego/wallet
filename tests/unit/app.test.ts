@@ -63,7 +63,7 @@ describe("createApp", () => {
       expect(deps.logger.warn).toHaveBeenCalled();
     });
 
-    it("Given a non-AppError Error, When thrown, Then logs error and returns INTERNAL_ERROR 500", async () => {
+    it("Given a non-AppError Error, When thrown, Then logs error with name and stack and returns INTERNAL_ERROR 500", async () => {
       // Given
       const deps = buildDeps();
       const app = createApp(deps);
@@ -78,7 +78,106 @@ describe("createApp", () => {
       expect(res.status).toBe(500);
       const body = await res.json();
       expect(body).toEqual({ error: "INTERNAL_ERROR", message: "an unexpected error occurred" });
-      expect(deps.logger.error).toHaveBeenCalled();
+      // Logs MUST include name + stack so operators can group by Error class
+      // (e.g. PrismaClientKnownRequestError) and pinpoint origin without the
+      // full transcript. The previous shape was `{ error: <message> }` only.
+      expect(deps.logger.error).toHaveBeenCalledWith(
+        expect.anything(),
+        "Unhandled exception",
+        expect.objectContaining({
+          error: "something broke",
+          name: "Error",
+          stack: expect.stringContaining("Error: something broke"),
+        }),
+      );
+    });
+
+    it("Given a Prisma-shaped error with .code, When thrown, Then logs include code so operators can bucket P-codes", async () => {
+      // Prisma errors carry `.code` (e.g. P2024 = pool timeout). The previous
+      // logger shape stripped this and made the load-test post-mortem buckets
+      // for `error.code` and `error.name` come back empty.
+      const deps = buildDeps();
+      const app = createApp(deps);
+      app.get("/test-prisma-code", () => {
+        const err = new Error("connection pool timeout") as Error & { code: string };
+        err.name = "PrismaClientKnownRequestError";
+        err.code = "P2024";
+        throw err;
+      });
+
+      const res = await app.request("/test-prisma-code");
+      expect(res.status).toBe(500);
+      expect(deps.logger.error).toHaveBeenCalledWith(
+        expect.anything(),
+        "Unhandled exception",
+        expect.objectContaining({
+          name: "PrismaClientKnownRequestError",
+          code: "P2024",
+        }),
+      );
+    });
+
+    it("Given an Error stripped of its stack, When thrown, Then the stack field is omitted instead of logged as undefined", async () => {
+      // Defensive branch: V8 always populates .stack on `new Error()`, but
+      // some library code rewrites errors and deletes it. We omit the field
+      // entirely when missing so log shape stays clean.
+      const deps = buildDeps();
+      const app = createApp(deps);
+      app.get("/test-no-stack", () => {
+        const err = new Error("stack-less");
+        delete err.stack;
+        throw err;
+      });
+
+      await app.request("/test-no-stack");
+      const call = (deps.logger.error as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      expect(call[2]).not.toHaveProperty("stack");
+      expect(call[2]).toMatchObject({ error: "stack-less", name: "Error" });
+    });
+
+    it("Given an error with numeric .code (e.g. Node syscall), When thrown, Then code is normalized to string", async () => {
+      // Node-style errors (ECONNRESET, ETIMEDOUT...) sometimes carry a numeric
+      // errno alongside the string code. We coerce to string so log buckets
+      // group cleanly regardless of source.
+      const deps = buildDeps();
+      const app = createApp(deps);
+      app.get("/test-numeric-code", () => {
+        const err = new Error("syscall failed") as Error & { code: number };
+        err.code = -4077;
+        throw err;
+      });
+
+      await app.request("/test-numeric-code");
+      expect(deps.logger.error).toHaveBeenCalledWith(
+        expect.anything(),
+        "Unhandled exception",
+        expect.objectContaining({ code: "-4077" }),
+      );
+    });
+
+    it("Given an AppError with status >= 500 and a cause, When thrown, Then logs include the cause's name/code/stack", async () => {
+      // AppError.wrap captures the underlying error. Surfacing its details
+      // is what lets operators see WHY a 500 happened (e.g. underlying
+      // Prisma P2024 wrapped as INFRA_FAILURE).
+      const deps = buildDeps();
+      const app = createApp(deps);
+      app.get("/test-app-error-cause", () => {
+        const cause = new Error("connection pool timeout") as Error & { code: string };
+        cause.name = "PrismaClientKnownRequestError";
+        cause.code = "P2024";
+        throw AppError.wrap(ErrorKind.Internal, "INFRA_FAILURE", "infra layer failed", cause);
+      });
+
+      const res = await app.request("/test-app-error-cause");
+      expect(res.status).toBe(500);
+      expect(deps.logger.error).toHaveBeenCalledWith(
+        expect.anything(),
+        "INFRA_FAILURE",
+        expect.objectContaining({
+          name: "PrismaClientKnownRequestError",
+          code: "P2024",
+        }),
+      );
     });
 
     it("Given a non-Error thrown value, When thrown, Then returns 500", async () => {
