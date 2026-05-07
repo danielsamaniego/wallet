@@ -112,44 +112,6 @@ export function createApp(deps: Dependencies) {
     return c.json({ status, version: "1.0.1", db }, httpCode);
   });
 
-  // ─── TEMPORARY DEBUG ENDPOINT — DELETE AFTER VERIFYING DEPLOY ───
-  // Surfaces non-sensitive runtime config so we can confirm env vars
-  // (lock timings, region, transport, etc.) are loaded with the
-  // expected values after a deploy. Strips secrets — only prefixes
-  // and lengths are exposed for URLs that contain credentials.
-  // TODO: remove once the timeout-coordination rollout is verified.
-  app.get("/internal/debug/config", (c) => {
-    const dbUrl = deps.config.databaseUrl;
-    const directUrl = deps.config.directUrl;
-    const redisUrl = deps.config.walletLock?.redisUrl ?? "";
-    const safePrefix = (s: string) => (s ? `${s.slice(0, 12)}…(${s.length} chars)` : "(unset)");
-
-    return c.json({
-      runtime: {
-        vercel_region: process.env.VERCEL_REGION ?? "(local)",
-        vercel_env: process.env.VERCEL_ENV ?? "(local)",
-        node_version: process.version,
-        commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "(unset)",
-      },
-      lock: {
-        enabled: deps.config.walletLock !== undefined,
-        transport: deps.config.walletLock?.transport ?? "(disabled)",
-        ttl_ms: deps.config.walletLock?.ttlMs ?? null,
-        wait_ms: deps.config.walletLock?.waitMs ?? null,
-        retry_ms: deps.config.walletLock?.retryMs ?? null,
-      },
-      db: {
-        database_url_prefix: safePrefix(dbUrl),
-        direct_url_prefix: safePrefix(directUrl),
-        accelerate_active: dbUrl.startsWith("prisma://") || dbUrl.startsWith("prisma+postgres://"),
-      },
-      redis: {
-        url_prefix: safePrefix(redisUrl),
-      },
-      log_level: process.env.LOG_LEVEL ?? "info",
-    });
-  });
-
   // Route groups
   const v1 = app.basePath("/v1");
   v1.route("/wallets", walletRoutes(deps));
