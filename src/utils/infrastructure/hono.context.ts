@@ -14,6 +14,13 @@ export type HonoVariables = {
   systemWalletShardCount: number | undefined;
   startTs: number;
   canonical: CanonicalAccumulator;
+  /**
+   * Raw request body text. Populated by `qstashSignature` middleware (which
+   * consumes the body stream to verify the JWT against it). Downstream
+   * handlers must read from this variable instead of `c.req.text()` /
+   * `c.req.json()` because the underlying stream has already been drained.
+   */
+  rawBody: string | undefined;
 };
 
 export const handlerFactory = createFactory<{ Variables: HonoVariables }>();

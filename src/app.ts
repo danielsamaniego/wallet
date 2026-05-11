@@ -20,6 +20,7 @@ import { holdRoutes } from "./wallet/infrastructure/adapters/inbound/http/holds.
 import { movementRoutes } from "./wallet/infrastructure/adapters/inbound/http/movements.routes.js";
 import { transferRoutes } from "./wallet/infrastructure/adapters/inbound/http/transfers.routes.js";
 import { walletRoutes } from "./wallet/infrastructure/adapters/inbound/http/wallets.routes.js";
+import { workerRoutes } from "./wallet/infrastructure/adapters/inbound/worker/worker.routes.js";
 import type { Dependencies } from "./wiring.js";
 
 /**
@@ -173,6 +174,12 @@ export function createApp(deps: Dependencies) {
   v1.route("/movements", movementRoutes(deps));
   v1.route("/platforms", platformRoutes(deps));
   v1.route("/currencies", currencyRoutes());
+
+  // Internal worker routes — invoked exclusively by QStash, authenticated by
+  // Upstash-Signature JWT. Mounted outside `/v1` because they are not part of
+  // the public API contract. The router itself is empty (and therefore yields
+  // 404s) when QStash signing keys are not configured.
+  app.route("/internal/worker", workerRoutes(deps));
 
   // OpenAPI spec + interactive docs
   app.get(

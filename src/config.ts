@@ -34,6 +34,13 @@ const configSchema = z.object({
   // host + token and builds an HTTPS URL for the Upstash proxy.
   WALLET_LOCK_TRANSPORT: z.enum(["tcp", "rest"]).default("tcp"),
   REDIS_URL: z.string().optional(),
+
+  // QStash — async movement processing pipeline (Phase 1C+).
+  // Signing keys are public dev defaults in docker-compose.dev.yml; production
+  // sets them to the values from console.upstash.com/qstash. When either key
+  // is missing, the worker route is NOT mounted (returns 404).
+  QSTASH_CURRENT_SIGNING_KEY: z.string().optional(),
+  QSTASH_NEXT_SIGNING_KEY: z.string().optional(),
 });
 
 /**
@@ -60,6 +67,16 @@ export interface Config {
     ttlMs: number;
     waitMs: number;
     retryMs: number;
+  };
+  /**
+   * QStash signing keys. Present only when BOTH keys are set on the env.
+   * The worker route at `/internal/worker/process-movement` mounts only
+   * when this is present; otherwise it returns 404 so unconfigured
+   * environments cannot accept signed deliveries by accident.
+   */
+  qstash?: {
+    currentSigningKey: string;
+    nextSigningKey: string;
   };
 }
 
@@ -128,6 +145,14 @@ export function loadConfig(): Config {
     }
   }
 
+  let qstash: Config["qstash"];
+  if (env.QSTASH_CURRENT_SIGNING_KEY && env.QSTASH_NEXT_SIGNING_KEY) {
+    qstash = {
+      currentSigningKey: env.QSTASH_CURRENT_SIGNING_KEY,
+      nextSigningKey: env.QSTASH_NEXT_SIGNING_KEY,
+    };
+  }
+
   return {
     databaseUrl: env.DATABASE_URL,
     directUrl: env.DIRECT_URL ?? env.DATABASE_URL,
@@ -135,5 +160,6 @@ export function loadConfig(): Config {
     logLevel: env.LOG_LEVEL,
     cronSecret: env.CRON_SECRET,
     walletLock,
+    qstash,
   };
 }

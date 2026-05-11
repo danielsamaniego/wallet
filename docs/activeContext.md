@@ -19,9 +19,17 @@
 - Cross-tenant isolation is enforced by the read store: a movement is only resolvable when at least one of its transactions points to a wallet of the requesting platform. No transactions yet (i.e. async `pending`/`processing` movements created in Phase 2) → 404. When Phase 2 lands the schema will denormalise `Movement.platform_id` so pending movements are resolvable; for now there are no such rows.
 - Unit suite: 916/916 at 100% coverage. E2E: 271/271, including a new `get-movement.e2e.test.ts` covering auth (missing/malformed/SQL-injection-shaped keys), cross-tenant 404, input validation, edge cases, info-disclosure, and the GET/POST method discipline.
 
-**Phase 1C+ (next):**
-1. Empty `POST /internal/worker/process-movement` route + QStash signature verification middleware.
-2. `IMovementQueuePublisher` and `IResultPublisher` ports as interfaces only (no adapters yet).
+**Phase 1C (completed):**
+- New internal endpoint `POST /internal/worker/process-movement`, mounted outside `/v1` because it is not part of the public API. Authenticated by the `Upstash-Signature` JWT header — no API-key auth applies here.
+- New middleware `qstashSignature` in `utils/infrastructure/middleware/`. Reads the raw body once (the stream is then drained), verifies the JWT against the `Receiver` injected via DI, and stores the raw body on `HonoVariables.rawBody` so the downstream handler can re-parse it. Missing header → `401 MISSING_SIGNATURE`; verifier returns false or throws → `401 INVALID_SIGNATURE` (no underlying error leaked).
+- `Config` gains an optional `qstash` field (both `QSTASH_CURRENT_SIGNING_KEY` and `QSTASH_NEXT_SIGNING_KEY` required together). When missing, `wiring` does not build a `Receiver` and the worker route is not mounted (404 — fail-closed). Local docker-compose and `docker-compose.test.yml` carry the public dev keys so the route is reachable in both environments.
+- `processMovementRoute` handler (Phase 1C scaffolding): parses the raw body with Zod (`movement_id` required, 1..255 chars), logs receipt, returns 200. Phase 2 replaces the logging step with the real `ProcessMovementUseCase`.
+- Unit suite: 933/933 at 100% coverage. New tests cover the middleware (4 cases — missing header, valid sig, invalid sig, verifier throws), the handler (6 cases — missing rawBody, invalid JSON, schema violations, valid body), the routes file (3 cases — receiver undefined → 404; receiver wired → 401 without sig; receiver wired → 200 with sig), and the four `Config` permutations of QStash keys.
+- E2E suite: 277/277. New `worker-process-movement.e2e.test.ts` covers 6 cases: missing signature, malformed signature, wrong auth scheme (API-key only — must still 401), GET method (404), unknown sub-path (404), and information-disclosure invariants on the 401 body. The happy path is intentionally not E2E-tested in this phase because forging a valid JWT inside the e2e harness is too heavy for the phase scope; unit tests cover it with a mock receiver.
+
+**Phase 1D / Phase 2 (next):**
+1. `IMovementQueuePublisher` and `IResultPublisher` ports as interfaces only (no adapters yet — Phase 1D).
+2. `EnqueueMovementUseCase` + `ProcessMovementUseCase` + QStash/Redis adapters; handlers gated by `WALLET_ASYNC_PROCESSING_ENABLED` flip between inline (legacy) and enqueue-and-wait (new) paths (Phase 2).
 
 **Phase 2 (after Phase 1 lands):** `EnqueueMovementUseCase` (handler-side: validate → insert pending movement → publish to QStash → wait on Redis pub/sub up to `WALLET_HANDLER_WAIT_MS`, return 200 or 202), `ProcessMovementUseCase` (worker-side: claim pending → dispatch existing use case command → publish result), and the QStash/Redis adapters. Behind `WALLET_ASYNC_PROCESSING_ENABLED`. The lock and transaction layers stay exactly as they are today — the use case bodies move from inline-in-handler to inline-in-worker, nothing else.
 

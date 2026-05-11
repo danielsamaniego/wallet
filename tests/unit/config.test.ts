@@ -24,6 +24,7 @@ describe("loadConfig", () => {
     "directUrl",
     "httpPort",
     "logLevel",
+    "qstash",
     "walletLock",
   ];
 
@@ -313,6 +314,61 @@ describe("loadConfig", () => {
         } finally {
           warnSpy.mockRestore();
         }
+      });
+    });
+  });
+
+  // ── QStash signing keys (async movement processing) ──────────────
+
+  describe("QStash signing keys", () => {
+    describe("Given neither signing key is set", () => {
+      it("Then config.qstash is undefined and the worker route stays unmounted", () => {
+        process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+        delete process.env.QSTASH_CURRENT_SIGNING_KEY;
+        delete process.env.QSTASH_NEXT_SIGNING_KEY;
+
+        const config = loadConfig();
+
+        expect(config.qstash).toBeUndefined();
+      });
+    });
+
+    describe("Given only QSTASH_CURRENT_SIGNING_KEY is set", () => {
+      it("Then config.qstash is undefined — both keys are required together", () => {
+        process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+        process.env.QSTASH_CURRENT_SIGNING_KEY = "sig_current";
+        delete process.env.QSTASH_NEXT_SIGNING_KEY;
+
+        const config = loadConfig();
+
+        expect(config.qstash).toBeUndefined();
+      });
+    });
+
+    describe("Given only QSTASH_NEXT_SIGNING_KEY is set", () => {
+      it("Then config.qstash is undefined — both keys are required together", () => {
+        process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+        delete process.env.QSTASH_CURRENT_SIGNING_KEY;
+        process.env.QSTASH_NEXT_SIGNING_KEY = "sig_next";
+
+        const config = loadConfig();
+
+        expect(config.qstash).toBeUndefined();
+      });
+    });
+
+    describe("Given both QSTASH signing keys are set", () => {
+      it("Then config.qstash carries both verbatim", () => {
+        process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+        process.env.QSTASH_CURRENT_SIGNING_KEY = "sig_current_real";
+        process.env.QSTASH_NEXT_SIGNING_KEY = "sig_next_real";
+
+        const config = loadConfig();
+
+        expect(config.qstash).toEqual({
+          currentSigningKey: "sig_current_real",
+          nextSigningKey: "sig_next_real",
+        });
       });
     });
   });

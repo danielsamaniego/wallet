@@ -54,6 +54,12 @@ services:
       REDIS_URL: "redis://redis:6379"
       WALLET_LOCK_TTL_MS: "10000"
       WALLET_LOCK_WAIT_MS: "5000"
+      # QStash signing keys (public dev values) so the worker route at
+      # /internal/worker/process-movement mounts in E2E. E2E only exercises
+      # the negative paths (missing/invalid signature → 401); the happy
+      # path is covered by unit tests with a mocked Receiver.
+      QSTASH_CURRENT_SIGNING_KEY: "sig_7kYjw48mhY7kAjqNGcy6cr29RJ6r"
+      QSTASH_NEXT_SIGNING_KEY: "sig_5ZB6DVzB1wjE8S6rZ7eenA8Pdnhs"
     depends_on:
       postgres:
         condition: service_healthy

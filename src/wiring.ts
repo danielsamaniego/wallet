@@ -1,8 +1,10 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { withAccelerate } from "@prisma/extension-accelerate";
+import { Receiver } from "@upstash/qstash";
 import { Redis as UpstashRedis } from "@upstash/redis";
 import { Redis as IORedis } from "ioredis";
+import type { IQStashReceiver } from "./utils/infrastructure/middleware/qstashSignature.js";
 import { createAppContext } from "./utils/kernel/context.js";
 
 /**
@@ -97,6 +99,12 @@ export interface Dependencies {
   idempotencyStore: IIdempotencyStore;
   commandBus: ICommandBus;
   queryBus: IQueryBus;
+  /**
+   * Receiver for verifying QStash JWT signatures on inbound worker calls.
+   * Present only when `config.qstash` is set (both signing keys provided).
+   * When absent, the worker route is not mounted.
+   */
+  qstashReceiver?: IQStashReceiver;
 }
 
 const sensitiveKeys = [
@@ -259,6 +267,23 @@ export function wire(config: Config): Dependencies {
   }
   const lockRunner = new LockRunner(distributedLock, lockOptions, logger);
 
+  // ── QStash receiver (optional) ────────────────────────────
+  // Built only when both signing keys are present. When absent, the worker
+  // route at /internal/worker/process-movement is not mounted (returns 404).
+  let qstashReceiver: IQStashReceiver | undefined;
+  if (config.qstash) {
+    qstashReceiver = new Receiver({
+      currentSigningKey: config.qstash.currentSigningKey,
+      nextSigningKey: config.qstash.nextSigningKey,
+    });
+    logger.info(bootCtx, "qstash receiver wired", { enabled: true });
+  } else {
+    logger.info(bootCtx, "qstash receiver disabled", {
+      enabled: false,
+      reason: "QSTASH_CURRENT_SIGNING_KEY or QSTASH_NEXT_SIGNING_KEY missing",
+    });
+  }
+
   const shared = { prisma, logger, idGen, txManager, idempotencyStore, lockRunner };
 
   // ── Modules ──────────────────────────────
@@ -283,6 +308,7 @@ export function wire(config: Config): Dependencies {
     idempotencyStore,
     commandBus,
     queryBus,
+    qstashReceiver,
   };
 
   return _deps;
