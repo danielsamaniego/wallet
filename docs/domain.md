@@ -58,7 +58,7 @@ Internal components and workflows.
 | Concept | Description |
 |---------|-------------|
 | **Wallet** | Per-owner, per-platform, per-currency balance container. Holds `cached_balance_minor` and `available_balance` (cached minus active holds). |
-| **Movement** | Journal entry that groups all transactions and ledger entries for a single financial operation. The accounting unit of atomicity — entries within a movement must sum to zero. |
+| **Movement** | Journal entry that groups all transactions and ledger entries for a single financial operation. The accounting unit of atomicity — entries within a movement must sum to zero. Has a lifecycle `status` (`pending`, `processing`, `posted`, `failed`, `reversed`). All synchronous flows write `'posted'` directly; the async movement-processing pipeline transitions through `pending → processing → posted | failed`. |
 | **Transaction** | Per-wallet record of a financial operation (deposit, withdrawal, transfer, hold capture). Links to a movement and ledger entries; amount always positive. |
 | **LedgerEntry** | Single line in the double-entry ledger. CREDIT or DEBIT with `amount_minor` (signed) and `balance_after_minor`. Belongs to a movement. Append-only, immutable. |
 | **Hold** | Authorization that reserves funds without moving them. Lifecycle: active → captured \| voided \| expired. |
@@ -180,6 +180,20 @@ Internal components and workflows.
 - `active`: Normal operations allowed.
 - `frozen`: No mutations (deposit, withdraw, transfer, hold).
 - `closed`: Irreversible; no further operations.
+
+### Movement Status (lifecycle)
+
+Every `Movement` carries a `status` representing where it is in the processing pipeline. The column exists even when async processing is disabled — synchronous flows simply write `'posted'` directly and never use the intermediate states.
+
+- `pending`: Movement was accepted by the API handler but the business transaction has not yet executed. Only produced by the async pipeline (handler enqueues the movement; worker picks it up later). No ledger entries exist yet.
+- `processing`: A worker has claimed the movement and is executing the business transaction. Used to make redelivery idempotent — a second worker that observes `processing` (and a fresh `claimed_at` to be added in a later phase) skips the work.
+- `posted`: The business transaction committed; ledger entries are written and sum to zero per `movement_id`. **All movements created by today's synchronous handlers are written directly as `posted`.** Equivalent to "succeeded" in the old model.
+- `failed`: The worker exhausted retries; the business transaction never committed. No ledger entries exist. `failed_reason` carries a free-form code (e.g. `qstash_max_attempts_exceeded`). Movements in this state are surfaced to operational dashboards for manual review or replay.
+- `reversed`: Pre-existing manual reversal flow (chargeback, admin correction). Reversals append new movements; they do not transition the original.
+
+Valid transitions: `pending → processing`, `processing → posted`, `processing → failed`, `posted → reversed`. Any other transition is a domain error.
+
+The async pipeline is gated by `WALLET_ASYNC_PROCESSING_ENABLED` (currently `false` everywhere). While it is off, no movement ever enters `pending` or `processing`; the field defaults to `posted` at construction.
 
 ### Concurrency and Safety
 

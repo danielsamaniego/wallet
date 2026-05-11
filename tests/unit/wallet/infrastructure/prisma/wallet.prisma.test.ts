@@ -1158,6 +1158,52 @@ describe("PrismaMovementRepo", () => {
       expect(movement.create).toHaveBeenCalled();
     });
   });
+
+  describe("save — persists status and failedReason", () => {
+    it("Given a default movement, When save is called, Then it writes status='posted' and failedReason=null", async () => {
+      const { repo, movement } = buildRepo();
+
+      const mov = Movement.create({ id: "mov-1", type: "deposit", createdAt: 1700000000000 });
+
+      await repo.save(ctx, mov);
+
+      expect(movement.create).toHaveBeenCalledWith({
+        data: {
+          id: "mov-1",
+          type: "deposit",
+          status: "posted",
+          reason: null,
+          failedReason: null,
+          createdAt: 1700000000000n,
+        },
+      });
+    });
+
+    it("Given a failed movement, When save is called, Then it persists status and failedReason", async () => {
+      const { repo, movement } = buildRepo();
+
+      const mov = Movement.create({
+        id: "mov-2",
+        type: "deposit",
+        status: "failed",
+        failedReason: "qstash_max_attempts_exceeded",
+        createdAt: 1700000000000,
+      });
+
+      await repo.save(ctx, mov);
+
+      expect(movement.create).toHaveBeenCalledWith({
+        data: {
+          id: "mov-2",
+          type: "deposit",
+          status: "failed",
+          reason: null,
+          failedReason: "qstash_max_attempts_exceeded",
+          createdAt: 1700000000000n,
+        },
+      });
+    });
+  });
 });
 
 // =============================================================================

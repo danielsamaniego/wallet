@@ -2,7 +2,30 @@
 
 ## Current Focus
 
-**System wallet sharding landed.** The system wallet is no longer a single hot row per `(platform, currency)`. It is physically fanned out across N shards (default 32, configurable per platform via `platforms.system_wallet_shard_count`, only-increase). Every movement routes to a shard via a deterministic FNV-1a hash of the user wallet id and writes with a single `UPDATE … RETURNING` (atomic increment, no read-then-write). This closes the residual hot-row surface left behind by the distributed lock, which serialized user wallets only.
+**Async movement processing — Phase 1A landed (foundation, no behavior change).** The wallet has begun a multi-phase migration toward an asynchronous, queue-backed processing pipeline (QStash → throttled worker → DB) to absorb concurrency peaks (~1000 simultaneous movements) without saturating the Postgres pool. The full plan lives in `HIGH_CONCURRENCY_PLAN.md` at the repo root. Phase 1A is purely structural: it adds the lifecycle column the worker will use, with zero impact on today's synchronous flows.
+
+**Phase 1A (completed):**
+- `Movement` aggregate: new `MovementStatus` type (`pending` | `processing` | `posted` | `failed` | `reversed`) and `failedReason: string | null`. `Movement.create()` takes both as optional with `status` defaulting to `'posted'`; `Movement.reconstruct()` requires both explicitly. Both new getters exposed.
+- Prisma schema: `Movement.status String @default("posted")` + `Movement.failedReason String? @map("failed_reason")` + `@@index([status, createdAt])`. Migration `20260511060527_add_movement_status_lifecycle` is additive; the DB DEFAULT backfills every existing row (verified locally against a 87k-movement prod backup → 100% `posted`).
+- `PrismaMovementRepo.save` persists both new fields. Added two new unit tests asserting the exact payload sent to `prisma.movement.create` (default case + failed case).
+- All 7 synchronous use cases (`deposit`, `withdraw`, `transfer`, `charge`, `adjustBalance`, `captureHold`, `importHistoricalEntry`) continue to call `Movement.create({ id, type, createdAt })` unchanged and receive the `posted` default — runtime behavior is identical, API contract intact.
+- Full unit suite: 906/906 at 100% coverage. E2E: 258/258. No regressions in the loaded prod backup.
+- `WALLET_ASYNC_PROCESSING_ENABLED=false` everywhere; the flag is not yet read by any code path.
+
+**Local infra ready for Phase 2:** `docker-compose.dev.yml` now ships a `qstash` service (Upstash's official dev image at `public.ecr.aws/upstash/qstash:latest`) on ports 8080/8081 with the public dev token + signing keys baked in. Verified end-to-end: 1 direct publish + 30 queue publishes all delivered with proper `Upstash-Signature` JWT headers; queue throttle (parallelism=10) observed in non-sequential delivery order; queue drained to `lag: 0`. `.env.example` documents the same vars for host-based development.
+
+**Phase 1B+ (next):**
+1. `GET /v1/movements/{id}` read endpoint (status query for the async fallback).
+2. Empty `POST /internal/worker/process-movement` route + QStash signature verification middleware.
+3. `IMovementQueuePublisher` and `IResultPublisher` ports as interfaces only (no adapters yet).
+
+**Phase 2 (after Phase 1 lands):** `EnqueueMovementUseCase` (handler-side: validate → insert pending movement → publish to QStash → wait on Redis pub/sub up to `WALLET_HANDLER_WAIT_MS`, return 200 or 202), `ProcessMovementUseCase` (worker-side: claim pending → dispatch existing use case command → publish result), and the QStash/Redis adapters. Behind `WALLET_ASYNC_PROCESSING_ENABLED`. The lock and transaction layers stay exactly as they are today — the use case bodies move from inline-in-handler to inline-in-worker, nothing else.
+
+---
+
+## Previously Landed
+
+**System wallet sharding.** The system wallet is no longer a single hot row per `(platform, currency)`. It is physically fanned out across N shards (default 32, configurable per platform via `platforms.system_wallet_shard_count`, only-increase). Every movement routes to a shard via a deterministic FNV-1a hash of the user wallet id and writes with a single `UPDATE … RETURNING` (atomic increment, no read-then-write). This closes the residual hot-row surface left behind by the distributed lock, which serialized user wallets only.
 
 **Sharding feature (completed):**
 - `wallets.shard_index` (int, NOT NULL, default 0, CHECK >= 0) + unique `(owner_id, platform_id, currency_code, shard_index)`. User wallets keep 0; system wallets span `0..count-1`.

@@ -21,6 +21,8 @@ erDiagram
     Movement {
         uuid id PK
         string type
+        string status
+        string failed_reason
         bigint created_at
     }
 
@@ -163,14 +165,21 @@ Journal entry that groups all transactions and ledger entries for a single finan
 | Field | Type | Notes |
 |-------|------|-------|
 | id | UUID | Primary key; app generates UUID v7 |
-| type | string | deposit, withdrawal, transfer, hold_capture, charge |
+| type | string | deposit, withdrawal, transfer, hold_capture, adjustment, charge |
+| status | string | NOT NULL, default `'posted'`. Lifecycle state: `pending`, `processing`, `posted`, `failed`, `reversed`. Synchronous flows write `'posted'` directly. The async movement-processing pipeline (when enabled) transitions `pending → processing → posted | failed`. |
+| failed_reason | string? | Set only when `status='failed'`. Free-form reason emitted by the worker after exhausting retries (e.g. `qstash_max_attempts_exceeded`, `worker_crashed`). |
+| reason | string? | Human-readable reason supplied by the caller (currently used for adjustments). |
 | created_at | BIGINT | Unix ms |
 
-**Audit invariant:** `SUM(amount_minor) GROUP BY movement_id = 0` for all movements.
+**Indexes:**
+- Primary key on `id`
+- `(status, created_at)` — supports the worker draining of `pending` movements and operational queries for `failed` entries.
+
+**Audit invariant:** `SUM(amount_minor) GROUP BY movement_id = 0` for all movements with `status='posted'` (and `'reversed'`, which preserves the original entries + reversing entries — still zero-sum overall). Movements with `status='pending'` or `'processing'` have no ledger entries yet by construction; movements with `status='failed'` have no ledger entries either (the worker rolled back before any insert).
 
 **Relationships:**
 - One-to-many Transactions (1 for most ops, 2 for transfers)
-- One-to-many LedgerEntries (always 2: one debit, one credit)
+- One-to-many LedgerEntries (always 2: one debit, one credit, once posted)
 
 ---
 

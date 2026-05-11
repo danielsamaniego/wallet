@@ -59,12 +59,18 @@ model Wallet {
 model Movement {
   id            String        @id /// UUID v7, app-generated
   type          String /// deposit | withdrawal | transfer | hold_capture | adjustment | charge
+  /// Lifecycle state. Existing rows default to `posted` (they already committed all their ledger entries).
+  /// Async pipeline transitions: pending → processing → posted | failed. `reversed` is a manual reversal.
+  status        String        @default("posted") /// pending | processing | posted | failed | reversed
   reason        String? /// Human-readable reason (used for adjustments)
+  /// Set when status='failed'. Indicates why the worker gave up (e.g. `qstash_max_attempts_exceeded`).
+  failedReason  String?       @map("failed_reason")
   createdAt     BigInt        @map("created_at") /// Unix ms
 
   transactions  Transaction[]
   ledgerEntries LedgerEntry[]
 
+  @@index([status, createdAt])
   @@map("movements")
 }
 
