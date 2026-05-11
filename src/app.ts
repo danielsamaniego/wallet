@@ -17,6 +17,7 @@ import { createAppContext } from "./utils/kernel/context.js";
 import { ExpireHoldsCommand } from "./wallet/application/command/expireHolds/command.js";
 import { currencyRoutes } from "./wallet/infrastructure/adapters/inbound/http/currencies.routes.js";
 import { holdRoutes } from "./wallet/infrastructure/adapters/inbound/http/holds.routes.js";
+import { movementRoutes } from "./wallet/infrastructure/adapters/inbound/http/movements.routes.js";
 import { transferRoutes } from "./wallet/infrastructure/adapters/inbound/http/transfers.routes.js";
 import { walletRoutes } from "./wallet/infrastructure/adapters/inbound/http/wallets.routes.js";
 import type { Dependencies } from "./wiring.js";
@@ -169,6 +170,7 @@ export function createApp(deps: Dependencies) {
   v1.route("/wallets", walletRoutes(deps));
   v1.route("/transfers", transferRoutes(deps));
   v1.route("/holds", holdRoutes(deps));
+  v1.route("/movements", movementRoutes(deps));
   v1.route("/platforms", platformRoutes(deps));
   v1.route("/currencies", currencyRoutes());
 

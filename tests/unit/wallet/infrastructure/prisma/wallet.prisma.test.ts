@@ -6,6 +6,7 @@ import { PrismaHoldRepo } from "@/wallet/infrastructure/adapters/outbound/prisma
 import { PrismaWalletRepo } from "@/wallet/infrastructure/adapters/outbound/prisma/wallet.repo.js";
 import { PrismaWalletReadStore } from "@/wallet/infrastructure/adapters/outbound/prisma/wallet.readstore.js";
 import { PrismaLedgerEntryRepo } from "@/wallet/infrastructure/adapters/outbound/prisma/ledgerEntry.repo.js";
+import { PrismaMovementReadStore } from "@/wallet/infrastructure/adapters/outbound/prisma/movement.readstore.js";
 import { PrismaMovementRepo } from "@/wallet/infrastructure/adapters/outbound/prisma/movement.repo.js";
 import { PrismaTransactionRepo } from "@/wallet/infrastructure/adapters/outbound/prisma/transaction.repo.js";
 import { Wallet } from "@/wallet/domain/wallet/wallet.aggregate.js";
@@ -1202,6 +1203,104 @@ describe("PrismaMovementRepo", () => {
           createdAt: 1700000000000n,
         },
       });
+    });
+  });
+});
+
+// =============================================================================
+// PrismaMovementReadStore
+// =============================================================================
+
+describe("PrismaMovementReadStore", () => {
+  const ctx = createTestContext();
+
+  function buildReadStore() {
+    const movement = { findFirst: vi.fn() };
+    const prisma = { movement } as any;
+    const logger = createMockLogger();
+    const store = new PrismaMovementReadStore(prisma, logger);
+    return { store, movement, logger };
+  }
+
+  function buildMovementRow(overrides?: Partial<Record<string, unknown>>) {
+    return {
+      id: "mov-1",
+      type: "deposit",
+      status: "posted",
+      reason: null,
+      failedReason: null,
+      createdAt: 1700000000000n,
+      ...overrides,
+    };
+  }
+
+  describe("getById — posted movement", () => {
+    it("Given the movement exists and at least one transaction is on a wallet of the platform, When getById is called, Then returns the DTO", async () => {
+      const { store, movement } = buildReadStore();
+      movement.findFirst.mockResolvedValue(buildMovementRow());
+
+      const result = await store.getById(ctx, "mov-1", "platform-1");
+
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe("mov-1");
+      expect(result!.type).toBe("deposit");
+      expect(result!.status).toBe("posted");
+      expect(result!.reason).toBeNull();
+      expect(result!.failed_reason).toBeNull();
+      expect(result!.created_at).toBe(1700000000000);
+    });
+
+    it("Given the movement exists, When getById is called, Then the query filters by id and by platformId via the transactions/wallet path", async () => {
+      const { store, movement } = buildReadStore();
+      movement.findFirst.mockResolvedValue(buildMovementRow());
+
+      await store.getById(ctx, "mov-1", "platform-1");
+
+      expect(movement.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: "mov-1",
+          transactions: { some: { wallet: { platformId: "platform-1" } } },
+        },
+      });
+    });
+  });
+
+  describe("getById — failed movement", () => {
+    it("Given the movement is failed with a reason, When getById is called, Then the DTO carries both status and failed_reason", async () => {
+      const { store, movement } = buildReadStore();
+      movement.findFirst.mockResolvedValue(
+        buildMovementRow({ status: "failed", failedReason: "qstash_max_attempts_exceeded" }),
+      );
+
+      const result = await store.getById(ctx, "mov-1", "platform-1");
+
+      expect(result!.status).toBe("failed");
+      expect(result!.failed_reason).toBe("qstash_max_attempts_exceeded");
+    });
+  });
+
+  describe("getById — not found / cross-tenant", () => {
+    it("Given no movement matches the platform-scoped query, When getById is called, Then returns null without leaking the movement's existence", async () => {
+      const { store, movement } = buildReadStore();
+      movement.findFirst.mockResolvedValue(null);
+
+      const result = await store.getById(ctx, "mov-1", "platform-1");
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("getById — reason field preserved", () => {
+    it("Given an adjustment movement with a reason, When getById is called, Then the reason is preserved in the DTO", async () => {
+      const { store, movement } = buildReadStore();
+      movement.findFirst.mockResolvedValue(
+        buildMovementRow({ type: "adjustment", reason: "manual correction" }),
+      );
+
+      const result = await store.getById(ctx, "mov-1", "platform-1");
+
+      expect(result!.type).toBe("adjustment");
+      expect(result!.reason).toBe("manual correction");
     });
   });
 });

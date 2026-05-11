@@ -14,10 +14,14 @@
 
 **Local infra ready for Phase 2:** `docker-compose.dev.yml` now ships a `qstash` service (Upstash's official dev image at `public.ecr.aws/upstash/qstash:latest`) on ports 8080/8081 with the public dev token + signing keys baked in. Verified end-to-end: 1 direct publish + 30 queue publishes all delivered with proper `Upstash-Signature` JWT headers; queue throttle (parallelism=10) observed in non-sequential delivery order; queue drained to `lag: 0`. `.env.example` documents the same vars for host-based development.
 
-**Phase 1B+ (next):**
-1. `GET /v1/movements/{id}` read endpoint (status query for the async fallback).
-2. Empty `POST /internal/worker/process-movement` route + QStash signature verification middleware.
-3. `IMovementQueuePublisher` and `IResultPublisher` ports as interfaces only (no adapters yet).
+**Phase 1B (completed):**
+- New endpoint `GET /v1/movements/{id}` returns `{ id, type, status, reason, failed_reason, created_at }`. Backed by a new `IMovementReadStore` port + `PrismaMovementReadStore` adapter + `GetMovementUseCase` (query bus handler). Routes mounted at `/v1/movements/` via a new `movements.routes.ts`. OpenAPI/Scalar pick the route up automatically through `describeRoute`.
+- Cross-tenant isolation is enforced by the read store: a movement is only resolvable when at least one of its transactions points to a wallet of the requesting platform. No transactions yet (i.e. async `pending`/`processing` movements created in Phase 2) → 404. When Phase 2 lands the schema will denormalise `Movement.platform_id` so pending movements are resolvable; for now there are no such rows.
+- Unit suite: 916/916 at 100% coverage. E2E: 271/271, including a new `get-movement.e2e.test.ts` covering auth (missing/malformed/SQL-injection-shaped keys), cross-tenant 404, input validation, edge cases, info-disclosure, and the GET/POST method discipline.
+
+**Phase 1C+ (next):**
+1. Empty `POST /internal/worker/process-movement` route + QStash signature verification middleware.
+2. `IMovementQueuePublisher` and `IResultPublisher` ports as interfaces only (no adapters yet).
 
 **Phase 2 (after Phase 1 lands):** `EnqueueMovementUseCase` (handler-side: validate → insert pending movement → publish to QStash → wait on Redis pub/sub up to `WALLET_HANDLER_WAIT_MS`, return 200 or 202), `ProcessMovementUseCase` (worker-side: claim pending → dispatch existing use case command → publish result), and the QStash/Redis adapters. Behind `WALLET_ASYNC_PROCESSING_ENABLED`. The lock and transaction layers stay exactly as they are today — the use case bodies move from inline-in-handler to inline-in-worker, nothing else.
 

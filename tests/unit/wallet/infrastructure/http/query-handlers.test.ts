@@ -6,6 +6,7 @@ import type { IQueryBus } from "@/utils/application/cqrs.js";
 
 import { getHoldRoute } from "@/wallet/infrastructure/adapters/inbound/http/getHold/handler.js";
 import { getLedgerEntriesRoute } from "@/wallet/infrastructure/adapters/inbound/http/getLedgerEntries/handler.js";
+import { getMovementRoute } from "@/wallet/infrastructure/adapters/inbound/http/getMovement/handler.js";
 import { getTransactionsRoute } from "@/wallet/infrastructure/adapters/inbound/http/getTransactions/handler.js";
 import { listCurrenciesRoute } from "@/wallet/infrastructure/adapters/inbound/http/listCurrencies/handler.js";
 import { listHoldsRoute } from "@/wallet/infrastructure/adapters/inbound/http/listHolds/handler.js";
@@ -200,6 +201,56 @@ describe("Wallet query HTTP handlers", () => {
       expect(body.wallets).toHaveLength(1);
       expect(body.wallets[0].owner_id).toBe("owner-1");
       expect(queryBus.dispatch).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ── getMovement ────────────────────────────────────────────────
+  describe("getMovementRoute", () => {
+    it("Given a valid movementId param, When GET is called, Then it dispatches GetMovementQuery and returns 200", async () => {
+      const queryBus: IQueryBus = {
+        dispatch: vi.fn().mockResolvedValue({
+          id: "mov-1",
+          type: "deposit",
+          status: "posted",
+          reason: null,
+          failed_reason: null,
+          created_at: 1700000000000,
+        }),
+      };
+
+      const handlers = getMovementRoute(queryBus);
+      const app = buildApp("/movements/:movementId", handlers);
+
+      const res = await app.request("/movements/mov-1");
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.id).toBe("mov-1");
+      expect(body.status).toBe("posted");
+      expect(queryBus.dispatch).toHaveBeenCalledOnce();
+    });
+
+    it("Given a failed movement, When GET is called, Then the response carries failed_reason", async () => {
+      const queryBus: IQueryBus = {
+        dispatch: vi.fn().mockResolvedValue({
+          id: "mov-1",
+          type: "deposit",
+          status: "failed",
+          reason: null,
+          failed_reason: "qstash_max_attempts_exceeded",
+          created_at: 1700000000000,
+        }),
+      };
+
+      const handlers = getMovementRoute(queryBus);
+      const app = buildApp("/movements/:movementId", handlers);
+
+      const res = await app.request("/movements/mov-1");
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.status).toBe("failed");
+      expect(body.failed_reason).toBe("qstash_max_attempts_exceeded");
     });
   });
 });

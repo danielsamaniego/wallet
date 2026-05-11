@@ -35,6 +35,8 @@ import { GetHoldQuery } from "./application/query/getHold/query.js";
 import { GetHoldUseCase } from "./application/query/getHold/usecase.js";
 import { GetLedgerEntriesQuery } from "./application/query/getLedgerEntries/query.js";
 import { GetLedgerEntriesUseCase } from "./application/query/getLedgerEntries/usecase.js";
+import { GetMovementQuery } from "./application/query/getMovement/query.js";
+import { GetMovementUseCase } from "./application/query/getMovement/usecase.js";
 import { GetTransactionsQuery } from "./application/query/getTransactions/query.js";
 import { GetTransactionsUseCase } from "./application/query/getTransactions/usecase.js";
 import { GetWalletQuery } from "./application/query/getWallet/query.js";
@@ -48,6 +50,7 @@ import { PrismaHoldReadStore } from "./infrastructure/adapters/outbound/prisma/h
 import { PrismaHoldRepo } from "./infrastructure/adapters/outbound/prisma/hold.repo.js";
 import { PrismaLedgerEntryReadStore } from "./infrastructure/adapters/outbound/prisma/ledgerEntry.readstore.js";
 import { PrismaLedgerEntryRepo } from "./infrastructure/adapters/outbound/prisma/ledgerEntry.repo.js";
+import { PrismaMovementReadStore } from "./infrastructure/adapters/outbound/prisma/movement.readstore.js";
 import { PrismaMovementRepo } from "./infrastructure/adapters/outbound/prisma/movement.repo.js";
 import { PrismaTransactionReadStore } from "./infrastructure/adapters/outbound/prisma/transaction.readstore.js";
 import { PrismaTransactionRepo } from "./infrastructure/adapters/outbound/prisma/transaction.repo.js";
@@ -71,6 +74,7 @@ export function wire({
   const holdReadStore = new PrismaHoldReadStore(prisma, logger);
   const transactionReadStore = new PrismaTransactionReadStore(prisma, logger);
   const ledgerEntryReadStore = new PrismaLedgerEntryReadStore(prisma, logger);
+  const movementReadStore = new PrismaMovementReadStore(prisma, logger);
 
   // Use cases
   const createWallet = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
@@ -139,6 +143,7 @@ export function wire({
   const listHolds = new ListHoldsUseCase(holdReadStore, logger);
   const getTransactions = new GetTransactionsUseCase(transactionReadStore, logger);
   const getLedgerEntries = new GetLedgerEntriesUseCase(ledgerEntryReadStore, logger);
+  const getMovement = new GetMovementUseCase(movementReadStore, logger);
   const transfer = new TransferUseCase(
     txManager,
     walletRepo,
@@ -198,6 +203,7 @@ export function wire({
       { type: ListHoldsQuery.TYPE, handler: listHolds },
       { type: GetTransactionsQuery.TYPE, handler: getTransactions },
       { type: GetLedgerEntriesQuery.TYPE, handler: getLedgerEntries },
+      { type: GetMovementQuery.TYPE, handler: getMovement },
     ],
   };
 }
