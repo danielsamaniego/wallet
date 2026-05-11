@@ -42,6 +42,18 @@ services:
       timeout: 3s
       retries: 10
 
+  # QStash local development server — Upstash's official dev image.
+  # Exposes 8080 (HTTP API) and 8081 (log viewer). Uses fixed public dev
+  # credentials documented at upstash.com/docs/qstash/howto/local-development.
+  # Publish to http://qstash:8080 from inside the compose network, or
+  # http://localhost:8080 from the host.
+  qstash:
+    image: public.ecr.aws/upstash/qstash:latest
+    command: ["qstash", "dev"]
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+
   app:
     build:
       context: .
@@ -65,11 +77,27 @@ services:
       REDIS_URL: "redis://redis:6379"
       WALLET_LOCK_TTL_MS: "10000"
       WALLET_LOCK_WAIT_MS: "5000"
+      # QStash — async movement processing (Fase 2+). Uses the bundled
+      # QStash dev container. The token and signing keys below are the
+      # well-known public dev values from Upstash's local-dev docs.
+      QSTASH_URL: "http://qstash:8080"
+      QSTASH_TOKEN: "eyJVc2VySUQiOiJkZWZhdWx0VXNlciIsIlBhc3N3b3JkIjoiZGVmYXVsdFBhc3N3b3JkIn0="
+      QSTASH_CURRENT_SIGNING_KEY: "sig_7kYjw48mhY7kAjqNGcy6cr29RJ6r"
+      QSTASH_NEXT_SIGNING_KEY: "sig_5ZB6DVzB1wjE8S6rZ7eenA8Pdnhs"
+      WALLET_QSTASH_QUEUE_NAME: "wallet-movements"
+      # QStash dev server caps parallelism at 10. Production can go higher
+      # (recommended: 15, tunable based on Supabase compute tier).
+      WALLET_QUEUE_PARALLELISM: "10"
+      WALLET_INTERNAL_WORKER_URL: "http://app:3000/internal/worker/process-movement"
+      WALLET_HANDLER_WAIT_MS: "1500"
+      WALLET_ASYNC_PROCESSING_ENABLED: "false"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      qstash:
+        condition: service_started
 
 volumes:
   postgres_dev_data:
