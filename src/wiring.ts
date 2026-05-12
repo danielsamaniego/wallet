@@ -8,6 +8,7 @@ import type { IQStashReceiver } from "./utils/infrastructure/middleware/qstashSi
 import { createAppContext } from "./utils/kernel/context.js";
 import type { IMovementQueuePublisher } from "./wallet/domain/ports/movement.queue.publisher.js";
 import type { IResultPublisher } from "./wallet/domain/ports/result.publisher.js";
+import type { IResultSubscriber } from "./wallet/domain/ports/result.subscriber.js";
 import { QStashMovementQueuePublisher } from "./wallet/infrastructure/adapters/outbound/qstash/movement.queue.publisher.js";
 import { RedisResultPublisher } from "./wallet/infrastructure/adapters/outbound/redis/result.publisher.js";
 import { RedisResultSubscriber } from "./wallet/infrastructure/adapters/outbound/redis/result.subscriber.js";
@@ -140,7 +141,7 @@ export interface Dependencies {
    * stay on the synchronous path even if the rollout flag would suggest
    * otherwise.
    */
-  resultSubscriber?: RedisResultSubscriber;
+  resultSubscriber?: IResultSubscriber;
 }
 
 const sensitiveKeys = [
@@ -363,7 +364,7 @@ export function wire(config: Config): Dependencies {
   // HTTP handlers can wait on results regardless of whether THIS process
   // also runs as a worker.
   let resultPublisher: IResultPublisher | undefined;
-  let resultSubscriber: RedisResultSubscriber | undefined;
+  let resultSubscriber: IResultSubscriber | undefined;
   const pubsubEligible = !!config.walletLock && config.walletLock.transport === "tcp";
   const pubsubWanted = !!config.qstash || config.asyncProcessingEnabled;
   if (pubsubEligible && pubsubWanted && config.walletLock) {

@@ -2,15 +2,12 @@ import type { Redis } from "ioredis";
 import type { AppContext } from "../../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
 import type { MovementResult } from "../../../../domain/ports/result.publisher.js";
+import type {
+  IResultSubscriber,
+  ResultSubscriberOptions,
+} from "../../../../domain/ports/result.subscriber.js";
 
 const mainLogTag = "RedisResultSubscriber";
-
-export interface ResultSubscriberOptions {
-  /** Maximum total time to wait for a result before returning `null`. */
-  timeoutMs: number;
-  /** Interval between GET probes. Default: 50 ms. */
-  pollMs?: number;
-}
 
 /**
  * Reader half of the async-processing "sync illusion" pattern. The HTTP
@@ -36,7 +33,7 @@ export interface ResultSubscriberOptions {
  * polling; if the backend stays unhealthy for the whole window, the
  * caller observes a timeout and falls back to 202.
  */
-export class RedisResultSubscriber {
+export class RedisResultSubscriber implements IResultSubscriber {
   private static readonly DEFAULT_POLL_MS = 50;
 
   constructor(

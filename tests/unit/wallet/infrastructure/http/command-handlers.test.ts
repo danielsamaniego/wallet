@@ -3,6 +3,17 @@ import { Hono } from "hono";
 import type { HonoVariables } from "@/utils/infrastructure/hono.context.js";
 import { CanonicalAccumulator } from "@/utils/kernel/observability/canonical.js";
 import type { ICommandBus, IQueryBus } from "@/utils/application/cqrs.js";
+import type { MutationHandlerDeps } from "@/wallet/infrastructure/adapters/inbound/http/types.js";
+
+/** Builds a sync-only MutationHandlerDeps (no asyncDispatch). queryBus stub
+ * suffices for the five wallet-scoped handlers; captureHold tests that
+ * exercise the async pre-resolve path override it. */
+function mutDeps(commandBus: ICommandBus, queryBus?: IQueryBus): MutationHandlerDeps {
+  return {
+    commandBus,
+    queryBus: queryBus ?? { dispatch: vi.fn() },
+  };
+}
 
 import { adjustBalanceRoute } from "@/wallet/infrastructure/adapters/inbound/http/adjustBalance/handler.js";
 // TODO(historical-import-temp): Remove these imports together with the tests
@@ -42,7 +53,7 @@ describe("Wallet command HTTP handlers", () => {
         dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-adj", movementId: "mov-adj" }),
       };
       const app = withContext(new Hono<{ Variables: HonoVariables }>());
-      const handlers = adjustBalanceRoute(commandBus);
+      const handlers = adjustBalanceRoute(mutDeps(commandBus));
       app.post("/wallets/:walletId/adjust", ...handlers);
 
       const res = await app.request("/wallets/wallet-1/adjust", {
@@ -212,7 +223,7 @@ describe("Wallet command HTTP handlers", () => {
         dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-1", movementId: "mov-1" }),
       };
       const app = withContext(new Hono<{ Variables: HonoVariables }>());
-      const handlers = captureHoldRoute(commandBus);
+      const handlers = captureHoldRoute(mutDeps(commandBus));
       app.post("/holds/:holdId/capture", ...handlers);
 
       const res = await app.request("/holds/hold-1/capture", {
@@ -273,7 +284,7 @@ describe("Wallet command HTTP handlers", () => {
         dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-dep", movementId: "mov-dep" }),
       };
       const app = withContext(new Hono<{ Variables: HonoVariables }>());
-      const handlers = depositRoute(commandBus);
+      const handlers = depositRoute(mutDeps(commandBus));
       app.post("/wallets/:walletId/deposit", ...handlers);
 
       const res = await app.request("/wallets/wallet-1/deposit", {
@@ -368,7 +379,7 @@ describe("Wallet command HTTP handlers", () => {
         }),
       };
       const app = withContext(new Hono<{ Variables: HonoVariables }>());
-      const handlers = transferRoute(commandBus);
+      const handlers = transferRoute(mutDeps(commandBus));
       app.post("/transfers", ...handlers);
 
       const res = await app.request("/transfers", {
@@ -434,7 +445,7 @@ describe("Wallet command HTTP handlers", () => {
         dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-ch", movementId: "mov-ch" }),
       };
       const app = withContext(new Hono<{ Variables: HonoVariables }>());
-      const handlers = chargeRoute(commandBus);
+      const handlers = chargeRoute(mutDeps(commandBus));
       app.post("/wallets/:walletId/charge", ...handlers);
 
       const res = await app.request("/wallets/wallet-1/charge", {
@@ -456,7 +467,7 @@ describe("Wallet command HTTP handlers", () => {
         dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-wd", movementId: "mov-wd" }),
       };
       const app = withContext(new Hono<{ Variables: HonoVariables }>());
-      const handlers = withdrawRoute(commandBus);
+      const handlers = withdrawRoute(mutDeps(commandBus));
       app.post("/wallets/:walletId/withdraw", ...handlers);
 
       const res = await app.request("/wallets/wallet-1/withdraw", {
@@ -478,7 +489,7 @@ describe("Wallet command HTTP handlers", () => {
         dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-1", movementId: "mov-1" }),
       };
       const app = withContext(new Hono<{ Variables: HonoVariables }>());
-      app.post("/wallets/:walletId/adjust", ...adjustBalanceRoute(commandBus));
+      app.post("/wallets/:walletId/adjust", ...adjustBalanceRoute(mutDeps(commandBus)));
 
       const res = await app.request("/wallets/wallet-1/adjust", {
         method: "POST",
@@ -498,7 +509,7 @@ describe("Wallet command HTTP handlers", () => {
         dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-1", movementId: "mov-1" }),
       };
       const app = withContext(new Hono<{ Variables: HonoVariables }>());
-      app.post("/holds/:holdId/capture", ...captureHoldRoute(commandBus));
+      app.post("/holds/:holdId/capture", ...captureHoldRoute(mutDeps(commandBus)));
 
       const res = await app.request("/holds/hold-1/capture", { method: "POST" });
 
@@ -514,7 +525,7 @@ describe("Wallet command HTTP handlers", () => {
         dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-1", movementId: "mov-1" }),
       };
       const app = withContext(new Hono<{ Variables: HonoVariables }>());
-      app.post("/wallets/:walletId/deposit", ...depositRoute(commandBus));
+      app.post("/wallets/:walletId/deposit", ...depositRoute(mutDeps(commandBus)));
 
       const res = await app.request("/wallets/wallet-1/deposit", {
         method: "POST",
@@ -538,7 +549,7 @@ describe("Wallet command HTTP handlers", () => {
         }),
       };
       const app = withContext(new Hono<{ Variables: HonoVariables }>());
-      app.post("/transfers", ...transferRoute(commandBus));
+      app.post("/transfers", ...transferRoute(mutDeps(commandBus)));
 
       const res = await app.request("/transfers", {
         method: "POST",
@@ -562,7 +573,7 @@ describe("Wallet command HTTP handlers", () => {
         dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-ch", movementId: "mov-ch" }),
       };
       const app = withContext(new Hono<{ Variables: HonoVariables }>());
-      app.post("/wallets/:walletId/charge", ...chargeRoute(commandBus));
+      app.post("/wallets/:walletId/charge", ...chargeRoute(mutDeps(commandBus)));
 
       const res = await app.request("/wallets/wallet-1/charge", {
         method: "POST",
@@ -582,7 +593,7 @@ describe("Wallet command HTTP handlers", () => {
         dispatch: vi.fn().mockResolvedValue({ transactionId: "txn-wd", movementId: "mov-wd" }),
       };
       const app = withContext(new Hono<{ Variables: HonoVariables }>());
-      app.post("/wallets/:walletId/withdraw", ...withdrawRoute(commandBus));
+      app.post("/wallets/:walletId/withdraw", ...withdrawRoute(mutDeps(commandBus)));
 
       const res = await app.request("/wallets/wallet-1/withdraw", {
         method: "POST",
@@ -615,11 +626,507 @@ describe("Wallet command HTTP handlers", () => {
     it("Given platformId is not set in context, When captureHold POST is called, Then returns 500 error", async () => {
       const commandBus: ICommandBus = { dispatch: vi.fn() };
       const app = withContextNoPlatform(new Hono<{ Variables: HonoVariables }>());
-      app.post("/holds/:holdId/capture", ...captureHoldRoute(commandBus));
+      app.post("/holds/:holdId/capture", ...captureHoldRoute(mutDeps(commandBus)));
 
       const res = await app.request("/holds/hold-1/capture", { method: "POST" });
 
       expect(res.status).toBe(500);
+    });
+  });
+
+  // ── Async-path branches (WALLET_ASYNC_PROCESSING_ENABLED + subscriber wired) ──
+  describe("Async-path mutating handlers", () => {
+    function withAsyncDispatch(commandBus: ICommandBus, observed: unknown, opts?: { queryBus?: IQueryBus }): MutationHandlerDeps {
+      const subscriber = { waitFor: vi.fn().mockResolvedValue(observed) };
+      return {
+        commandBus,
+        queryBus: opts?.queryBus ?? { dispatch: vi.fn() },
+        asyncDispatch: {
+          resultSubscriber: subscriber as unknown as MutationHandlerDeps["asyncDispatch"] extends { resultSubscriber: infer S } ? S : never,
+          handlerWaitMs: 100,
+        },
+      };
+    }
+
+    describe("Given asyncDispatch is wired and the worker publishes a posted result for a deposit", () => {
+      it("Then the handler dispatches EnqueueMovementCommand with type='deposit' + the operation queue_payload, then returns 201 with the body the sync path would have returned", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-d1" }),
+        };
+        const deps = withAsyncDispatch(commandBus, {
+          movementId: "mov-d1",
+          status: "posted",
+          body: { transactionId: "tx-d1", movementId: "mov-d1" },
+        });
+
+        const app = withContext(new Hono<{ Variables: HonoVariables }>());
+        app.post("/wallets/:walletId/deposit", ...depositRoute(deps));
+
+        const res = await app.request("/wallets/wallet-1/deposit", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "idem-d" },
+          body: JSON.stringify({ amount_minor: 1500, reference: "ref-1", metadata: { x: 1 } }),
+        });
+
+        expect(res.status).toBe(201);
+        const body = await res.json();
+        expect(body).toEqual({ transaction_id: "tx-d1", movement_id: "mov-d1" });
+
+        // The bus saw EnqueueMovementCommand (not DepositCommand).
+        const [, cmd] = (commandBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]!;
+        expect(cmd.type).toBe("deposit");
+        expect(cmd.idempotencyKey).toBe("idem-d");
+        expect(cmd.queuePayload).toMatchObject({
+          walletId: "wallet-1",
+          amountMinor: "1500",
+          idempotencyKey: "idem-d",
+          reference: "ref-1",
+        });
+      });
+    });
+
+    describe("Given the wait window expires before a result arrives (deposit slow path)", () => {
+      it("Then the handler returns 202 with the movement_id so the client can poll GET /v1/movements/{id}", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-pending" }),
+        };
+        const deps = withAsyncDispatch(commandBus, null);
+
+        const app = withContext(new Hono<{ Variables: HonoVariables }>());
+        app.post("/wallets/:walletId/deposit", ...depositRoute(deps));
+
+        const res = await app.request("/wallets/wallet-1/deposit", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "idem-d" },
+          body: JSON.stringify({ amount_minor: 1500 }),
+        });
+
+        expect(res.status).toBe(202);
+        const body = await res.json();
+        expect(body).toEqual({ movement_id: "mov-pending", status: "pending" });
+      });
+    });
+
+    describe("Given the worker publishes a failed result", () => {
+      it("Then the handler throws an AppError(domainRule, MOVEMENT_FAILED) carrying the worker's failedReason — the global onError maps it to 422 in production", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-failed" }),
+        };
+        const deps = withAsyncDispatch(commandBus, {
+          movementId: "mov-failed",
+          status: "failed",
+          failedReason: "insufficient funds",
+        });
+
+        // Minimal app.onError mimicking the production handler so the
+        // 422 mapping is exercised end-to-end (kind=DomainRule → 422).
+        const { AppError } = await import("@/utils/kernel/appError.js");
+        const { httpStatus, errorResponse } = await import(
+          "@/utils/infrastructure/hono.error.js"
+        );
+        const app = withContext(new Hono<{ Variables: HonoVariables }>());
+        app.onError((err, c) => {
+          if (AppError.is(err)) {
+            return errorResponse(c, err.code, err.msg, httpStatus(err.kind));
+          }
+          throw err;
+        });
+        app.post("/wallets/:walletId/withdraw", ...withdrawRoute(deps));
+
+        const res = await app.request("/wallets/wallet-1/withdraw", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "idem-w" },
+          body: JSON.stringify({ amount_minor: 100_000 }),
+        });
+
+        expect(res.status).toBe(422);
+        const body = await res.json();
+        expect(body).toEqual({ error: "MOVEMENT_FAILED", message: "insufficient funds" });
+      });
+    });
+
+    describe("Given the async path is on for charge", () => {
+      it("Then the handler dispatches EnqueueMovementCommand with type='charge' + reference + metadata in the queue_payload", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-c" }),
+        };
+        const deps = withAsyncDispatch(commandBus, {
+          movementId: "mov-c",
+          status: "posted",
+          body: { transactionId: "tx-c", movementId: "mov-c" },
+        });
+        const app = withContext(new Hono<{ Variables: HonoVariables }>());
+        app.post("/wallets/:walletId/charge", ...chargeRoute(deps));
+
+        const res = await app.request("/wallets/wallet-1/charge", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "idem-c" },
+          body: JSON.stringify({ amount_minor: 250, reference: "subscription", metadata: { plan: "pro" } }),
+        });
+
+        expect(res.status).toBe(201);
+        const [, cmd] = (commandBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]!;
+        expect(cmd.type).toBe("charge");
+        expect(cmd.queuePayload.reference).toBe("subscription");
+        expect(cmd.queuePayload.metadata).toEqual({ plan: "pro" });
+      });
+    });
+
+    describe("Given the async path is on for adjustBalance", () => {
+      it("Then the queue_payload carries reason + allowNegativeBalance (the boolean flag the sync use case reads from context)", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-a" }),
+        };
+        const deps = withAsyncDispatch(commandBus, {
+          movementId: "mov-a",
+          status: "posted",
+          body: { transactionId: "tx-a", movementId: "mov-a" },
+        });
+        const app = new Hono<{ Variables: HonoVariables }>();
+        app.use("*", async (c, next) => {
+          c.set("trackingId", "test-tracking");
+          c.set("startTs", Date.now());
+          c.set("canonical", new CanonicalAccumulator());
+          c.set("platformId", "platform-1");
+          c.set("allowNegativeBalance", true);
+          await next();
+        });
+        app.post("/wallets/:walletId/adjust", ...adjustBalanceRoute(deps));
+
+        const res = await app.request("/wallets/wallet-1/adjust", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "idem-a" },
+          body: JSON.stringify({
+            amount_minor: -500,
+            reason: "manual fee",
+            reference: "ref-a",
+            metadata: { promo: true },
+          }),
+        });
+
+        expect(res.status).toBe(201);
+        const [, cmd] = (commandBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]!;
+        expect(cmd.type).toBe("adjustment");
+        expect(cmd.queuePayload.reason).toBe("manual fee");
+        expect(cmd.queuePayload.allowNegativeBalance).toBe(true);
+        expect(cmd.queuePayload.amountMinor).toBe("-500");
+        expect(cmd.reason).toBe("manual fee");
+      });
+    });
+
+    describe("Given the async path is on for transfer", () => {
+      it("Then the queue_payload carries source + target wallet ids and the response reshapes outcome.body into the sync transfer JSON", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-t" }),
+        };
+        const deps = withAsyncDispatch(commandBus, {
+          movementId: "mov-t",
+          status: "posted",
+          body: {
+            sourceTransactionId: "tx-src",
+            targetTransactionId: "tx-tgt",
+            movementId: "mov-t",
+          },
+        });
+        const app = withContext(new Hono<{ Variables: HonoVariables }>());
+        app.post("/transfers", ...transferRoute(deps));
+
+        const res = await app.request("/transfers", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "idem-t" },
+          body: JSON.stringify({
+            source_wallet_id: "wallet-a",
+            target_wallet_id: "wallet-b",
+            amount_minor: 1000,
+            reference: "p2p",
+            metadata: { tag: "social" },
+          }),
+        });
+
+        expect(res.status).toBe(201);
+        const body = await res.json();
+        expect(body).toEqual({
+          source_transaction_id: "tx-src",
+          target_transaction_id: "tx-tgt",
+          movement_id: "mov-t",
+        });
+        const [, cmd] = (commandBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]!;
+        expect(cmd.queuePayload.sourceWalletId).toBe("wallet-a");
+        expect(cmd.queuePayload.targetWalletId).toBe("wallet-b");
+      });
+    });
+
+    describe("Given the async path is on for captureHold", () => {
+      it("Then the handler pre-resolves walletId via GetHoldQuery and forwards it in queue_payload so the worker's hydrator never re-queries", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-ch" }),
+        };
+        const queryBus: IQueryBus = {
+          dispatch: vi
+            .fn()
+            .mockResolvedValue({ id: "hold-1", wallet_id: "w-of-hold", status: "active" }),
+        };
+        const deps = withAsyncDispatch(
+          commandBus,
+          {
+            movementId: "mov-ch",
+            status: "posted",
+            body: { transactionId: "tx-ch", movementId: "mov-ch" },
+          },
+          { queryBus },
+        );
+        const app = withContext(new Hono<{ Variables: HonoVariables }>());
+        app.post("/holds/:holdId/capture", ...captureHoldRoute(deps));
+
+        const res = await app.request("/holds/hold-1/capture", {
+          method: "POST",
+          headers: { "idempotency-key": "idem-ch" },
+        });
+
+        expect(res.status).toBe(201);
+        // queryBus.dispatch was called with a GetHoldQuery
+        expect(queryBus.dispatch).toHaveBeenCalledOnce();
+        // commandBus saw EnqueueMovementCommand with pre-resolved walletId
+        const [, cmd] = (commandBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]!;
+        expect(cmd.type).toBe("hold_capture");
+        expect(cmd.queuePayload).toEqual({
+          holdId: "hold-1",
+          walletId: "w-of-hold",
+          idempotencyKey: "idem-ch",
+          systemWalletShardCount: 0,
+        });
+      });
+
+      it("Given the pre-resolve query throws (hold not found or cross-tenant), Then the handler short-circuits BEFORE enqueueing — the worker never sees a wasted message", async () => {
+        const commandBus: ICommandBus = { dispatch: vi.fn() };
+        const queryBus: IQueryBus = {
+          dispatch: vi.fn().mockRejectedValue(new Error("hold not found")),
+        };
+        const deps = withAsyncDispatch(
+          commandBus,
+          {
+            movementId: "mov-ch",
+            status: "posted",
+            body: {},
+          },
+          { queryBus },
+        );
+        const app = withContext(new Hono<{ Variables: HonoVariables }>());
+        app.post("/holds/:holdId/capture", ...captureHoldRoute(deps));
+
+        const res = await app.request("/holds/unknown-hold/capture", {
+          method: "POST",
+          headers: { "idempotency-key": "idem-ch" },
+        });
+
+        expect(res.status).toBe(500); // the AppError-from-query would normally map; the test stub throws plain Error → 500
+        expect(commandBus.dispatch).not.toHaveBeenCalled();
+      });
+    });
+
+    // ── Cover every remaining branch (pending + failed) per handler ──
+    //
+    // The async logic is identical across handlers but each handler has
+    // its own copy of the if/else block (line-coverage requires hitting
+    // each one). These cases are minimal — just enough to exercise the
+    // pending and failed code paths in the five non-deposit/withdraw
+    // handlers tested above.
+    describe("Remaining per-handler async branches", () => {
+      function pendingDeps(commandBus: ICommandBus, opts?: { queryBus?: IQueryBus }): MutationHandlerDeps {
+        return withAsyncDispatch(commandBus, null, opts);
+      }
+      function failedDeps(commandBus: ICommandBus, opts?: { queryBus?: IQueryBus }): MutationHandlerDeps {
+        return withAsyncDispatch(
+          commandBus,
+          { movementId: "mov-f", status: "failed", failedReason: "domain rejection" },
+          opts,
+        );
+      }
+
+      async function buildAppWithOnError() {
+        const { AppError } = await import("@/utils/kernel/appError.js");
+        const { httpStatus, errorResponse } = await import("@/utils/infrastructure/hono.error.js");
+        const app = withContext(new Hono<{ Variables: HonoVariables }>());
+        app.onError((err, c) => {
+          if (AppError.is(err)) return errorResponse(c, err.code, err.msg, httpStatus(err.kind));
+          throw err;
+        });
+        return app;
+      }
+
+      it("deposit: failed branch → 422 MOVEMENT_FAILED", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-f" }),
+        };
+        const app = await buildAppWithOnError();
+        app.post("/wallets/:walletId/deposit", ...depositRoute(failedDeps(commandBus)));
+        const res = await app.request("/wallets/wallet-1/deposit", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "i" },
+          body: JSON.stringify({ amount_minor: 100 }),
+        });
+        expect(res.status).toBe(422);
+      });
+
+      it("withdraw: pending branch → 202", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-p" }),
+        };
+        const app = withContext(new Hono<{ Variables: HonoVariables }>());
+        app.post("/wallets/:walletId/withdraw", ...withdrawRoute(pendingDeps(commandBus)));
+        const res = await app.request("/wallets/wallet-1/withdraw", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "i" },
+          body: JSON.stringify({ amount_minor: 50 }),
+        });
+        expect(res.status).toBe(202);
+      });
+
+      it("withdraw: completed branch with reference + metadata covers both queue_payload spread branches", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-w" }),
+        };
+        const deps = withAsyncDispatch(commandBus, {
+          movementId: "mov-w",
+          status: "posted",
+          body: { transactionId: "tx-w", movementId: "mov-w" },
+        });
+        const app = withContext(new Hono<{ Variables: HonoVariables }>());
+        app.post("/wallets/:walletId/withdraw", ...withdrawRoute(deps));
+        const res = await app.request("/wallets/wallet-1/withdraw", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "i" },
+          body: JSON.stringify({ amount_minor: 50, reference: "atm", metadata: { source: "card" } }),
+        });
+        expect(res.status).toBe(201);
+        const [, cmd] = (commandBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]!;
+        expect(cmd.queuePayload.reference).toBe("atm");
+        expect(cmd.queuePayload.metadata).toEqual({ source: "card" });
+      });
+
+      it("charge: pending branch → 202", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-pc" }),
+        };
+        const app = withContext(new Hono<{ Variables: HonoVariables }>());
+        app.post("/wallets/:walletId/charge", ...chargeRoute(pendingDeps(commandBus)));
+        const res = await app.request("/wallets/wallet-1/charge", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "i" },
+          body: JSON.stringify({ amount_minor: 50 }),
+        });
+        expect(res.status).toBe(202);
+      });
+
+      it("charge: failed branch → 422", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-fc" }),
+        };
+        const app = await buildAppWithOnError();
+        app.post("/wallets/:walletId/charge", ...chargeRoute(failedDeps(commandBus)));
+        const res = await app.request("/wallets/wallet-1/charge", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "i" },
+          body: JSON.stringify({ amount_minor: 50 }),
+        });
+        expect(res.status).toBe(422);
+      });
+
+      it("adjustBalance: pending branch → 202", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-pa" }),
+        };
+        const app = withContext(new Hono<{ Variables: HonoVariables }>());
+        app.post("/wallets/:walletId/adjust", ...adjustBalanceRoute(pendingDeps(commandBus)));
+        const res = await app.request("/wallets/wallet-1/adjust", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "i" },
+          body: JSON.stringify({ amount_minor: 50, reason: "test" }),
+        });
+        expect(res.status).toBe(202);
+      });
+
+      it("adjustBalance: failed branch → 422", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-fa" }),
+        };
+        const app = await buildAppWithOnError();
+        app.post("/wallets/:walletId/adjust", ...adjustBalanceRoute(failedDeps(commandBus)));
+        const res = await app.request("/wallets/wallet-1/adjust", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "i" },
+          body: JSON.stringify({ amount_minor: 50, reason: "test" }),
+        });
+        expect(res.status).toBe(422);
+      });
+
+      it("transfer: pending branch → 202", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-pt" }),
+        };
+        const app = withContext(new Hono<{ Variables: HonoVariables }>());
+        app.post("/transfers", ...transferRoute(pendingDeps(commandBus)));
+        const res = await app.request("/transfers", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "i" },
+          body: JSON.stringify({
+            source_wallet_id: "a",
+            target_wallet_id: "b",
+            amount_minor: 10,
+          }),
+        });
+        expect(res.status).toBe(202);
+      });
+
+      it("transfer: failed branch → 422", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-ft" }),
+        };
+        const app = await buildAppWithOnError();
+        app.post("/transfers", ...transferRoute(failedDeps(commandBus)));
+        const res = await app.request("/transfers", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "i" },
+          body: JSON.stringify({
+            source_wallet_id: "a",
+            target_wallet_id: "b",
+            amount_minor: 10,
+          }),
+        });
+        expect(res.status).toBe(422);
+      });
+
+      it("captureHold: pending branch → 202", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-pch" }),
+        };
+        const queryBus: IQueryBus = {
+          dispatch: vi.fn().mockResolvedValue({ id: "h", wallet_id: "w", status: "active" }),
+        };
+        const app = withContext(new Hono<{ Variables: HonoVariables }>());
+        app.post("/holds/:holdId/capture", ...captureHoldRoute(pendingDeps(commandBus, { queryBus })));
+        const res = await app.request("/holds/h/capture", {
+          method: "POST",
+          headers: { "idempotency-key": "i" },
+        });
+        expect(res.status).toBe(202);
+      });
+
+      it("captureHold: failed branch → 422", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-fch" }),
+        };
+        const queryBus: IQueryBus = {
+          dispatch: vi.fn().mockResolvedValue({ id: "h", wallet_id: "w", status: "active" }),
+        };
+        const app = await buildAppWithOnError();
+        app.post("/holds/:holdId/capture", ...captureHoldRoute(failedDeps(commandBus, { queryBus })));
+        const res = await app.request("/holds/h/capture", {
+          method: "POST",
+          headers: { "idempotency-key": "i" },
+        });
+        expect(res.status).toBe(422);
+      });
     });
   });
 });

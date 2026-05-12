@@ -7,6 +7,7 @@ import { captureHoldRoute } from "./captureHold/handler.js";
 import { getHoldRoute } from "./getHold/handler.js";
 import { listHoldsRoute } from "./listHolds/handler.js";
 import { placeHoldRoute } from "./placeHold/handler.js";
+import { buildMutationDeps } from "./types.js";
 import { voidHoldRoute } from "./voidHold/handler.js";
 
 export function holdRoutes(deps: Dependencies) {
@@ -16,7 +17,7 @@ export function holdRoutes(deps: Dependencies) {
 
   // Commands
   router.post("/", auth, idemp, ...placeHoldRoute(deps.commandBus));
-  router.post("/:holdId/capture", auth, idemp, ...captureHoldRoute(deps.commandBus));
+  router.post("/:holdId/capture", auth, idemp, ...captureHoldRoute(buildMutationDeps(deps)));
   router.post("/:holdId/void", auth, ...voidHoldRoute(deps.commandBus));
 
   // Queries

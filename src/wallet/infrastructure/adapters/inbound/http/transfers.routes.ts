@@ -4,13 +4,14 @@ import { apiKeyAuth } from "../../../../../utils/infrastructure/middleware/apiKe
 import { idempotency } from "../../../../../utils/infrastructure/middleware/idempotency.js";
 import type { Dependencies } from "../../../../../wiring.js";
 import { transferRoute } from "./transfer/handler.js";
+import { buildMutationDeps } from "./types.js";
 
 export function transferRoutes(deps: Dependencies) {
   const router = new Hono<{ Variables: HonoVariables }>();
   const auth = apiKeyAuth(deps.prisma);
   const idemp = idempotency(deps.idempotencyStore, deps.logger);
 
-  router.post("/", auth, idemp, ...transferRoute(deps.commandBus));
+  router.post("/", auth, idemp, ...transferRoute(buildMutationDeps(deps)));
 
   return router;
 }

@@ -18,6 +18,7 @@ import { getWalletRoute } from "./getWallet/handler.js";
 // registration and the whole importHistoricalEntry/ folder after migration.
 import { importHistoricalEntryRoute } from "./importHistoricalEntry/handler.js";
 import { listWalletsRoute } from "./listWallets/handler.js";
+import { buildMutationDeps } from "./types.js";
 import { unfreezeWalletRoute } from "./unfreezeWallet/handler.js";
 import { withdrawRoute } from "./withdraw/handler.js";
 
@@ -36,13 +37,14 @@ export function walletRoutes(deps: Dependencies) {
   const router = new Hono<{ Variables: HonoVariables }>();
   const auth = apiKeyAuth(deps.prisma);
   const idemp = idempotency(deps.idempotencyStore, deps.logger);
+  const mutDeps = buildMutationDeps(deps);
 
   // Commands
   router.post("/", auth, idemp, ...createWalletRoute(deps.commandBus));
-  router.post("/:walletId/deposit", auth, idemp, ...depositRoute(deps.commandBus));
-  router.post("/:walletId/withdraw", auth, idemp, ...withdrawRoute(deps.commandBus));
-  router.post("/:walletId/charge", auth, idemp, ...chargeRoute(deps.commandBus));
-  router.post("/:walletId/adjust", auth, idemp, ...adjustBalanceRoute(deps.commandBus));
+  router.post("/:walletId/deposit", auth, idemp, ...depositRoute(mutDeps));
+  router.post("/:walletId/withdraw", auth, idemp, ...withdrawRoute(mutDeps));
+  router.post("/:walletId/charge", auth, idemp, ...chargeRoute(mutDeps));
+  router.post("/:walletId/adjust", auth, idemp, ...adjustBalanceRoute(mutDeps));
   // TODO(historical-import-temp): Remove this route registration together
   // with the rest of the import-historical-entry feature after migration.
   router.post(

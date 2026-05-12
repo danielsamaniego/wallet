@@ -1,5 +1,4 @@
 import { describeRoute, resolver, validator as zValidator } from "hono-openapi";
-import type { ICommandBus } from "../../../../../../utils/application/cqrs.js";
 import {
   buildAuthenticatedAppContext,
   handlerFactory,
@@ -8,10 +7,16 @@ import {
   ErrorResponseSchema,
   validationHook,
 } from "../../../../../../utils/infrastructure/hono.error.js";
-import { TransferCommand } from "../../../../../application/command/transfer/command.js";
+import { AppError } from "../../../../../../utils/kernel/appError.js";
+import {
+  TransferCommand,
+  type TransferResult,
+} from "../../../../../application/command/transfer/command.js";
+import { asyncDispatch } from "../../../../../application/worker/asyncDispatch.js";
+import type { MutationHandlerDeps } from "../types.js";
 import { BodySchema, ResponseSchema } from "./schemas.js";
 
-export function transferRoute(commandBus: ICommandBus) {
+export function transferRoute(deps: MutationHandlerDeps) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Transfers"],
@@ -19,6 +24,11 @@ export function transferRoute(commandBus: ICommandBus) {
       responses: {
         201: {
           description: "Transfer completed",
+          content: { "application/json": { schema: resolver(ResponseSchema) } },
+        },
+        202: {
+          description:
+            "Async pipeline accepted the transfer but the worker did not finish before the wait window. Poll GET /v1/movements/{id} for the terminal state.",
           content: { "application/json": { schema: resolver(ResponseSchema) } },
         },
         400: {
@@ -35,7 +45,8 @@ export function transferRoute(commandBus: ICommandBus) {
           content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
         },
         422: {
-          description: "Insufficient funds or currency mismatch",
+          description:
+            "Insufficient funds, currency mismatch, or async pipeline returned a terminal failure (the reason is surfaced as the error message).",
           content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
         },
       },
@@ -44,15 +55,52 @@ export function transferRoute(commandBus: ICommandBus) {
     async (c) => {
       const data = c.req.valid("json");
       const ctx = buildAuthenticatedAppContext(c);
+      const idempotencyKey = c.req.header("idempotency-key") ?? "";
 
-      const result = await commandBus.dispatch(
+      if (deps.asyncDispatch) {
+        const outcome = await asyncDispatch<TransferResult>(
+          ctx,
+          deps.commandBus,
+          deps.asyncDispatch.resultSubscriber,
+          deps.asyncDispatch.handlerWaitMs,
+          {
+            type: "transfer",
+            platformId: ctx.platformId,
+            idempotencyKey,
+            queuePayload: {
+              sourceWalletId: data.source_wallet_id,
+              targetWalletId: data.target_wallet_id,
+              amountMinor: String(data.amount_minor),
+              idempotencyKey,
+              ...(data.reference !== undefined ? { reference: data.reference } : {}),
+              ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
+            },
+          },
+        );
+        if (outcome.kind === "completed") {
+          return c.json(
+            {
+              source_transaction_id: outcome.body.sourceTransactionId,
+              target_transaction_id: outcome.body.targetTransactionId,
+              movement_id: outcome.movementId,
+            },
+            201,
+          );
+        }
+        if (outcome.kind === "pending") {
+          return c.json({ movement_id: outcome.movementId, status: "pending" as const }, 202);
+        }
+        throw AppError.domainRule("MOVEMENT_FAILED", outcome.failedReason);
+      }
+
+      const result = await deps.commandBus.dispatch(
         ctx,
         new TransferCommand(
           data.source_wallet_id,
           data.target_wallet_id,
           ctx.platformId,
           BigInt(data.amount_minor),
-          c.req.header("idempotency-key") ?? "",
+          idempotencyKey,
           data.reference,
           data.metadata,
         ),
