@@ -42,7 +42,15 @@
 - Local DB backfill (against the loaded prod backup): 46,249 movements got `platform_id`, 40,828 orphans remain NULL (legacy data-integrity artifacts that the API never exposed anyway).
 - Unit suite: 976/976 at 100% coverage. E2E: 277/277 unchanged.
 
-**Phase 2B.2+ (next):**
+**Phase 2B.2 (completed — Movement state machine + repo write methods):**
+- `Movement` aggregate gains immutable `transitionToProcessing()`, `transitionToPosted()`, `transitionToFailed(reason)` methods that return a *new* Movement aggregate (preserving the immutability of the domain object). Invalid transitions throw `INVALID_MOVEMENT_TRANSITION` via the new `movement.errors.ts`.
+- `IMovementRepository` gains `findById`, `markProcessing`, `markPosted`, `markFailed`. `markProcessing` is an atomic claim (`updateMany WHERE id AND status='pending'`): returns the reloaded Movement when count=1, returns `null` when another worker already claimed the row (count=0). `markPosted` / `markFailed` use the same `WHERE status='processing'` guard and throw `MOVEMENT_NOT_FOUND` when the row is no longer in the expected state.
+- `PrismaMovementRepo` implements all four with concrete Prisma calls.
+- DB trigger overhaul in `prisma/immutable_ledger.sql`: the old `movements_immutable` trigger that blocked all UPDATEs is replaced by two triggers. `movements_lifecycle_only_update` runs `prevent_movement_modify_except_lifecycle()`, which allows only `status` (along the state machine) and `failed_reason` to change; every other column raises an exception. `movements_no_delete` keeps the DELETE block. Verified end-to-end with raw SQL: valid `pending → processing → posted` succeeds, invalid `pending → posted` and any `type` change are rejected.
+- `src/index.ts` startup safety-net check updated to expect the new trigger names.
+- Unit: 1000/1000 at 100% coverage. E2E: 277/277 unchanged.
+
+**Phase 2B.3+ (next):**
 1. `EnqueueMovementUseCase`: validate input, INSERT `Movement(status="pending", platform_id=cmd.platformId)` + idempotency placeholder, publish to `IMovementQueuePublisher`, await on `IResultPublisher`'s subscriber channel (with a configurable `WALLET_HANDLER_WAIT_MS` timeout) — return `200` with full body if the worker beats the timeout, `202 { movement_id, status: "processing" }` otherwise.
 2. Worker entry: claim `pending → processing`, fetch the persisted Movement, then call the appropriate `<op>Service.execute(ctx, cmd, movement)` directly from the inbound worker adapter (no `ProcessMovementUseCase` needed — the service IS the shared layer). Transition to `posted` (or `failed` after exhausted retries), publish result + invalidate balance cache via `IResultPublisher`.
 3. Concrete adapters: `QStashMovementQueuePublisher` (uses the `@upstash/qstash` `Client.queue(name).enqueueJSON({...})`) and `RedisResultPublisher` (PUBLISH + short-TTL SET for the late-subscriber race).

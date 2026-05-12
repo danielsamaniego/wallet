@@ -6,6 +6,8 @@ export type MovementType =
   | "adjustment"
   | "charge";
 
+import { ErrInvalidMovementTransition } from "./movement.errors.js";
+
 export type MovementStatus = "pending" | "processing" | "posted" | "failed" | "reversed";
 
 export class Movement {
@@ -79,6 +81,65 @@ export class Movement {
       _createdAt: params.createdAt,
     });
     return m;
+  }
+
+  /**
+   * `pending → processing`. Called by the async worker when it claims a
+   * queued movement. Returns a new Movement; the original is left untouched
+   * (immutable aggregate).
+   */
+  transitionToProcessing(): Movement {
+    if (this._status !== "pending") {
+      throw ErrInvalidMovementTransition(this._id, this._status, "processing");
+    }
+    return Movement.reconstruct({
+      id: this._id,
+      type: this._type,
+      status: "processing",
+      platformId: this._platformId,
+      reason: this._reason,
+      failedReason: this._failedReason,
+      createdAt: this._createdAt,
+    });
+  }
+
+  /**
+   * `processing → posted`. Called by the worker after the business
+   * transaction commits successfully.
+   */
+  transitionToPosted(): Movement {
+    if (this._status !== "processing") {
+      throw ErrInvalidMovementTransition(this._id, this._status, "posted");
+    }
+    return Movement.reconstruct({
+      id: this._id,
+      type: this._type,
+      status: "posted",
+      platformId: this._platformId,
+      reason: this._reason,
+      failedReason: this._failedReason,
+      createdAt: this._createdAt,
+    });
+  }
+
+  /**
+   * `processing → failed`. Called by the worker after the queue exhausts
+   * retries (or the business transaction throws a non-retryable error).
+   * The reason is a free-form code emitted for ops dashboards.
+   */
+  transitionToFailed(reason: string): Movement {
+    if (this._status !== "processing") {
+      throw ErrInvalidMovementTransition(this._id, this._status, "failed");
+    }
+    return Movement.reconstruct({
+      id: this._id,
+      type: this._type,
+      status: "failed",
+      platformId: this._platformId,
+      reason: this._reason,
+      failedReason: reason,
+      createdAt: this._createdAt,
+    });
   }
 
   get id(): string {

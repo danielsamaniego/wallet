@@ -14,7 +14,7 @@ import { Hold } from "@/wallet/domain/hold/hold.entity.js";
 import { LedgerEntry } from "@/wallet/domain/ledgerEntry/ledgerEntry.entity.js";
 import { Movement } from "@/wallet/domain/movement/movement.entity.js";
 import { Transaction } from "@/wallet/domain/transaction/transaction.entity.js";
-import { AppError } from "@/utils/kernel/appError.js";
+import { AppError, ErrorKind } from "@/utils/kernel/appError.js";
 import { createTestContext } from "@test/helpers/builders/index.js";
 import { createMockIDGenerator, createMockLogger } from "@test/helpers/mocks/index.js";
 import type { ListingQuery } from "@/utils/kernel/listing.js";
@@ -1125,8 +1125,26 @@ describe("PrismaLedgerEntryRepo", () => {
 describe("PrismaMovementRepo", () => {
   const ctx = createTestContext();
 
+  function buildMovementRow(overrides?: Partial<Record<string, unknown>>) {
+    return {
+      id: "mov-1",
+      type: "deposit",
+      status: "pending",
+      platformId: "platform-1",
+      reason: null,
+      failedReason: null,
+      createdAt: 1700000000000n,
+      ...overrides,
+    };
+  }
+
   function buildRepo() {
-    const movement = { create: vi.fn().mockResolvedValue({}) };
+    const movement = {
+      create: vi.fn().mockResolvedValue({}),
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      updateMany: vi.fn(),
+    };
     const prisma = { movement } as any;
     const logger = createMockLogger();
     const repo = new PrismaMovementRepo(prisma, logger);
@@ -1140,7 +1158,12 @@ describe("PrismaMovementRepo", () => {
       const { repo } = buildRepo();
       const txCtx = createTestContext({ opCtx: txClient });
 
-      const mov = Movement.create({ id: "mov-1", type: "transfer", createdAt: 1700000000000 });
+      const mov = Movement.create({
+        id: "mov-1",
+        type: "transfer",
+        platformId: "platform-1",
+        createdAt: 1700000000000,
+      });
 
       await repo.save(txCtx, mov);
 
@@ -1152,7 +1175,12 @@ describe("PrismaMovementRepo", () => {
     it("Given a context without opCtx, When save is called, Then uses the default prisma client", async () => {
       const { repo, movement } = buildRepo();
 
-      const mov = Movement.create({ id: "mov-1", type: "transfer", createdAt: 1700000000000 });
+      const mov = Movement.create({
+        id: "mov-1",
+        type: "transfer",
+        platformId: "platform-1",
+        createdAt: 1700000000000,
+      });
 
       await repo.save(ctx, mov);
 
@@ -1211,6 +1239,117 @@ describe("PrismaMovementRepo", () => {
           createdAt: 1700000000000n,
         },
       });
+    });
+  });
+
+  describe("findById", () => {
+    it("Given a movement owned by the platform, When findById is called, Then it returns the reconstructed Movement", async () => {
+      const { repo, movement } = buildRepo();
+      movement.findFirst.mockResolvedValue(buildMovementRow({ status: "pending" }));
+
+      const result = await repo.findById(ctx, "mov-1", "platform-1");
+
+      expect(movement.findFirst).toHaveBeenCalledWith({
+        where: { id: "mov-1", platformId: "platform-1" },
+      });
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe("mov-1");
+      expect(result!.status).toBe("pending");
+      expect(result!.platformId).toBe("platform-1");
+    });
+
+    it("Given no row matches the (id, platformId) pair, When findById is called, Then it returns null", async () => {
+      const { repo, movement } = buildRepo();
+      movement.findFirst.mockResolvedValue(null);
+
+      const result = await repo.findById(ctx, "mov-1", "platform-1");
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("markProcessing", () => {
+    it("Given a pending row, When markProcessing is called, Then the updateMany claims it (status='pending' guard) and the reconstructed Movement is returned", async () => {
+      const { repo, movement } = buildRepo();
+      movement.updateMany.mockResolvedValue({ count: 1 });
+      movement.findUnique.mockResolvedValue(buildMovementRow({ status: "processing" }));
+
+      const result = await repo.markProcessing(ctx, "mov-1");
+
+      expect(movement.updateMany).toHaveBeenCalledWith({
+        where: { id: "mov-1", status: "pending" },
+        data: { status: "processing" },
+      });
+      expect(result).not.toBeNull();
+      expect(result!.status).toBe("processing");
+    });
+
+    it("Given the row is no longer pending (concurrent worker won the race), When markProcessing is called, Then it returns null without re-loading", async () => {
+      const { repo, movement } = buildRepo();
+      movement.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await repo.markProcessing(ctx, "mov-1");
+
+      expect(result).toBeNull();
+      expect(movement.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("Given the row disappears between the claim and the reload, When markProcessing is called, Then it throws MOVEMENT_NOT_FOUND (defensive)", async () => {
+      const { repo, movement } = buildRepo();
+      movement.updateMany.mockResolvedValue({ count: 1 });
+      movement.findUnique.mockResolvedValue(null);
+
+      await expect(repo.markProcessing(ctx, "mov-1")).rejects.toSatisfy((err: AppError) => {
+        return err.kind === ErrorKind.NotFound && err.code === "MOVEMENT_NOT_FOUND";
+      });
+    });
+  });
+
+  describe("markPosted", () => {
+    it("Given a processing row, When markPosted is called, Then the updateMany transitions it to posted", async () => {
+      const { repo, movement } = buildRepo();
+      movement.updateMany.mockResolvedValue({ count: 1 });
+
+      await repo.markPosted(ctx, "mov-1");
+
+      expect(movement.updateMany).toHaveBeenCalledWith({
+        where: { id: "mov-1", status: "processing" },
+        data: { status: "posted" },
+      });
+    });
+
+    it("Given no row is in processing, When markPosted is called, Then it throws MOVEMENT_NOT_FOUND", async () => {
+      const { repo, movement } = buildRepo();
+      movement.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(repo.markPosted(ctx, "mov-1")).rejects.toSatisfy((err: AppError) => {
+        return err.kind === ErrorKind.NotFound && err.code === "MOVEMENT_NOT_FOUND";
+      });
+    });
+  });
+
+  describe("markFailed", () => {
+    it("Given a processing row, When markFailed is called with a reason, Then the updateMany transitions to failed and stores the reason", async () => {
+      const { repo, movement } = buildRepo();
+      movement.updateMany.mockResolvedValue({ count: 1 });
+
+      await repo.markFailed(ctx, "mov-1", "qstash_max_attempts_exceeded");
+
+      expect(movement.updateMany).toHaveBeenCalledWith({
+        where: { id: "mov-1", status: "processing" },
+        data: { status: "failed", failedReason: "qstash_max_attempts_exceeded" },
+      });
+    });
+
+    it("Given no row is in processing, When markFailed is called, Then it throws MOVEMENT_NOT_FOUND", async () => {
+      const { repo, movement } = buildRepo();
+      movement.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(repo.markFailed(ctx, "mov-1", "anything")).rejects.toSatisfy(
+        (err: AppError) => {
+          return err.kind === ErrorKind.NotFound && err.code === "MOVEMENT_NOT_FOUND";
+        },
+      );
     });
   });
 });

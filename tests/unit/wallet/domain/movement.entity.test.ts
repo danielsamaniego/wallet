@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Movement } from "@/wallet/domain/movement/movement.entity.js";
+import { AppError, ErrorKind } from "@/utils/kernel/appError.js";
 
 const NOW = 1700000000000;
 const PLATFORM_ID = "platform-1";
@@ -201,5 +202,165 @@ describe("Movement Entity", () => {
         });
       });
     });
+  });
+
+  // ── State-machine transitions ─────────────────────────────────────
+
+  function pending(): Movement {
+    return Movement.reconstruct({
+      id: "mov-fsm",
+      type: "deposit",
+      status: "pending",
+      platformId: PLATFORM_ID,
+      reason: null,
+      failedReason: null,
+      createdAt: NOW,
+    });
+  }
+
+  function processing(): Movement {
+    return Movement.reconstruct({
+      id: "mov-fsm",
+      type: "deposit",
+      status: "processing",
+      platformId: PLATFORM_ID,
+      reason: null,
+      failedReason: null,
+      createdAt: NOW,
+    });
+  }
+
+  describe("transitionToProcessing", () => {
+    describe("Given a pending movement", () => {
+      describe("When transitioning to processing", () => {
+        it("Then it returns a NEW Movement in processing status, with all other fields preserved", () => {
+          const m = pending();
+          const next = m.transitionToProcessing();
+
+          expect(next).not.toBe(m);
+          expect(m.status).toBe("pending");
+          expect(next.id).toBe(m.id);
+          expect(next.type).toBe(m.type);
+          expect(next.platformId).toBe(m.platformId);
+          expect(next.reason).toBe(m.reason);
+          expect(next.failedReason).toBe(m.failedReason);
+          expect(next.createdAt).toBe(m.createdAt);
+          expect(next.status).toBe("processing");
+        });
+      });
+    });
+
+    describe.each(["processing", "posted", "failed", "reversed"] as const)(
+      "Given a movement already in status %s",
+      (s) => {
+        describe("When transitioning to processing", () => {
+          it("Then it throws INVALID_MOVEMENT_TRANSITION", () => {
+            const m = Movement.reconstruct({
+              id: "mov-fsm",
+              type: "deposit",
+              status: s,
+              platformId: PLATFORM_ID,
+              reason: null,
+              failedReason: null,
+              createdAt: NOW,
+            });
+            expect(() => m.transitionToProcessing()).toSatisfy((thrown) => {
+              const err = (() => {
+                try {
+                  (thrown as () => Movement)();
+                } catch (e) {
+                  return e as AppError;
+                }
+                return new Error("did not throw");
+              })();
+              return (
+                AppError.is(err) &&
+                err.kind === ErrorKind.DomainRule &&
+                err.code === "INVALID_MOVEMENT_TRANSITION"
+              );
+            });
+          });
+        });
+      },
+    );
+  });
+
+  describe("transitionToPosted", () => {
+    describe("Given a processing movement", () => {
+      describe("When transitioning to posted", () => {
+        it("Then it returns a new Movement in posted status, preserving all other fields", () => {
+          const next = processing().transitionToPosted();
+          expect(next.status).toBe("posted");
+          expect(next.failedReason).toBeNull();
+          expect(next.platformId).toBe(PLATFORM_ID);
+        });
+      });
+    });
+
+    describe.each(["pending", "posted", "failed", "reversed"] as const)(
+      "Given a movement in status %s (not processing)",
+      (s) => {
+        describe("When transitioning to posted", () => {
+          it("Then it throws INVALID_MOVEMENT_TRANSITION", () => {
+            const m = Movement.reconstruct({
+              id: "mov-fsm",
+              type: "deposit",
+              status: s,
+              platformId: PLATFORM_ID,
+              reason: null,
+              failedReason: null,
+              createdAt: NOW,
+            });
+            expect(() => m.transitionToPosted()).toThrow();
+          });
+        });
+      },
+    );
+  });
+
+  describe("transitionToFailed", () => {
+    describe("Given a processing movement", () => {
+      describe("When transitioning to failed with a reason", () => {
+        it("Then it returns a new Movement in failed status with the failedReason set", () => {
+          const next = processing().transitionToFailed("qstash_max_attempts_exceeded");
+          expect(next.status).toBe("failed");
+          expect(next.failedReason).toBe("qstash_max_attempts_exceeded");
+        });
+      });
+    });
+
+    describe.each(["pending", "posted", "failed", "reversed"] as const)(
+      "Given a movement in status %s (not processing)",
+      (s) => {
+        describe("When transitioning to failed", () => {
+          it("Then it throws INVALID_MOVEMENT_TRANSITION", () => {
+            const m = Movement.reconstruct({
+              id: "mov-fsm",
+              type: "deposit",
+              status: s,
+              platformId: PLATFORM_ID,
+              reason: null,
+              failedReason: null,
+              createdAt: NOW,
+            });
+            expect(() => m.transitionToFailed("any-reason")).toSatisfy((thrown) => {
+              const err = (() => {
+                try {
+                  (thrown as () => Movement)();
+                } catch (e) {
+                  return e as AppError;
+                }
+                return new Error("did not throw");
+              })();
+              return (
+                AppError.is(err) &&
+                err.kind === ErrorKind.DomainRule &&
+                err.code === "INVALID_MOVEMENT_TRANSITION"
+              );
+            });
+          });
+        });
+      },
+    );
   });
 });

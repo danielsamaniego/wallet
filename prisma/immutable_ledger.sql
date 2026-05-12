@@ -30,10 +30,62 @@ CREATE TRIGGER transactions_immutable
   BEFORE UPDATE OR DELETE ON transactions
   FOR EACH ROW EXECUTE FUNCTION prevent_immutable_modify();
 
--- movements: groups of transactions (journal entries)
+-- movements: groups of transactions (journal entries).
+-- DELETE is fully blocked (same as transactions/ledger_entries).
+-- UPDATE is *almost* blocked: only the lifecycle columns `status` and
+-- `failed_reason` may change, and only along the documented state machine
+-- (see docs/domain.md § "Movement Status (lifecycle)"). Every other column
+-- (id, type, platform_id, reason, created_at) is immutable; any change is
+-- a programming error.
+--
+-- The async movement-processing pipeline requires status transitions
+-- (pending → processing → posted | failed). For the period BEFORE Phase 2B
+-- ships, this trigger is effectively a no-op on `status` because no code
+-- path issues those UPDATEs; the looser rule is forward-compatible.
 DROP TRIGGER IF EXISTS movements_immutable ON movements;
-CREATE TRIGGER movements_immutable
-  BEFORE UPDATE OR DELETE ON movements
+DROP TRIGGER IF EXISTS movements_no_delete ON movements;
+DROP TRIGGER IF EXISTS movements_lifecycle_only_update ON movements;
+
+CREATE OR REPLACE FUNCTION prevent_movement_modify_except_lifecycle()
+RETURNS trigger AS $$
+BEGIN
+  IF OLD.id IS DISTINCT FROM NEW.id THEN
+    RAISE EXCEPTION 'movements.id is immutable';
+  END IF;
+  IF OLD.type IS DISTINCT FROM NEW.type THEN
+    RAISE EXCEPTION 'movements.type is immutable';
+  END IF;
+  IF OLD.platform_id IS DISTINCT FROM NEW.platform_id THEN
+    RAISE EXCEPTION 'movements.platform_id is immutable';
+  END IF;
+  IF OLD.reason IS DISTINCT FROM NEW.reason THEN
+    RAISE EXCEPTION 'movements.reason is immutable';
+  END IF;
+  IF OLD.created_at IS DISTINCT FROM NEW.created_at THEN
+    RAISE EXCEPTION 'movements.created_at is immutable';
+  END IF;
+
+  IF OLD.status IS DISTINCT FROM NEW.status THEN
+    IF NOT (
+      (OLD.status = 'pending'    AND NEW.status = 'processing') OR
+      (OLD.status = 'processing' AND NEW.status IN ('posted', 'failed')) OR
+      (OLD.status = 'posted'     AND NEW.status = 'reversed')
+    ) THEN
+      RAISE EXCEPTION 'INVALID_MOVEMENT_TRANSITION: movement % cannot transition from % to %',
+        NEW.id, OLD.status, NEW.status;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER movements_lifecycle_only_update
+  BEFORE UPDATE ON movements
+  FOR EACH ROW EXECUTE FUNCTION prevent_movement_modify_except_lifecycle();
+
+CREATE TRIGGER movements_no_delete
+  BEFORE DELETE ON movements
   FOR EACH ROW EXECUTE FUNCTION prevent_immutable_modify();
 
 -- Chain validation: each ledger entry must chain correctly from the previous entry.

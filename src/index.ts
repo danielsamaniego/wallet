@@ -16,7 +16,8 @@ async function verifyDatabaseSafetyNets(prisma: PrismaClient): Promise<void> {
   const triggers = await prisma.$queryRaw<{ tgname: string }[]>`
     SELECT tgname FROM pg_trigger
     WHERE tgname IN (
-      'ledger_entries_immutable', 'transactions_immutable', 'movements_immutable',
+      'ledger_entries_immutable', 'transactions_immutable',
+      'movements_lifecycle_only_update', 'movements_no_delete',
       'trg_ledger_chain_validation',
       'trg_reconcile_after_ledger',
       'trg_wallet_field_lock',
@@ -30,7 +31,12 @@ async function verifyDatabaseSafetyNets(prisma: PrismaClient): Promise<void> {
   const expectedTriggers = [
     "ledger_entries_immutable",
     "transactions_immutable",
-    "movements_immutable",
+    // movements has a column-aware UPDATE trigger plus a separate DELETE
+    // guard — see prisma/immutable_ledger.sql § "movements" (Phase 2B.2):
+    // only `status` (along the lifecycle state machine) and
+    // `failed_reason` may change; every other column is immutable.
+    "movements_lifecycle_only_update",
+    "movements_no_delete",
     "trg_ledger_chain_validation",
     "trg_reconcile_after_ledger",
     "trg_wallet_field_lock",
