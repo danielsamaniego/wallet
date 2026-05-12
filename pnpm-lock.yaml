@@ -23,9 +23,6 @@ importers:
       '@prisma/client-runtime-utils':
         specifier: ^7.7.0
         version: 7.7.0
-      '@prisma/extension-accelerate':
-        specifier: ^3.0.1
-        version: 3.0.1(@prisma/client@7.5.0(prisma@7.5.0(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3))
       '@scalar/hono-api-reference':
         specifier: ^0.10.4
         version: 0.10.4(hono@4.12.8)
@@ -444,12 +441,6 @@ packages:
 
   '@prisma/engines@7.5.0':
     resolution: {integrity: sha512-ondGRhzoaVpRWvFaQ5wH5zS1BIbhzbKqczKjCn6j3L0Zfe/LInjcEg8+xtB49AuZBX30qyx1ZtGoootUohz2pw==}
-
-  '@prisma/extension-accelerate@3.0.1':
-    resolution: {integrity: sha512-xc+kn4AjjTzS9jsdD1JWCebB09y0Aj+C8GjjG7oUm81PF9psvmJOw5rxpl7tOEBz/8hmuNX996XL28ys/OLxVA==}
-    engines: {node: '>=22'}
-    peerDependencies:
-      '@prisma/client': '>=4.16.1'
 
   '@prisma/fetch-engine@7.5.0':
     resolution: {integrity: sha512-kZCl2FV54qnyrVdnII8MI6qvt7HfU6Cbiz8dZ8PXz4f4lbSw45jEB9/gEMK2SGdiNhBKyk/Wv95uthoLhGMLYA==}
@@ -1908,10 +1899,6 @@ snapshots:
       '@prisma/engines-version': 7.5.0-15.280c870be64f457428992c43c1f6d557fab6e29e
       '@prisma/fetch-engine': 7.5.0
       '@prisma/get-platform': 7.5.0
-
-  '@prisma/extension-accelerate@3.0.1(@prisma/client@7.5.0(prisma@7.5.0(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3))':
-    dependencies:
-      '@prisma/client': 7.5.0(prisma@7.5.0(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3)
 
   '@prisma/fetch-engine@7.5.0':
     dependencies:
