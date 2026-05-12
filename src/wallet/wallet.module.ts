@@ -17,6 +17,8 @@ import { CreateWalletUseCase } from "./application/command/createWallet/usecase.
 import { DepositCommand } from "./application/command/deposit/command.js";
 import { DepositService } from "./application/command/deposit/service.js";
 import { DepositUseCase } from "./application/command/deposit/usecase.js";
+import { EnqueueMovementCommand } from "./application/command/enqueueMovement/command.js";
+import { EnqueueMovementUseCase } from "./application/command/enqueueMovement/usecase.js";
 import { ExpireHoldsCommand } from "./application/command/expireHolds/command.js";
 import { ExpireHoldsUseCase } from "./application/command/expireHolds/usecase.js";
 import { FreezeWalletCommand } from "./application/command/freezeWallet/command.js";
@@ -70,6 +72,7 @@ export function wire({
   idGen,
   txManager,
   lockRunner,
+  movementQueuePublisher,
 }: SharedInfra): ModuleHandlers {
   // Repos
   const walletRepo = new PrismaWalletRepo(prisma, logger, idGen);
@@ -221,6 +224,14 @@ export function wire({
   const voidHold = new VoidHoldUseCase(txManager, walletRepo, holdRepo, logger, lockRunner);
   const expireHolds = new ExpireHoldsUseCase(holdRepo, logger);
 
+  // Async pipeline entry point. Registered only when the QStash publisher is
+  // present in SharedInfra (i.e. config.asyncPipeline is fully set). When
+  // absent, dispatching EnqueueMovementCommand will fail-fast at the bus —
+  // the HTTP handler refactor (Phase 2B.6) keeps the sync path in that case.
+  const enqueueMovement = movementQueuePublisher
+    ? new EnqueueMovementUseCase(movementRepo, movementQueuePublisher, idGen, logger)
+    : undefined;
+
   return {
     commands: [
       { type: AdjustBalanceCommand.TYPE, handler: adjustBalance },
@@ -239,6 +250,7 @@ export function wire({
       { type: CaptureHoldCommand.TYPE, handler: captureHold },
       { type: VoidHoldCommand.TYPE, handler: voidHold },
       { type: ExpireHoldsCommand.TYPE, handler: expireHolds },
+      ...(enqueueMovement ? [{ type: EnqueueMovementCommand.TYPE, handler: enqueueMovement }] : []),
     ],
     queries: [
       { type: GetWalletQuery.TYPE, handler: getWallet },

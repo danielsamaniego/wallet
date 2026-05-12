@@ -1,11 +1,13 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { withAccelerate } from "@prisma/extension-accelerate";
-import { Receiver } from "@upstash/qstash";
+import { Client as QStashClient, Receiver } from "@upstash/qstash";
 import { Redis as UpstashRedis } from "@upstash/redis";
 import { Redis as IORedis } from "ioredis";
 import type { IQStashReceiver } from "./utils/infrastructure/middleware/qstashSignature.js";
 import { createAppContext } from "./utils/kernel/context.js";
+import type { IMovementQueuePublisher } from "./wallet/domain/ports/movement.queue.publisher.js";
+import { QStashMovementQueuePublisher } from "./wallet/infrastructure/adapters/outbound/qstash/movement.queue.publisher.js";
 
 /**
  * Strips credentials from a redis[s]:// URL for safe logging.
@@ -64,6 +66,13 @@ export interface SharedInfra {
    * disabled or the backend is down, the runner falls through transparently.
    */
   lockRunner: LockRunner;
+  /**
+   * Outbound queue publisher for the async movement-processing pipeline.
+   * Present only when `config.asyncPipeline` is wired (all QStash env vars
+   * set). When absent, the `EnqueueMovementCommand` handler is not
+   * registered on the bus and the HTTP layer stays on the synchronous path.
+   */
+  movementQueuePublisher?: IMovementQueuePublisher;
 }
 
 export interface CommandRegistration {
@@ -284,7 +293,45 @@ export function wire(config: Config): Dependencies {
     });
   }
 
-  const shared = { prisma, logger, idGen, txManager, idempotencyStore, lockRunner };
+  // ── QStash publisher (optional, outbound) ─────────────────
+  // Built only when token, base URL, and worker URL are all set. When
+  // absent, `EnqueueMovementCommand` is not registered on the bus and
+  // the HTTP layer stays on the synchronous path. Decoupled from the
+  // receiver wiring above: a tenant could run sync-only with the worker
+  // route still mounted (defensive — refuses inbound deliveries cleanly).
+  let movementQueuePublisher: IMovementQueuePublisher | undefined;
+  if (config.asyncPipeline) {
+    const qstashClient = new QStashClient({
+      token: config.asyncPipeline.qstashToken,
+      baseUrl: config.asyncPipeline.qstashUrl,
+    });
+    movementQueuePublisher = new QStashMovementQueuePublisher(
+      qstashClient,
+      config.asyncPipeline.queueName,
+      config.asyncPipeline.workerUrl,
+      logger,
+    );
+    logger.info(bootCtx, "qstash publisher wired", {
+      enabled: true,
+      queue: config.asyncPipeline.queueName,
+      worker_url: config.asyncPipeline.workerUrl,
+    });
+  } else {
+    logger.info(bootCtx, "qstash publisher disabled", {
+      enabled: false,
+      reason: "QSTASH_TOKEN, QSTASH_URL or WALLET_INTERNAL_WORKER_URL missing",
+    });
+  }
+
+  const shared: SharedInfra = {
+    prisma,
+    logger,
+    idGen,
+    txManager,
+    idempotencyStore,
+    lockRunner,
+    ...(movementQueuePublisher !== undefined ? { movementQueuePublisher } : {}),
+  };
 
   // ── Modules ──────────────────────────────
   const wallet = WalletModule.wire(shared);

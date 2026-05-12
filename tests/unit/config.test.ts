@@ -19,6 +19,7 @@ describe("loadConfig", () => {
    * to the expected list below AND write validation tests for it.
    */
   const EXPECTED_CONFIG_KEYS = [
+    "asyncPipeline",
     "cronSecret",
     "databaseUrl",
     "directUrl",
@@ -369,6 +370,84 @@ describe("loadConfig", () => {
           currentSigningKey: "sig_current_real",
           nextSigningKey: "sig_next_real",
         });
+      });
+    });
+  });
+
+  // ── Async pipeline outbound (Phase 2B.5+) ─────────────────────────
+
+  describe("Async pipeline outbound configuration", () => {
+    describe("Given none of QSTASH_TOKEN, QSTASH_URL, WALLET_INTERNAL_WORKER_URL is set", () => {
+      it("Then config.asyncPipeline is undefined and the enqueue use case stays unregistered", () => {
+        process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+        delete process.env.QSTASH_TOKEN;
+        delete process.env.QSTASH_URL;
+        delete process.env.WALLET_INTERNAL_WORKER_URL;
+
+        const config = loadConfig();
+
+        expect(config.asyncPipeline).toBeUndefined();
+      });
+    });
+
+    describe.each([
+      ["QSTASH_TOKEN", { url: "http://x", worker: "http://x" }],
+      ["QSTASH_URL", { token: "tk", worker: "http://x" }],
+      ["WALLET_INTERNAL_WORKER_URL", { token: "tk", url: "http://x" }],
+    ])(
+      "Given %s alone is missing",
+      (_label, present: { token?: string; url?: string; worker?: string }) => {
+        it("Then config.asyncPipeline stays undefined — all three fields are required together", () => {
+          process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+          if (present.token) process.env.QSTASH_TOKEN = present.token;
+          else delete process.env.QSTASH_TOKEN;
+          if (present.url) process.env.QSTASH_URL = present.url;
+          else delete process.env.QSTASH_URL;
+          if (present.worker) process.env.WALLET_INTERNAL_WORKER_URL = present.worker;
+          else delete process.env.WALLET_INTERNAL_WORKER_URL;
+
+          const config = loadConfig();
+
+          expect(config.asyncPipeline).toBeUndefined();
+        });
+      },
+    );
+
+    describe("Given all three required fields are set", () => {
+      it("Then config.asyncPipeline carries them along with defaults for queueName and handlerWaitMs", () => {
+        process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+        process.env.QSTASH_TOKEN = "tk_real";
+        process.env.QSTASH_URL = "https://qstash.upstash.io";
+        process.env.WALLET_INTERNAL_WORKER_URL =
+          "https://wallet.example.com/internal/worker/process-movement";
+        delete process.env.WALLET_QSTASH_QUEUE_NAME;
+        delete process.env.WALLET_HANDLER_WAIT_MS;
+
+        const config = loadConfig();
+
+        expect(config.asyncPipeline).toEqual({
+          qstashToken: "tk_real",
+          qstashUrl: "https://qstash.upstash.io",
+          queueName: "wallet-movements",
+          workerUrl: "https://wallet.example.com/internal/worker/process-movement",
+          handlerWaitMs: 1500,
+        });
+      });
+    });
+
+    describe("Given a custom queueName and handlerWaitMs", () => {
+      it("Then config.asyncPipeline reflects the overrides", () => {
+        process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+        process.env.QSTASH_TOKEN = "tk_real";
+        process.env.QSTASH_URL = "https://qstash.upstash.io";
+        process.env.WALLET_INTERNAL_WORKER_URL = "https://wallet.example.com/w";
+        process.env.WALLET_QSTASH_QUEUE_NAME = "wallet-movements-eu";
+        process.env.WALLET_HANDLER_WAIT_MS = "3000";
+
+        const config = loadConfig();
+
+        expect(config.asyncPipeline!.queueName).toBe("wallet-movements-eu");
+        expect(config.asyncPipeline!.handlerWaitMs).toBe(3000);
       });
     });
   });

@@ -41,6 +41,16 @@ const configSchema = z.object({
   // is missing, the worker route is NOT mounted (returns 404).
   QSTASH_CURRENT_SIGNING_KEY: z.string().optional(),
   QSTASH_NEXT_SIGNING_KEY: z.string().optional(),
+
+  // QStash publisher (Phase 2B.5+). Only present when the async pipeline
+  // is fully configured. If any of these is missing, the enqueue use case
+  // is not registered and the handler refactor (Phase 2B.6) falls back to
+  // the sync path.
+  QSTASH_TOKEN: z.string().optional(),
+  QSTASH_URL: z.string().optional(),
+  WALLET_QSTASH_QUEUE_NAME: z.string().default("wallet-movements"),
+  WALLET_INTERNAL_WORKER_URL: z.string().optional(),
+  WALLET_HANDLER_WAIT_MS: z.coerce.number().int().positive().default(1500),
 });
 
 /**
@@ -77,6 +87,20 @@ export interface Config {
   qstash?: {
     currentSigningKey: string;
     nextSigningKey: string;
+  };
+  /**
+   * Outbound async pipeline configuration. Present only when ALL of
+   * `QSTASH_TOKEN`, `QSTASH_URL`, `WALLET_INTERNAL_WORKER_URL` are set.
+   * When absent, the EnqueueMovementUseCase is not registered on the
+   * command bus and the HTTP handlers stay on the synchronous path
+   * regardless of WALLET_ASYNC_PROCESSING_ENABLED.
+   */
+  asyncPipeline?: {
+    qstashUrl: string;
+    qstashToken: string;
+    queueName: string;
+    workerUrl: string;
+    handlerWaitMs: number;
   };
 }
 
@@ -153,6 +177,17 @@ export function loadConfig(): Config {
     };
   }
 
+  let asyncPipeline: Config["asyncPipeline"];
+  if (env.QSTASH_TOKEN && env.QSTASH_URL && env.WALLET_INTERNAL_WORKER_URL) {
+    asyncPipeline = {
+      qstashUrl: env.QSTASH_URL,
+      qstashToken: env.QSTASH_TOKEN,
+      queueName: env.WALLET_QSTASH_QUEUE_NAME,
+      workerUrl: env.WALLET_INTERNAL_WORKER_URL,
+      handlerWaitMs: env.WALLET_HANDLER_WAIT_MS,
+    };
+  }
+
   return {
     databaseUrl: env.DATABASE_URL,
     directUrl: env.DIRECT_URL ?? env.DATABASE_URL,
@@ -161,5 +196,6 @@ export function loadConfig(): Config {
     cronSecret: env.CRON_SECRET,
     walletLock,
     qstash,
+    asyncPipeline,
   };
 }
