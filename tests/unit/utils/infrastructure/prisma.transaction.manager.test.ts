@@ -280,18 +280,26 @@ describe("PrismaTransactionManager", () => {
   });
 
   describe("run — P2034 retries exhausted escalated to VERSION_CONFLICT", () => {
-    it("Given P2034 error on all attempts, When run exhausts retries, Then escalates to VERSION_CONFLICT", async () => {
-      // Given
-      const { manager, prisma, logger } = buildManager();
-      const p2034 = Object.assign(new Error("P2034"), { code: "P2034" });
-      (prisma.$transaction as ReturnType<typeof vi.fn>).mockRejectedValue(p2034);
+    it(
+      "Given P2034 error on all attempts, When run exhausts retries, Then escalates to VERSION_CONFLICT after MAX_RETRIES=15 attempts",
+      async () => {
+        // Pins the documented retry budget: a regression that silently lowers
+        // MAX_RETRIES (or raises it without updating the cap) flips the call
+        // count and trips this assertion. Operators rely on the 15-attempt
+        // budget for capacity planning — see `docs/architecture/systemPatterns.md`
+        // § "Server-side retry".
+        const { manager, prisma, logger } = buildManager();
+        const p2034 = Object.assign(new Error("P2034"), { code: "P2034" });
+        (prisma.$transaction as ReturnType<typeof vi.fn>).mockRejectedValue(p2034);
 
-      // When / Then
-      await expect(manager.run(ctx, async () => "never")).rejects.toSatisfy((err: unknown) => {
-        return AppError.is(err) && err.code === "VERSION_CONFLICT";
-      });
-      expect(logger.warn).toHaveBeenCalled();
-    });
+        await expect(manager.run(ctx, async () => "never")).rejects.toSatisfy((err: unknown) => {
+          return AppError.is(err) && err.code === "VERSION_CONFLICT";
+        });
+        expect(prisma.$transaction).toHaveBeenCalledTimes(15);
+        expect(logger.warn).toHaveBeenCalled();
+      },
+      20_000,
+    );
   });
 
   describe("run — retry on EMAXCONN at the $transaction boundary", () => {

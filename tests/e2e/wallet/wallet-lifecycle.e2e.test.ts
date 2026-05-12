@@ -164,6 +164,54 @@ describe("Wallet Lifecycle E2E", () => {
     });
   });
 
+  describe("Given 20 concurrent createWallet requests for the same (owner, platform, currency)", () => {
+    describe("When all fire simultaneously via Promise.all", () => {
+      it("Then exactly one succeeds (201) and the rest reject with 409 WALLET_ALREADY_EXISTS", async () => {
+        // The use case has no SELECT-before-INSERT pre-flight check; uniqueness
+        // is enforced by the 4-column DB unique constraint
+        // (owner_id, platform_id, currency_code, shard_index). Concurrent INSERTs
+        // for the same triple race in Postgres — exactly one INSERT wins, the
+        // rest fail with 23505 (Prisma P2002), which the adapter translates to
+        // ErrWalletAlreadyExists.
+        const N = 20;
+        const requests = Array.from({ length: N }, (_, i) =>
+          app.request("/v1/wallets", {
+            method: "POST",
+            headers: { "Idempotency-Key": `wl-dup-concurrent-${i}` },
+            body: JSON.stringify({ owner_id: "user-dup-concurrent", currency_code: "USD" }),
+          }),
+        );
+        const responses = await Promise.all(requests);
+        const statuses = responses.map((r) => r.status);
+        const successes = statuses.filter((s) => s === 201).length;
+        const conflicts = statuses.filter((s) => s === 409).length;
+
+        expect(successes).toBe(1);
+        expect(conflicts).toBe(N - 1);
+
+        // Confirm every 409 carried WALLET_ALREADY_EXISTS (no other error code
+        // leaked through under the race window).
+        const conflictBodies = await Promise.all(
+          responses.filter((r) => r.status === 409).map((r) => r.json()),
+        );
+        for (const body of conflictBodies) {
+          expect(body.error).toBe("WALLET_ALREADY_EXISTS");
+        }
+
+        // And confirm exactly one row exists in the DB for this triple.
+        const prisma = await getTestPrisma();
+        const wallets = await prisma.wallet.findMany({
+          where: {
+            ownerId: "user-dup-concurrent",
+            currencyCode: "USD",
+            isSystem: false,
+          },
+        });
+        expect(wallets).toHaveLength(1);
+      });
+    });
+  });
+
   describe("Given a fresh wallet", () => {
     describe("When performing the full lifecycle: create, deposit, withdraw, freeze, unfreeze, withdraw all, close", () => {
       it("Then each step should succeed and the wallet ends in closed state", async () => {

@@ -138,7 +138,7 @@ result.
 |---|---|
 | HTTP client per-request | **60–90 s** (≥ server `maxDuration`) |
 | Per-attempt application logic | 60–90 s |
-| Total budget across retries | tune to your SLO; 5 attempts ≈ 6 s of backoff + 5 × per-request |
+| Total budget across retries | tune to your SLO; 5 client attempts ≈ 6 s of client-side backoff + 5 × per-request. Each per-request may take up to ~7–10 s under heavy contention because the server retries internally up to 15 times (~5.93 s worst-case sleep budget) before surfacing `409 VERSION_CONFLICT`. |
 
 If you must cap clients tighter than 60 s for SLO reasons, accept
 that tail-latency requests will look like timeouts to your client; the

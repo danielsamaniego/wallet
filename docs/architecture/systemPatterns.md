@@ -41,14 +41,18 @@ Command handlers use a `TransactionManager` port to execute multiple repository 
 
 ### Server-side retry (internal to TransactionManager)
 
-The `PrismaTransactionManager` includes an **internal retry loop** (up to 5 attempts with full-jitter exponential backoff: each inter-attempt sleep is a uniform random in `[1, 30·2^(n-1)]` ms, so per-attempt ceilings are 30/60/120/240 ms) for retryable errors:
+The `PrismaTransactionManager` includes an **internal retry loop** (up to **15 attempts** with full-jitter exponential backoff: each inter-attempt sleep is a uniform random in `[1, min(30·2^(n-1), 500)]` ms, so per-attempt ceilings are 30/60/120/240/480 ms and then capped at **500 ms** from attempt 6 onward) for retryable errors:
 
 - **VERSION_CONFLICT**: Our domain-level optimistic locking error.
 - **PostgreSQL serialization failure** (SQLSTATE 40001 / Prisma P2034 / `TransactionWriteConflict`): Thrown under Serializable isolation when PostgreSQL (or the Prisma 7 engine) detects a read/write or write/write dependency conflict.
 
 If all retries are exhausted, serialization failures are escalated as `VERSION_CONFLICT` (409) so the client can retry with the same idempotency key. Non-retryable errors propagate immediately without retry.
 
-The retry knobs are set to the industry-standard defaults (AWS backoff guidance): jitter prevents retry waves from re-colliding at the same clock tick, and 5 attempts give SSI one more chance to pick a winning serialization order than 3. Under extreme cross-wallet contention (hundreds of concurrent transactions on the same sharded `(platform, currency)`), no retry tuning saves the day — we measured deterministic 3-retry and jittered 5-retry and both land in the same band on the 300×4 load test. The right lever at that point is lowering contention at the source (more shards, smaller tx footprint); whatever survives is the client's to retry via the same `Idempotency-Key`.
+**Worst-case sleep budget across the 15 attempts**: `30+60+120+240+480 + 10×500 ≈ 5.93s`. The 500 ms cap is essential — without it, the uncapped exponential schedule would produce attempt-15 sleeps of ~500s and blow `TX_TIMEOUT_MS` (30s) on a single sleep.
+
+The retry knobs were tuned empirically against load tests on Neon + Upstash + Vercel: 5 retries were not enough to absorb shard contention at 100+ concurrent wallets (49% deposit fail rate); 10 absorbed most but left ~0.36% residual at 300 wallets; 15 brings residual to ~0% at 300 wallets and gives headroom for 500–1000. Each step up has diminishing returns and growing latency cost — see `docs/activeContext.md` § "Tuning under load" for the data.
+
+Under extreme cross-wallet contention (hundreds of concurrent transactions on the same sharded `(platform, currency)`), no retry tuning saves the day — the right lever at that point is lowering contention at the source (more shards, smaller tx footprint); whatever survives is the client's to retry via the same `Idempotency-Key`.
 
 ## Logging
 
@@ -123,7 +127,7 @@ Paginated GET endpoints use a **reusable listing system** (`utils/kernel/listing
 | Control | Use |
 |---------|-----|
 | Distributed lock (LockRunner) | **Outer serialization layer** for mutating use cases. Acquires a Redis mutex keyed by resource ID (`wallet-lock:<walletId>`) before the transaction starts, so concurrent writers queue instead of racing. Optional (feature-flagged). If the backend is unreachable the runner falls through transparently and optimistic locking remains as the safety net. See § "Distributed Lock" below. |
-| Optimistic locking | User wallet mutations (single and multi-wallet), **including PlaceHold and VoidHold** which call `wallet.touchForHoldChange()` + `walletRepo.save()` to participate in version contention. `version` field checked on save; mismatch → VERSION_CONFLICT. TransactionManager retries internally (3 attempts, exponential backoff); if exhausted, escalates `409 VERSION_CONFLICT` to client, who retries with same idempotency key. |
+| Optimistic locking | User wallet mutations (single and multi-wallet), **including PlaceHold and VoidHold** which call `wallet.touchForHoldChange()` + `walletRepo.save()` to participate in version contention. `version` field checked on save; mismatch → VERSION_CONFLICT. TransactionManager retries internally (15 attempts, full-jitter exponential backoff capped at 500 ms — see § "Server-side retry" above); if exhausted, escalates `409 VERSION_CONFLICT` to client, who retries with same idempotency key. |
 | System wallet sharding | Every movement debits/credits a system wallet for `(platform, currency)` to keep the ledger zero-sum. The system side is sharded into N buckets (default 32) keyed by `wallets.shard_index`; each mutation routes to a bucket via a deterministic FNV-1a hash of the user wallet id and writes with a single `UPDATE … RETURNING` (atomic increment, no read-then-write). Sharding is the mechanism that stops the system wallet from becoming a hot-row bottleneck under cross-wallet concurrency. Shard count is per-platform and only-increase. See § "System Wallet Sharding" below. |
 | Idempotency keys | All mutations. Atomic acquire pattern: INSERT pending record before execution; concurrent duplicates get `409 IDEMPOTENCY_KEY_IN_PROGRESS` or cached response. Transient errors (5xx, 409) are released, not cached. Request hash includes `method:path:body` so the same key on a different endpoint is rejected. Payload mismatch → `422 IDEMPOTENCY_PAYLOAD_MISMATCH`. |
 | DB constraints | Uniqueness, referential integrity, positive amounts, balance rules as safety net. |
@@ -312,7 +316,7 @@ With sharding in place, remaining `SERIALIZABLE` aborts come from genuine cross-
 - Error `.name === "TransactionWriteConflict"`
 - Messages containing `"TransactionWriteConflict"`, `"could not serialize access"`, or `"write conflict"`.
 
-After 3 internal retries it wraps any remaining serialization failure as `409 VERSION_CONFLICT`, which clients retry with the same `Idempotency-Key`. Non-retryable errors still surface as `500`.
+After 15 internal retries (see § "Server-side retry" for the schedule), any remaining serialization failure is wrapped as `409 VERSION_CONFLICT`, which clients retry with the same `Idempotency-Key`. Non-retryable errors still surface as `500`.
 
 ### Testing
 

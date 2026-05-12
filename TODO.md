@@ -137,7 +137,7 @@ Si hay discrepancias, loguear como error crítico (alertable).
 ## Completados
 
 - BUG-1, DISEÑO-1, DISEÑO-3, DISEÑO-4, HARDENING-2, HARDENING-3, HARDENING-5
-- Server-side retry for VERSION_CONFLICT (3 attempts + exponential backoff)
+- Server-side retry for VERSION_CONFLICT (15 attempts + full-jitter exponential backoff capped at 500 ms)
 - Body size limit (`bodyLimit({ maxSize: 64 * 1024 })` con 413 `PAYLOAD_TOO_LARGE`)
 - Status CHECK constraints (wallets/holds/transactions/ledger_entries en `immutable_ledger.sql` + verificación al arrancar)
 - Idempotency keys aisladas por platform (UNIQUE compuesto `(idempotencyKey, platformId)` + store filtra por platform)

@@ -60,7 +60,7 @@ The residual hot-row surface called out when the lock shipped is now closed by s
 - Movement entity for true double-entry ledger grouping (entries per movement sum to zero)
 - Scheduled jobs as inbound adapters: hold expiration (`wallet/infrastructure/adapters/inbound/scheduler/`) and idempotency cleanup (`common/idempotency/infrastructure/adapters/inbound/scheduler/`) dispatch commands via CommandBus
 - Concurrency hardening: PlaceHold + VoidHold participate in optimistic locking
-- TransactionManager: Serializable isolation + internal retry (3 attempts, exponential backoff) before escalating VERSION_CONFLICT to client
+- TransactionManager: Serializable isolation + internal retry (15 attempts, full-jitter exponential backoff capped at 500 ms) before escalating VERSION_CONFLICT to client
 - CaptureHold validates real wallet balance
 - Idempotency: transient error release, payload mismatch (SHA-256 of method:path:body), endpoint scoping
 - Docker Compose (PostgreSQL 16 for local dev), Dockerfile
@@ -112,7 +112,7 @@ The residual hot-row surface called out when the lock shipped is now closed by s
 - **Ledger**: Double-entry via Movement entity, append-only, protected by PostgreSQL trigger. Audit invariant: `SUM(amount_minor) GROUP BY movement_id = 0`
 - **Auth**: API key per platform (not user JWT)
 - **DI**: Manual wiring (no DI container). All deps instantiated in `wiring.ts`, registered on CommandBus/QueryBus
-- **Transactions**: Serializable isolation level; TransactionManager retries internally (3 attempts, exponential backoff 30/60/120ms) for VERSION_CONFLICT and PostgreSQL serialization failures before escalating to client
+- **Transactions**: Serializable isolation level; TransactionManager retries internally (15 attempts, full-jitter exponential backoff with per-attempt ceilings 30/60/120/240/480 ms then capped at 500 ms — worst-case ~5.93 s sleep budget) for VERSION_CONFLICT and PostgreSQL serialization failures before escalating to client
 - **Hold expiration**: Two layers — query filter (`expires_at > now`) for immediate correctness + scheduled job (inbound adapter) dispatching command via bus for DB hygiene
 - **CQRS dispatch**: Commands/queries dispatched via bus with middleware pipeline. Handlers registered using static TYPE field (not constructor.name)
 - **Architecture split**: `utils/` = pure toolkit (no use cases), `common/` = cross-cutting features with full architecture (ports, adapters, use cases)

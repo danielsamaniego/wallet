@@ -15,7 +15,7 @@
 - [x] Utils: CanonicalAccumulator (request-scoped meta + counters) in `utils/kernel/observability/canonical.ts`
 - [x] Utils: PinoAdapter (structured JSON logging with context fields) in `utils/infrastructure/observability/pino.adapter.ts`
 - [x] CQRS bus: ICommandBus/IQueryBus interfaces (`utils/application/cqrs.ts`) and implementations (`utils/infrastructure/cqrs.ts`) with middleware pipeline
-- [x] TransactionManager: Serializable isolation + internal retry (3 attempts, exponential backoff) in `utils/infrastructure/prisma.transaction.manager.ts`
+- [x] TransactionManager: Serializable isolation + internal retry (15 attempts, full-jitter exponential backoff capped at 500 ms) in `utils/infrastructure/prisma.transaction.manager.ts`
 - [x] Middleware: trackingCanonical (tracking_id UUID v7 + canonical dispatch) in `utils/middleware/trackingCanonical.ts`
 - [x] Middleware: requestResponseLog (request/response logging) in `utils/middleware/requestResponseLog.ts`
 - [x] Middleware: apiKeyAuth (API key validation) in `utils/middleware/apiKeyAuth.ts`
@@ -98,7 +98,7 @@
 - [ ] Metadata field on mutation endpoints (deposit, withdraw, transfer, adjust)
 - [ ] Hash chain tamper detection (ledger entries)
 - [ ] Reconciliation background job (Wallet internal: cached_balance vs SUM(ledger))
-- [x] Server-side retry for VERSION_CONFLICT (3 attempts + exponential backoff in PrismaTransactionManager)
+- [x] Server-side retry for VERSION_CONFLICT (15 attempts + full-jitter exponential backoff capped at 500 ms in PrismaTransactionManager)
 - [ ] Production deploy configuration (managed PostgreSQL + Node.js process)
 - [ ] Integration tests
 - [x] Idempotency record TTL cleanup job (60s interval) — implemented as command dispatched via bus
