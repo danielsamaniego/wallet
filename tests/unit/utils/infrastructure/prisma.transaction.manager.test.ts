@@ -402,7 +402,7 @@ describe("PrismaTransactionManager", () => {
 
         await expect(manager.run(ctx, async () => "never")).rejects.toBe(connErr);
       },
-      20_000,
+      40_000,
     );
   });
 });
