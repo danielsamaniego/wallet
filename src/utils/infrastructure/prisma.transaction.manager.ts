@@ -8,17 +8,22 @@ import { isConnectionError } from "./connection.retry.extension.js";
 const mainLogTag = "PrismaTransactionManager";
 
 /** Max internal retries on retryable errors before escalating to client. */
-const MAX_RETRIES = 5;
+const MAX_RETRIES = 10;
 
 /**
  * Base delay in ms for exponential backoff ceiling on VERSION_CONFLICT /
- * serialization retries. Full-jitter: uniform random in [1, BASE * 2^(n-1)].
- * Per-attempt ceiling: 30, 60, 120, 240 ms.
+ * serialization retries. Full-jitter: uniform random in [1, min(BASE * 2^(n-1), MAX)].
+ * Per-attempt ceiling: 30, 60, 120, 240, 480, then capped at 500 ms.
  *
  * Tight schedule on purpose — these conflicts resolve fast once the losing
- * transactions desynchronise via jitter.
+ * transactions desynchronise via jitter. The cap prevents the later retries
+ * from blowing past TX_TIMEOUT_MS (a single uncapped attempt-10 ceiling would
+ * be ~15s on its own).
+ *
+ * Worst-case sleep budget across all attempts: 30+60+120+240+480 + 5×500 ≈ 2.93s.
  */
 const CONFLICT_BASE_DELAY_MS = 30;
+const CONFLICT_MAX_DELAY_MS = 500;
 
 /**
  * Backoff for connection-level errors on the `$transaction` boundary (e.g.
@@ -56,7 +61,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function conflictDelayMs(attempt: number): number {
-  const ceiling = CONFLICT_BASE_DELAY_MS * 2 ** (attempt - 1);
+  const ceiling = Math.min(CONFLICT_BASE_DELAY_MS * 2 ** (attempt - 1), CONFLICT_MAX_DELAY_MS);
   return Math.floor(Math.random() * ceiling) + 1;
 }
 
