@@ -36,6 +36,7 @@ describe("AdjustBalanceService", () => {
     return Movement.create({
       id: "mov-1",
       type: "adjustment",
+      platformId: "platform-1",
       reason,
       createdAt: 1700000000000,
     });

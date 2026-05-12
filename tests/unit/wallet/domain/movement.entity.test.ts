@@ -85,6 +85,7 @@ describe("Movement Entity", () => {
             platformId: PLATFORM_ID,
             status: "failed",
             failedReason: "qstash_max_attempts_exceeded",
+            queuePayload: null,
             createdAt: NOW,
           });
           expect(m.status).toBe("failed");
@@ -106,6 +107,37 @@ describe("Movement Entity", () => {
         });
       });
     });
+
+    describe("Given no explicit queuePayload (sync path)", () => {
+      describe("When creating", () => {
+        it("Then queuePayload defaults to null", () => {
+          const m = Movement.create({
+            id: "mov-1",
+            type: "deposit",
+            platformId: PLATFORM_ID,
+            createdAt: NOW,
+          });
+          expect(m.queuePayload).toBeNull();
+        });
+      });
+    });
+
+    describe("Given an explicit queuePayload (async pipeline path)", () => {
+      describe("When creating", () => {
+        it("Then queuePayload is exposed via the getter for the worker to replay", () => {
+          const payload = { walletId: "wallet-1", amountMinor: 500, idempotencyKey: "K" };
+          const m = Movement.create({
+            id: "mov-1",
+            type: "deposit",
+            platformId: PLATFORM_ID,
+            status: "pending",
+            queuePayload: payload,
+            createdAt: NOW,
+          });
+          expect(m.queuePayload).toEqual(payload);
+        });
+      });
+    });
   });
 
   describe("reconstruct", () => {
@@ -119,6 +151,7 @@ describe("Movement Entity", () => {
             platformId: PLATFORM_ID,
             reason: null,
             failedReason: null,
+            queuePayload: null,
             createdAt: 999,
           });
           expect(m.id).toBe("mov-r");
@@ -142,6 +175,7 @@ describe("Movement Entity", () => {
             platformId: PLATFORM_ID,
             reason: "Admin correction",
             failedReason: null,
+            queuePayload: null,
             createdAt: 999,
           });
           expect(m.reason).toBe("Admin correction");
@@ -161,6 +195,7 @@ describe("Movement Entity", () => {
               platformId: PLATFORM_ID,
               reason: null,
               failedReason: null,
+              queuePayload: null,
               createdAt: 999,
             });
             expect(m.status).toBe(status);
@@ -179,6 +214,7 @@ describe("Movement Entity", () => {
             platformId: PLATFORM_ID,
             reason: null,
             failedReason: "worker_crashed",
+            queuePayload: null,
             createdAt: 999,
           });
           expect(m.failedReason).toBe("worker_crashed");
@@ -196,6 +232,7 @@ describe("Movement Entity", () => {
             platformId: null,
             reason: null,
             failedReason: null,
+            queuePayload: null,
             createdAt: 100,
           });
           expect(m.platformId).toBeNull();
@@ -214,6 +251,7 @@ describe("Movement Entity", () => {
       platformId: PLATFORM_ID,
       reason: null,
       failedReason: null,
+      queuePayload: null,
       createdAt: NOW,
     });
   }
@@ -226,6 +264,7 @@ describe("Movement Entity", () => {
       platformId: PLATFORM_ID,
       reason: null,
       failedReason: null,
+      queuePayload: null,
       createdAt: NOW,
     });
   }
@@ -262,6 +301,7 @@ describe("Movement Entity", () => {
               platformId: PLATFORM_ID,
               reason: null,
               failedReason: null,
+              queuePayload: null,
               createdAt: NOW,
             });
             expect(() => m.transitionToProcessing()).toSatisfy((thrown) => {
@@ -309,6 +349,7 @@ describe("Movement Entity", () => {
               platformId: PLATFORM_ID,
               reason: null,
               failedReason: null,
+              queuePayload: null,
               createdAt: NOW,
             });
             expect(() => m.transitionToPosted()).toThrow();
@@ -341,6 +382,7 @@ describe("Movement Entity", () => {
               platformId: PLATFORM_ID,
               reason: null,
               failedReason: null,
+              queuePayload: null,
               createdAt: NOW,
             });
             expect(() => m.transitionToFailed("any-reason")).toSatisfy((thrown) => {

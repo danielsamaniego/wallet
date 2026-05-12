@@ -10,6 +10,19 @@ import { ErrInvalidMovementTransition } from "./movement.errors.js";
 
 export type MovementStatus = "pending" | "processing" | "posted" | "failed" | "reversed";
 
+/**
+ * Free-form JSON payload carried by movements created from the async pipeline.
+ * The HTTP handler fills it with the original command's data; the async
+ * worker reads it back to rebuild the command and dispatch the matching
+ * service. Set to `null` for synchronous-path movements — they don't need
+ * replay because the work already happened inline.
+ *
+ * Loose typing on purpose: each command type has its own shape (deposit,
+ * withdraw, transfer, ...). The (de)serialiser in Phase 2B.5/2B.6 narrows
+ * it by `movement.type`.
+ */
+export type MovementQueuePayload = Record<string, unknown>;
+
 export class Movement {
   private readonly _id: string;
   private readonly _type: MovementType;
@@ -27,6 +40,7 @@ export class Movement {
   private readonly _platformId: string | null;
   private readonly _reason: string | null;
   private readonly _failedReason: string | null;
+  private readonly _queuePayload: MovementQueuePayload | null;
   private readonly _createdAt: number;
 
   private constructor() {
@@ -36,6 +50,7 @@ export class Movement {
     this._platformId = null;
     this._reason = null;
     this._failedReason = null;
+    this._queuePayload = null;
     this._createdAt = 0;
   }
 
@@ -46,6 +61,7 @@ export class Movement {
     status?: MovementStatus;
     reason?: string | null;
     failedReason?: string | null;
+    queuePayload?: MovementQueuePayload | null;
     createdAt: number;
   }): Movement {
     const m = new Movement();
@@ -56,6 +72,7 @@ export class Movement {
       _platformId: params.platformId,
       _reason: params.reason ?? null,
       _failedReason: params.failedReason ?? null,
+      _queuePayload: params.queuePayload ?? null,
       _createdAt: params.createdAt,
     });
     return m;
@@ -68,6 +85,7 @@ export class Movement {
     platformId: string | null;
     reason: string | null;
     failedReason: string | null;
+    queuePayload: MovementQueuePayload | null;
     createdAt: number;
   }): Movement {
     const m = new Movement();
@@ -78,6 +96,7 @@ export class Movement {
       _platformId: params.platformId,
       _reason: params.reason,
       _failedReason: params.failedReason,
+      _queuePayload: params.queuePayload,
       _createdAt: params.createdAt,
     });
     return m;
@@ -99,6 +118,7 @@ export class Movement {
       platformId: this._platformId,
       reason: this._reason,
       failedReason: this._failedReason,
+      queuePayload: this._queuePayload,
       createdAt: this._createdAt,
     });
   }
@@ -118,6 +138,7 @@ export class Movement {
       platformId: this._platformId,
       reason: this._reason,
       failedReason: this._failedReason,
+      queuePayload: this._queuePayload,
       createdAt: this._createdAt,
     });
   }
@@ -138,6 +159,7 @@ export class Movement {
       platformId: this._platformId,
       reason: this._reason,
       failedReason: reason,
+      queuePayload: this._queuePayload,
       createdAt: this._createdAt,
     });
   }
@@ -159,6 +181,9 @@ export class Movement {
   }
   get failedReason(): string | null {
     return this._failedReason;
+  }
+  get queuePayload(): MovementQueuePayload | null {
+    return this._queuePayload;
   }
   get createdAt(): number {
     return this._createdAt;

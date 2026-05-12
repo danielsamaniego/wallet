@@ -33,7 +33,7 @@ describe("DepositService", () => {
   const ctx = createTestContext();
 
   function newMovement(): Movement {
-    return Movement.create({ id: "mov-1", type: "deposit", createdAt: 1700000000000 });
+    return Movement.create({ id: "mov-1", type: "deposit", platformId: "platform-1", createdAt: 1700000000000 });
   }
 
   beforeEach(() => {

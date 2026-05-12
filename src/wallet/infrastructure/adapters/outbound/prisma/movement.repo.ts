@@ -3,6 +3,7 @@ import type { AppContext } from "../../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
 import {
   Movement,
+  type MovementQueuePayload,
   type MovementStatus,
   type MovementType,
 } from "../../../../domain/movement/movement.entity.js";
@@ -38,6 +39,7 @@ export class PrismaMovementRepo implements IMovementRepository {
         platformId: movement.platformId,
         reason: movement.reason,
         failedReason: movement.failedReason,
+        queuePayload: (movement.queuePayload ?? undefined) as never,
         createdAt: BigInt(movement.createdAt),
       },
     });
@@ -66,6 +68,7 @@ export class PrismaMovementRepo implements IMovementRepository {
       platformId: row.platformId,
       reason: row.reason,
       failedReason: row.failedReason,
+      queuePayload: (row.queuePayload as MovementQueuePayload | null) ?? null,
       createdAt: Number(row.createdAt),
     });
   }
@@ -96,6 +99,7 @@ export class PrismaMovementRepo implements IMovementRepository {
       platformId: row.platformId,
       reason: row.reason,
       failedReason: row.failedReason,
+      queuePayload: (row.queuePayload as MovementQueuePayload | null) ?? null,
       createdAt: Number(row.createdAt),
     });
   }

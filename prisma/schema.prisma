@@ -70,6 +70,11 @@ model Movement {
   reason        String? /// Human-readable reason (used for adjustments)
   /// Set when status='failed'. Indicates why the worker gave up (e.g. `qstash_max_attempts_exceeded`).
   failedReason  String?       @map("failed_reason")
+  /// Serialised original command for the async pipeline (Phase 2B+). The HTTP handler stores it when
+  /// inserting a `pending` movement; the worker reads it after the queue delivery to rebuild the
+  /// command and dispatch the matching service. NULL for movements created by the legacy synchronous
+  /// path — they don't need replay because the work already happened inline.
+  queuePayload  Json?         @map("queue_payload")
   createdAt     BigInt        @map("created_at") /// Unix ms
 
   transactions  Transaction[]

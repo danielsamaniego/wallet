@@ -57,9 +57,16 @@
 - No wiring yet — Phase 2B.6 (handler refactor) registers the adapters and reads the related env vars (`QSTASH_TOKEN`, `QSTASH_URL`, `WALLET_INTERNAL_WORKER_URL`, `WALLET_HANDLER_WAIT_MS`).
 - Unit: 1017/1017 at 100% coverage. New cases on each adapter (happy path, error propagation, sleep-skip on tight-deadline edge for the subscriber). E2E: 277/277 unchanged.
 
-**Phase 2B.4+ (next):**
-1. Add `Movement.queuePayload jsonb` column so the worker can rebuild the original command after picking it up from QStash. Movement aggregate gains a typed `queuePayload` field (string-keyed JSON object) for new movements; legacy reconstruction tolerates `null`.
-2. `EnqueueMovementUseCase`: validate input, INSERT `Movement(status="pending", platform_id=cmd.platformId)` + idempotency placeholder, publish to `IMovementQueuePublisher`, await on `IResultPublisher`'s subscriber channel (with a configurable `WALLET_HANDLER_WAIT_MS` timeout) — return `200` with full body if the worker beats the timeout, `202 { movement_id, status: "processing" }` otherwise.
+**Phase 2B.4 (completed — Movement.queuePayload for worker replay):**
+- New nullable column `movements.queue_payload jsonb` + migration `20260512053811_add_movement_queue_payload`. No backfill needed — legacy rows stay NULL (they were synchronous and never enqueued anything).
+- `Movement` aggregate gains a `queuePayload: MovementQueuePayload | null` field (loose `Record<string, unknown>` type; (de)serialiser in Phase 2B.5/2B.6 narrows by `movement.type`). Optional in `create()` (defaults `null` for sync flows), required in `reconstruct()`. All three transitions (`transitionToProcessing/Posted/Failed`) preserve the payload across status changes.
+- `PrismaMovementRepo.save` persists it; `findById` / `markProcessing` reload it so the worker can replay the command.
+- DB trigger `prevent_movement_modify_except_lifecycle()` extended to also block any UPDATE on `queue_payload` (the column is set once at INSERT and never changes — verified end-to-end with raw SQL).
+- Unit: 1021/1021 at 100% coverage. New cases on Movement (default null queuePayload, explicit payload round-trips through getter) and on PrismaMovementRepo (payload persisted in save, payload reloaded in findById).
+- E2E: 277/277 unchanged.
+
+**Phase 2B.5+ (next):**
+1. `EnqueueMovementUseCase`: validate input, INSERT `Movement(status="pending", platform_id=cmd.platformId)` + idempotency placeholder, publish to `IMovementQueuePublisher`, await on `IResultPublisher`'s subscriber channel (with a configurable `WALLET_HANDLER_WAIT_MS` timeout) — return `200` with full body if the worker beats the timeout, `202 { movement_id, status: "processing" }` otherwise.
 2. Worker entry: claim `pending → processing`, fetch the persisted Movement, then call the appropriate `<op>Service.execute(ctx, cmd, movement)` directly from the inbound worker adapter (no `ProcessMovementUseCase` needed — the service IS the shared layer). Transition to `posted` (or `failed` after exhausted retries), publish result + invalidate balance cache via `IResultPublisher`.
 3. Concrete adapters: `QStashMovementQueuePublisher` (uses the `@upstash/qstash` `Client.queue(name).enqueueJSON({...})`) and `RedisResultPublisher` (PUBLISH + short-TTL SET for the late-subscriber race).
 4. Refactor all mutating HTTP handlers behind `WALLET_ASYNC_PROCESSING_ENABLED`: when on, dispatch `EnqueueMovementCommand`; when off, keep today's inline use case dispatch. Single switch, per-platform rollout.

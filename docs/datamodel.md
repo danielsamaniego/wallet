@@ -170,6 +170,7 @@ Journal entry that groups all transactions and ledger entries for a single finan
 | status | string | NOT NULL, default `'posted'`. Lifecycle state: `pending`, `processing`, `posted`, `failed`, `reversed`. Synchronous flows write `'posted'` directly. The async movement-processing pipeline (when enabled) transitions `pending → processing → posted | failed`. |
 | platform_id | UUID? | Denormalised owner platform. Required for movements created from Phase 2B onward so async `pending`/`processing` rows — which have no transactions yet — are still resolvable via cross-tenant filters. Nullable so pre-Phase-2B legacy rows without transactions (couldn't be backfilled) coexist; the readstore filter falls back to the transactional path for those. |
 | failed_reason | string? | Set only when `status='failed'`. Free-form reason emitted by the worker after exhausting retries (e.g. `qstash_max_attempts_exceeded`, `worker_crashed`). |
+| queue_payload | JSON? | Serialised original command for the async pipeline. The HTTP handler stores it when inserting a `pending` movement; the worker reads it after queue delivery to rebuild the command and dispatch the matching service. NULL for sync-path movements (work already happened inline). Immutable post-INSERT (enforced by the same trigger that protects `type`/`platform_id`). |
 | reason | string? | Human-readable reason supplied by the caller (currently used for adjustments). |
 | created_at | BIGINT | Unix ms |
 

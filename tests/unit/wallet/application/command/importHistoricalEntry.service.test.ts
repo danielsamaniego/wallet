@@ -40,6 +40,7 @@ describe("ImportHistoricalEntryService", () => {
     return Movement.create({
       id: "mov-1",
       type: "adjustment",
+      platformId: "platform-1",
       reason,
       createdAt: HISTORICAL_AT,
     });

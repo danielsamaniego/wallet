@@ -40,7 +40,7 @@ describe("CaptureHoldService", () => {
   );
 
   function newMovement(): Movement {
-    return Movement.create({ id: "mov-1", type: "hold_capture", createdAt: 1700000000000 });
+    return Movement.create({ id: "mov-1", type: "hold_capture", platformId: "platform-1", createdAt: 1700000000000 });
   }
 
   beforeEach(() => {

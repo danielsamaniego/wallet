@@ -61,6 +61,9 @@ BEGIN
   IF OLD.reason IS DISTINCT FROM NEW.reason THEN
     RAISE EXCEPTION 'movements.reason is immutable';
   END IF;
+  IF OLD.queue_payload IS DISTINCT FROM NEW.queue_payload THEN
+    RAISE EXCEPTION 'movements.queue_payload is immutable';
+  END IF;
   IF OLD.created_at IS DISTINCT FROM NEW.created_at THEN
     RAISE EXCEPTION 'movements.created_at is immutable';
   END IF;

@@ -1133,6 +1133,7 @@ describe("PrismaMovementRepo", () => {
       platformId: "platform-1",
       reason: null,
       failedReason: null,
+      queuePayload: null,
       createdAt: 1700000000000n,
       ...overrides,
     };
@@ -1209,9 +1210,36 @@ describe("PrismaMovementRepo", () => {
           platformId: "platform-1",
           reason: null,
           failedReason: null,
+          queuePayload: undefined,
           createdAt: 1700000000000n,
         },
       });
+    });
+
+    it("Given a pending movement with a queuePayload, When save is called, Then the payload is persisted as-is for the worker to replay", async () => {
+      const { repo, movement } = buildRepo();
+
+      const payload = { walletId: "wallet-1", amountMinor: 500, idempotencyKey: "K" };
+      const mov = Movement.create({
+        id: "mov-q",
+        type: "deposit",
+        platformId: "platform-1",
+        status: "pending",
+        queuePayload: payload,
+        createdAt: 1700000000000,
+      });
+
+      await repo.save(ctx, mov);
+
+      expect(movement.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            id: "mov-q",
+            status: "pending",
+            queuePayload: payload,
+          }),
+        }),
+      );
     });
 
     it("Given a failed movement, When save is called, Then it persists status, platformId and failedReason", async () => {
@@ -1236,6 +1264,7 @@ describe("PrismaMovementRepo", () => {
           platformId: "platform-1",
           reason: null,
           failedReason: "qstash_max_attempts_exceeded",
+          queuePayload: undefined,
           createdAt: 1700000000000n,
         },
       });
@@ -1265,6 +1294,16 @@ describe("PrismaMovementRepo", () => {
       const result = await repo.findById(ctx, "mov-1", "platform-1");
 
       expect(result).toBeNull();
+    });
+
+    it("Given a movement with a queuePayload, When findById is called, Then the reconstructed Movement carries it back to the worker", async () => {
+      const { repo, movement } = buildRepo();
+      const payload = { walletId: "wallet-1", amountMinor: 500 };
+      movement.findFirst.mockResolvedValue(buildMovementRow({ queuePayload: payload }));
+
+      const result = await repo.findById(ctx, "mov-1", "platform-1");
+
+      expect(result!.queuePayload).toEqual(payload);
     });
   });
 
