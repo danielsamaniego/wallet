@@ -50,11 +50,11 @@ export function createApp(deps: Dependencies) {
   // Three branches:
   //  1. AppError: maps Kind → status with httpStatus().
   //  2. Transient infra error that escaped the retry layer
-  //     (EMAXCONN, ECONNRESET, P2024 pool timeout, P6000 Accelerate engine
-  //     error, …): SERVICE_UNAVAILABLE 503 + Retry-After. The standard
-  //     "this is transient, retry" signal — clients that follow HTTP
-  //     conventions auto-retry 503; clients that follow integration-guide.md
-  //     retry the same way they would for 500. Either client wins.
+  //     (EMAXCONN, ECONNRESET, P2024 pool timeout, …): SERVICE_UNAVAILABLE
+  //     503 + Retry-After. The standard "this is transient, retry" signal —
+  //     clients that follow HTTP conventions auto-retry 503; clients that
+  //     follow integration-guide.md retry the same way they would for 500.
+  //     Either client wins.
   //  3. Anything else: INTERNAL_ERROR 500. Treated as a server bug.
   //
   // Logs include `code`, `name`, and a truncated `stack` so operators can

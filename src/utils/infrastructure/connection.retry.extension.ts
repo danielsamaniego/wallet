@@ -12,18 +12,19 @@ const DEFAULT_JITTER_MS = 100;
 /**
  * Recognises transient errors that should be retried transparently.
  *
- * The match is substring-based on the error message because the exact
- * surface varies across the stack: `pg` raises libpq-style codes,
- * PgBouncer forwards server-side strings verbatim, and `@prisma/adapter-pg`
- * wraps them with its own prefix. Covered signals:
+ * Two signal types:
  *
- *   - `EMAXCONN` / `max client connections` — Supabase PgBouncer cap reached
- *     (compute size fixes `max_client_conn`; under burst of cold serverless
- *     invocations the pooler rejects new clients until existing ones release)
- *   - `too many clients` — Postgres server-side client cap
- *   - `connection terminated` / `ECONNRESET` / `ETIMEDOUT` — transient socket
- *     drops, usually during pool rotation or brief network hiccups
- *   - `ECONNREFUSED` — pooler restarted or briefly unavailable
+ *   1. Prisma error codes (checked first when `err.code` is present):
+ *      - `P2024` — "Timed out fetching a new connection from the pool".
+ *        Prisma's generic pool-timeout under load.
+ *
+ *   2. Substring match on the error message (covers libpq, pooler-forwarded
+ *      server-side strings, and `@prisma/adapter-pg` wrappers):
+ *      - `EMAXCONN` / `max client connections` — pooler client cap reached
+ *      - `too many clients` — Postgres server-side client cap
+ *      - `connection terminated` / `ECONNRESET` / `ETIMEDOUT` — transient
+ *        socket drops during pool rotation or brief network hiccups
+ *      - `ECONNREFUSED` — pooler restarted or briefly unavailable
  *
  * Domain errors (VERSION_CONFLICT, unique constraint violations, validation)
  * do NOT match — they belong to higher layers (TransactionManager,
@@ -31,6 +32,8 @@ const DEFAULT_JITTER_MS = 100;
  */
 export function isConnectionError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
+  const code = (err as Error & { code?: string }).code;
+  if (code === "P2024") return true;
   const msg = err.message.toLowerCase();
   return (
     msg.includes("emaxconn") ||

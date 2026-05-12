@@ -120,9 +120,8 @@ describe("createApp", () => {
     });
 
     it("Given a Prisma P2024 (pool timeout), When thrown, Then returns 503 SERVICE_UNAVAILABLE", async () => {
-      // P2024 is Prisma Accelerate's "couldn't fetch a connection from the pool
-      // in time" — the same family as EMAXCONN at the engine level. Both should
-      // map to 503.
+      // P2024 is Prisma's "couldn't fetch a connection from the pool in time"
+      // — same family as EMAXCONN at the engine level. Both should map to 503.
       const deps = buildDeps();
       const app = createApp(deps);
       app.get("/test-p2024", () => {
