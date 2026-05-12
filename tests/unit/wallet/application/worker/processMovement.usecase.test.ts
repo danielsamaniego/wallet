@@ -166,13 +166,14 @@ describe("ProcessMovementUseCase", () => {
         expect(movementRepo.markPosted).toHaveBeenCalledWith(expect.anything(), MOV_ID);
       });
 
-      it("Then it publishes a posted result so the awaiting HTTP handler can return 200", async () => {
+      it("Then it publishes a posted result carrying the service body so the awaiting HTTP handler can return the same 200 shape as the sync path", async () => {
         await sut.handle(ctx, new ProcessMovementCommand(MOV_ID));
 
         expect(resultPublisher.publish).toHaveBeenCalledOnce();
         expect(resultPublisher.publish).toHaveBeenCalledWith(expect.anything(), {
           movementId: MOV_ID,
           status: "posted",
+          body: { transactionId: "tx-d", movementId: MOV_ID },
         });
       });
 

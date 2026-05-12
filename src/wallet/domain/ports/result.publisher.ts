@@ -14,6 +14,19 @@ export interface MovementResult {
   status: MovementResultStatus;
   /** Free-form code emitted only when `status === "failed"`. */
   failedReason?: string | null;
+  /**
+   * Operation result body captured from the matching service (e.g.
+   * `DepositResult`, `TransferResult`). Only populated when
+   * `status === "posted"` — failures carry `failedReason` instead.
+   * Loose `Record<string, unknown>` so the publisher does not need to
+   * know about every operation result type; the HTTP handler that
+   * dispatched the enqueue casts to its expected shape.
+   *
+   * The contract is "what the sync use case would have returned" so an
+   * async handler can build the same response body as the sync path —
+   * the API stays uniform across both modes.
+   */
+  body?: Record<string, unknown>;
 }
 
 /**

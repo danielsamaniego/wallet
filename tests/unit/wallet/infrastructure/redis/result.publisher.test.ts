@@ -79,6 +79,26 @@ describe("RedisResultPublisher", () => {
     });
   });
 
+  describe("Given a posted result carrying the service body (e.g. transactionId)", () => {
+    it("Then the body round-trips through JSON intact so the awaiting handler can rebuild the sync-shape response", async () => {
+      const { publisher, set, publish } = buildPublisher();
+
+      await publisher.publish(ctx, {
+        movementId: "mov-1",
+        status: "posted",
+        body: { transactionId: "tx-abc", movementId: "mov-1" },
+      });
+
+      const [, payload] = set.mock.calls[0]!;
+      expect(JSON.parse(payload as string)).toEqual({
+        movementId: "mov-1",
+        status: "posted",
+        body: { transactionId: "tx-abc", movementId: "mov-1" },
+      });
+      expect(publish).toHaveBeenCalledWith("movement:result:mov-1", payload);
+    });
+  });
+
   describe("Given a custom TTL", () => {
     it("Then SET uses the custom TTL instead of the 60-second default", async () => {
       const { publisher, set } = buildPublisher(120);

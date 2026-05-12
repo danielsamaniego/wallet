@@ -89,8 +89,8 @@ export class ProcessMovementUseCase
     }
 
     try {
-      await this.dispatchByType(ctx, claimed);
-      await this.resultPublisher.publish(ctx, { movementId, status: "posted" });
+      const body = await this.dispatchByType(ctx, claimed);
+      await this.resultPublisher.publish(ctx, { movementId, status: "posted", body });
       this.logger.info(ctx, `${methodLogTag} posted`, {
         movement_id: movementId,
         movement_type: claimed.type,
@@ -135,71 +135,88 @@ export class ProcessMovementUseCase
 
   /**
    * Hydrates the per-type command from `movement.queue_payload`, derives
-   * the lock keys, then runs `service.execute` + `markPosted` inside the
-   * same lock + tx envelope. Throws on hydration errors or service
+   * the lock keys, runs `service.execute` + `markPosted` inside the same
+   * lock + tx envelope, and returns the service's result as a loose
+   * `Record<string, unknown>` so the publisher can carry it back to the
+   * awaiting HTTP handler. Throws on hydration errors or service
    * errors — the outer `handle` translates that to `failed`.
    */
-  private async dispatchByType(ctx: AppContext, movement: Movement): Promise<void> {
+  private async dispatchByType(
+    ctx: AppContext,
+    movement: Movement,
+  ): Promise<Record<string, unknown>> {
     switch (movement.type) {
       case "deposit": {
         const { command, lockKeys } = hydrateDeposit(movement);
+        let body!: Record<string, unknown>;
         await this.lockRunner.run(ctx, lockKeys, async () => {
           await this.txManager.run(ctx, async (txCtx) => {
-            await this.depositService.execute(txCtx, command, movement);
+            const result = await this.depositService.execute(txCtx, command, movement);
             await this.movementRepo.markPosted(txCtx, movement.id);
+            body = result as unknown as Record<string, unknown>;
           });
         });
-        return;
+        return body;
       }
       case "withdrawal": {
         const { command, lockKeys } = hydrateWithdraw(movement);
+        let body!: Record<string, unknown>;
         await this.lockRunner.run(ctx, lockKeys, async () => {
           await this.txManager.run(ctx, async (txCtx) => {
-            await this.withdrawService.execute(txCtx, command, movement);
+            const result = await this.withdrawService.execute(txCtx, command, movement);
             await this.movementRepo.markPosted(txCtx, movement.id);
+            body = result as unknown as Record<string, unknown>;
           });
         });
-        return;
+        return body;
       }
       case "charge": {
         const { command, lockKeys } = hydrateCharge(movement);
+        let body!: Record<string, unknown>;
         await this.lockRunner.run(ctx, lockKeys, async () => {
           await this.txManager.run(ctx, async (txCtx) => {
-            await this.chargeService.execute(txCtx, command, movement);
+            const result = await this.chargeService.execute(txCtx, command, movement);
             await this.movementRepo.markPosted(txCtx, movement.id);
+            body = result as unknown as Record<string, unknown>;
           });
         });
-        return;
+        return body;
       }
       case "adjustment": {
         const { command, lockKeys } = hydrateAdjustment(movement);
+        let body!: Record<string, unknown>;
         await this.lockRunner.run(ctx, lockKeys, async () => {
           await this.txManager.run(ctx, async (txCtx) => {
-            await this.adjustBalanceService.execute(txCtx, command, movement);
+            const result = await this.adjustBalanceService.execute(txCtx, command, movement);
             await this.movementRepo.markPosted(txCtx, movement.id);
+            body = result as unknown as Record<string, unknown>;
           });
         });
-        return;
+        return body;
       }
       case "transfer": {
         const { command, lockKeys } = hydrateTransfer(movement);
+        let body!: Record<string, unknown>;
         await this.lockRunner.run(ctx, lockKeys, async () => {
           await this.txManager.run(ctx, async (txCtx) => {
-            await this.transferService.execute(txCtx, command, movement);
+            const result = await this.transferService.execute(txCtx, command, movement);
             await this.movementRepo.markPosted(txCtx, movement.id);
+            body = result as unknown as Record<string, unknown>;
           });
         });
-        return;
+        return body;
       }
       case "hold_capture": {
         const { command, lockKeys } = hydrateCaptureHold(movement);
+        let body!: Record<string, unknown>;
         await this.lockRunner.run(ctx, lockKeys, async () => {
           await this.txManager.run(ctx, async (txCtx) => {
-            await this.captureHoldService.execute(txCtx, command, movement);
+            const result = await this.captureHoldService.execute(txCtx, command, movement);
             await this.movementRepo.markPosted(txCtx, movement.id);
+            body = result as unknown as Record<string, unknown>;
           });
         });
-        return;
+        return body;
       }
     }
   }

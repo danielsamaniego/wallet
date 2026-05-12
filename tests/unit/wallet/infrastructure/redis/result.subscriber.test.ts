@@ -117,6 +117,25 @@ describe("RedisResultSubscriber", () => {
     });
   });
 
+  describe("Given a posted result that carries a service body", () => {
+    it("Then waitFor returns the parsed MovementResult including the body so the awaiting handler can rebuild the sync-shape response", async () => {
+      const payload = JSON.stringify({
+        movementId: "mov-1",
+        status: "posted",
+        body: { transactionId: "tx-abc", movementId: "mov-1" },
+      });
+      const { subscriber } = buildSubscriber(async () => payload);
+
+      const result = await subscriber.waitFor(ctx, "mov-1", { timeoutMs: 1500 });
+
+      expect(result).toEqual({
+        movementId: "mov-1",
+        status: "posted",
+        body: { transactionId: "tx-abc", movementId: "mov-1" },
+      });
+    });
+  });
+
   describe("Given a custom pollMs option", () => {
     it("Then it is used between probes (verified by call count over a fixed window)", async () => {
       const { subscriber, get } = buildSubscriber(async () => null);

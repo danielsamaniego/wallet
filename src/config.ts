@@ -51,6 +51,20 @@ const configSchema = z.object({
   WALLET_QSTASH_QUEUE_NAME: z.string().default("wallet-movements"),
   WALLET_INTERNAL_WORKER_URL: z.string().optional(),
   WALLET_HANDLER_WAIT_MS: z.coerce.number().int().positive().default(1500),
+
+  // Per-platform rollout flag. When true, the seven mutating HTTP handlers
+  // dispatch `EnqueueMovementCommand` (async path) instead of the
+  // operation's command (sync path). Independent of `asyncPipeline`
+  // wiring on purpose: a deployment can ship the worker route + publisher
+  // wired but keep handlers on the sync path until per-platform rollout
+  // begins. When the flag is true but the pipeline is unwired, handlers
+  // fall back to the sync path at runtime (the EnqueueMovementCommand
+  // handler is not registered, the dispatch throws, and the handler
+  // gracefully degrades).
+  WALLET_ASYNC_PROCESSING_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 /**
@@ -71,6 +85,15 @@ export interface Config {
   httpPort: number;
   logLevel: string;
   cronSecret: string;
+  /**
+   * When true, the seven mutating HTTP handlers prefer the async path
+   * (dispatch `EnqueueMovementCommand`, wait on the result subscriber,
+   * fall back to 202 on timeout). When false (default) or when the
+   * async pipeline is not wired, handlers stay on today's synchronous
+   * inline dispatch. Per-platform rollout flips this independently of
+   * `asyncPipeline` wiring.
+   */
+  asyncProcessingEnabled: boolean;
   walletLock?: {
     redisUrl: string;
     transport: "tcp" | "rest";
@@ -194,6 +217,7 @@ export function loadConfig(): Config {
     httpPort: env.HTTP_PORT,
     logLevel: env.LOG_LEVEL,
     cronSecret: env.CRON_SECRET,
+    asyncProcessingEnabled: env.WALLET_ASYNC_PROCESSING_ENABLED,
     walletLock,
     qstash,
     asyncPipeline,

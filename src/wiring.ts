@@ -10,6 +10,7 @@ import type { IMovementQueuePublisher } from "./wallet/domain/ports/movement.que
 import type { IResultPublisher } from "./wallet/domain/ports/result.publisher.js";
 import { QStashMovementQueuePublisher } from "./wallet/infrastructure/adapters/outbound/qstash/movement.queue.publisher.js";
 import { RedisResultPublisher } from "./wallet/infrastructure/adapters/outbound/redis/result.publisher.js";
+import { RedisResultSubscriber } from "./wallet/infrastructure/adapters/outbound/redis/result.subscriber.js";
 
 /**
  * Strips credentials from a redis[s]:// URL for safe logging.
@@ -126,6 +127,20 @@ export interface Dependencies {
    * When absent, the worker route is not mounted.
    */
   qstashReceiver?: IQStashReceiver;
+  /**
+   * Result subscriber used by the seven mutating HTTP handlers when the
+   * async rollout flag is on. Calls `waitFor(movementId, { timeoutMs })`
+   * after dispatching `EnqueueMovementCommand`; returns the worker's
+   * published `MovementResult` (with the original sync-shape body) when
+   * it beats the timeout, or `null` when the wait window expires (the
+   * handler then degrades to 202).
+   *
+   * Present only when `config.asyncProcessingEnabled` is true AND
+   * `config.walletLock.transport === "tcp"`. When absent, handlers must
+   * stay on the synchronous path even if the rollout flag would suggest
+   * otherwise.
+   */
+  resultSubscriber?: RedisResultSubscriber;
 }
 
 const sensitiveKeys = [
@@ -335,15 +350,23 @@ export function wire(config: Config): Dependencies {
     });
   }
 
-  // ── Result publisher (optional, outbound for async pipeline) ───
-  // Wired only when QStash signing keys are configured (so the worker
-  // route is mounted AND can be reached) and the lock backend is on
-  // TCP Redis (Upstash REST does not support pub/sub). A dedicated
-  // ioredis client is used because the lock client is tuned for fast
-  // fall-through (500ms ceiling) whereas the publisher prefers to
-  // complete its SET+PUBLISH even under mild network pressure.
+  // ── Result publisher + subscriber (optional, async pipeline pub/sub)
+  // Wired together off a single dedicated ioredis client (separate from
+  // the lock client because the lock favours fast fall-through at 500ms
+  // while pub/sub prefers to complete SET+PUBLISH/GET under mild
+  // network pressure at 2s). Both adapters share the same client to
+  // avoid doubling the connection count.
+  //
+  // The PUBLISHER is reachable when QStash signing keys + a TCP Redis
+  // backend are present (the worker can run and notify a waiting HTTP
+  // handler). The SUBSCRIBER only requires `asyncProcessingEnabled` so
+  // HTTP handlers can wait on results regardless of whether THIS process
+  // also runs as a worker.
   let resultPublisher: IResultPublisher | undefined;
-  if (config.qstash && config.walletLock && config.walletLock.transport === "tcp") {
+  let resultSubscriber: RedisResultSubscriber | undefined;
+  const pubsubEligible = !!config.walletLock && config.walletLock.transport === "tcp";
+  const pubsubWanted = !!config.qstash || config.asyncProcessingEnabled;
+  if (pubsubEligible && pubsubWanted && config.walletLock) {
     const redisHost = safeRedisHost(config.walletLock.redisUrl);
     const resultClient = new IORedis(config.walletLock.redisUrl, {
       maxRetriesPerRequest: 2,
@@ -353,26 +376,53 @@ export function wire(config: Config): Dependencies {
       lazyConnect: true,
     });
     resultClient.on("error", (err: Error) => {
-      logger.warn(bootCtx, "RedisResultPublisher client error", {
+      logger.warn(bootCtx, "Redis pub/sub client error", {
         redis_host: redisHost,
         error: err.message,
         error_name: err.name,
       });
     });
-    resultPublisher = new RedisResultPublisher(resultClient, logger);
-    logger.info(bootCtx, "result publisher wired", {
-      enabled: true,
-      transport: "tcp",
-      redis_host: redisHost,
-    });
+    // Publisher is only useful when this process can act as a worker.
+    if (config.qstash) {
+      resultPublisher = new RedisResultPublisher(resultClient, logger);
+      logger.info(bootCtx, "result publisher wired", {
+        enabled: true,
+        transport: "tcp",
+        redis_host: redisHost,
+      });
+    } else {
+      logger.info(bootCtx, "result publisher disabled", {
+        enabled: false,
+        reason: "config.qstash (signing keys) missing",
+      });
+    }
+    // Subscriber is useful when this process serves HTTP handlers that
+    // may opt into the async path via the rollout flag.
+    if (config.asyncProcessingEnabled) {
+      resultSubscriber = new RedisResultSubscriber(resultClient, logger);
+      logger.info(bootCtx, "result subscriber wired", {
+        enabled: true,
+        transport: "tcp",
+        redis_host: redisHost,
+      });
+    } else {
+      logger.info(bootCtx, "result subscriber disabled", {
+        enabled: false,
+        reason: "WALLET_ASYNC_PROCESSING_ENABLED=false",
+      });
+    }
   } else {
     logger.info(bootCtx, "result publisher disabled", {
       enabled: false,
-      reason: !config.qstash
-        ? "config.qstash (signing keys) missing"
-        : !config.walletLock
-          ? "config.walletLock missing"
-          : "WALLET_LOCK_TRANSPORT must be tcp for pub/sub",
+      reason: !pubsubEligible
+        ? "config.walletLock missing or transport != tcp"
+        : "neither config.qstash nor asyncProcessingEnabled requires pub/sub",
+    });
+    logger.info(bootCtx, "result subscriber disabled", {
+      enabled: false,
+      reason: !pubsubEligible
+        ? "config.walletLock missing or transport != tcp"
+        : "WALLET_ASYNC_PROCESSING_ENABLED=false",
     });
   }
 
@@ -410,6 +460,7 @@ export function wire(config: Config): Dependencies {
     commandBus,
     queryBus,
     qstashReceiver,
+    resultSubscriber,
   };
 
   return _deps;

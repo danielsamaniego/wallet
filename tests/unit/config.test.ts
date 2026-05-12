@@ -20,6 +20,7 @@ describe("loadConfig", () => {
    */
   const EXPECTED_CONFIG_KEYS = [
     "asyncPipeline",
+    "asyncProcessingEnabled",
     "cronSecret",
     "databaseUrl",
     "directUrl",
@@ -449,6 +450,62 @@ describe("loadConfig", () => {
         expect(config.asyncPipeline!.queueName).toBe("wallet-movements-eu");
         expect(config.asyncPipeline!.handlerWaitMs).toBe(3000);
       });
+    });
+  });
+
+  // ── asyncProcessingEnabled flag ───────────────────────────────
+
+  describe("Given WALLET_ASYNC_PROCESSING_ENABLED is not set", () => {
+    it("Then config.asyncProcessingEnabled is false (handlers stay on the sync path by default)", () => {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+
+      const config = loadConfig();
+
+      expect(config.asyncProcessingEnabled).toBe(false);
+    });
+  });
+
+  describe("Given WALLET_ASYNC_PROCESSING_ENABLED is set to a non-boolean string", () => {
+    it("Then loadConfig throws — the env contract is strict 'true'/'false' so a typo cannot silently disable rollout", () => {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+      process.env.WALLET_ASYNC_PROCESSING_ENABLED = "yes";
+
+      expect(() => loadConfig()).toThrow(/WALLET_ASYNC_PROCESSING_ENABLED/);
+    });
+  });
+
+  describe("Given WALLET_ASYNC_PROCESSING_ENABLED=true", () => {
+    it("Then config.asyncProcessingEnabled is the boolean true (string coerced to bool)", () => {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+      process.env.WALLET_ASYNC_PROCESSING_ENABLED = "true";
+
+      const config = loadConfig();
+
+      expect(config.asyncProcessingEnabled).toBe(true);
+    });
+
+    it("Then the flag is independent of asyncPipeline wiring — a deployment can flip the flag before publisher env vars are set, and handlers gracefully degrade at runtime", () => {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+      process.env.WALLET_ASYNC_PROCESSING_ENABLED = "true";
+      delete process.env.QSTASH_TOKEN;
+      delete process.env.QSTASH_URL;
+      delete process.env.WALLET_INTERNAL_WORKER_URL;
+
+      const config = loadConfig();
+
+      expect(config.asyncProcessingEnabled).toBe(true);
+      expect(config.asyncPipeline).toBeUndefined();
+    });
+  });
+
+  describe("Given WALLET_ASYNC_PROCESSING_ENABLED=false explicitly", () => {
+    it("Then config.asyncProcessingEnabled is false", () => {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+      process.env.WALLET_ASYNC_PROCESSING_ENABLED = "false";
+
+      const config = loadConfig();
+
+      expect(config.asyncProcessingEnabled).toBe(false);
     });
   });
 });
