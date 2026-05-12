@@ -74,8 +74,8 @@ Internal components and workflows.
 ### Flow 1: Create Wallet
 
 1. Platform provides `owner_id`, `platform_id`, `currency_code`.
-2. Service validates uniqueness: one wallet per (owner_id, platform_id, currency_code).
-3. Wallet created with `status=active`, `cached_balance_minor=0`, `version=1`.
+2. Service ensures the platform's system-wallet shards for that currency exist (idempotent, outside the SERIALIZABLE tx).
+3. Service inserts the user wallet with `status=active`, `cached_balance_minor=0`, `version=1`. The DB-level unique constraint `(owner_id, platform_id, currency_code, shard_index)` rejects duplicates with Prisma `P2002`; the adapter translates that into the domain error `ErrWalletAlreadyExists`. No SELECT-before-INSERT in code — under SERIALIZABLE that would create predicate locks that abort concurrent unrelated creates.
 
 ### Flow 2: Deposit
 
