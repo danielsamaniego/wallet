@@ -44,13 +44,13 @@ export class EnqueueMovementUseCase
 
     this.logger.debug(ctx, `${methodLogTag} start`, {
       movement_id: movementId,
-      type: cmd.type,
+      type: cmd.movementType,
       platform_id: cmd.platformId,
     });
 
     const movement = Movement.create({
       id: movementId,
-      type: cmd.type,
+      type: cmd.movementType,
       platformId: cmd.platformId,
       status: "pending",
       reason: cmd.reason ?? null,
@@ -70,7 +70,7 @@ export class EnqueueMovementUseCase
 
     this.logger.info(ctx, `${methodLogTag} enqueued`, {
       movement_id: movementId,
-      type: cmd.type,
+      type: cmd.movementType,
     });
 
     return { movementId };

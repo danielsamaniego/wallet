@@ -72,7 +72,7 @@ describe("asyncDispatch", () => {
       expect(dispatch).toHaveBeenCalledOnce();
       const [, cmd] = dispatch.mock.calls[0]!;
       expect(cmd).toBeInstanceOf(EnqueueMovementCommand);
-      expect(cmd.type).toBe("adjustment");
+      expect(cmd.movementType).toBe("adjustment");
       expect(cmd.platformId).toBe(PLATFORM_ID);
       expect(cmd.idempotencyKey).toBe(IDEM_KEY);
       expect(cmd.queuePayload).toEqual({ walletId: "w1", amountMinor: "-50", reason: "fee" });

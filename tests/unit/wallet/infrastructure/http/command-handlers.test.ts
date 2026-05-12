@@ -674,7 +674,7 @@ describe("Wallet command HTTP handlers", () => {
 
         // The bus saw EnqueueMovementCommand (not DepositCommand).
         const [, cmd] = (commandBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]!;
-        expect(cmd.type).toBe("deposit");
+        expect(cmd.movementType).toBe("deposit");
         expect(cmd.idempotencyKey).toBe("idem-d");
         expect(cmd.queuePayload).toMatchObject({
           walletId: "wallet-1",
@@ -766,7 +766,7 @@ describe("Wallet command HTTP handlers", () => {
 
         expect(res.status).toBe(201);
         const [, cmd] = (commandBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]!;
-        expect(cmd.type).toBe("charge");
+        expect(cmd.movementType).toBe("charge");
         expect(cmd.queuePayload.reference).toBe("subscription");
         expect(cmd.queuePayload.metadata).toEqual({ plan: "pro" });
       });
@@ -806,7 +806,7 @@ describe("Wallet command HTTP handlers", () => {
 
         expect(res.status).toBe(201);
         const [, cmd] = (commandBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]!;
-        expect(cmd.type).toBe("adjustment");
+        expect(cmd.movementType).toBe("adjustment");
         expect(cmd.queuePayload.reason).toBe("manual fee");
         expect(cmd.queuePayload.allowNegativeBalance).toBe(true);
         expect(cmd.queuePayload.amountMinor).toBe("-500");
@@ -888,7 +888,7 @@ describe("Wallet command HTTP handlers", () => {
         expect(queryBus.dispatch).toHaveBeenCalledOnce();
         // commandBus saw EnqueueMovementCommand with pre-resolved walletId
         const [, cmd] = (commandBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0]!;
-        expect(cmd.type).toBe("hold_capture");
+        expect(cmd.movementType).toBe("hold_capture");
         expect(cmd.queuePayload).toEqual({
           holdId: "hold-1",
           walletId: "w-of-hold",

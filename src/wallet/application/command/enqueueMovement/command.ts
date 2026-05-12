@@ -32,7 +32,11 @@ export class EnqueueMovementCommand extends ICommand<EnqueueMovementResult> {
   static readonly TYPE = "EnqueueMovement";
 
   constructor(
-    public readonly type: MovementType,
+    // NOTE: renamed from `type` because the base `ICommand` reserves `type`
+    // for the bus dispatch key. Shadowing it sent every async-path
+    // request to a non-existent handler (e.g. "deposit") instead of the
+    // EnqueueMovementUseCase — caught at runtime during local E2E.
+    public readonly movementType: MovementType,
     public readonly platformId: string,
     public readonly idempotencyKey: string,
     public readonly queuePayload: MovementQueuePayload,

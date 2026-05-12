@@ -57,7 +57,8 @@ export async function asyncDispatch<TBody>(
   const enqueueResult = await commandBus.dispatch(
     ctx,
     new EnqueueMovementCommand(
-      input.type,
+      input.type, // mapped to EnqueueMovementCommand.movementType (renamed
+      // to avoid shadowing the base ICommand.type bus dispatch key)
       input.platformId,
       input.idempotencyKey,
       input.queuePayload,
