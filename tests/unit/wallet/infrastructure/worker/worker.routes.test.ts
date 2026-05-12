@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { Hono } from "hono";
 import { workerRoutes } from "@/wallet/infrastructure/adapters/inbound/worker/worker.routes.js";
+import type { ICommandBus } from "@/utils/application/cqrs.js";
 import type { HonoVariables } from "@/utils/infrastructure/hono.context.js";
 import { CanonicalAccumulator } from "@/utils/kernel/observability/canonical.js";
 import type { Dependencies } from "@/wiring.js";
@@ -21,13 +22,15 @@ function buildHostApp(routerDeps: Dependencies) {
 }
 
 function baseDeps(overrides: Partial<Dependencies> = {}): Dependencies {
+  const dispatch = vi.fn().mockResolvedValue({ outcome: "posted" });
+  const commandBus: ICommandBus = { dispatch: dispatch as unknown as ICommandBus["dispatch"] };
   return {
     config: {} as Dependencies["config"],
     prisma: {} as Dependencies["prisma"],
     idGen: createMockIDGenerator(),
     logger: createMockLogger(),
     idempotencyStore: {} as Dependencies["idempotencyStore"],
-    commandBus: {} as Dependencies["commandBus"],
+    commandBus,
     queryBus: {} as Dependencies["queryBus"],
     ...overrides,
   };
@@ -67,9 +70,11 @@ describe("workerRoutes", () => {
       expect(verify).not.toHaveBeenCalled();
     });
 
-    it("Then a valid signature reaches the handler and returns 200", async () => {
+    it("Then a valid signature reaches the handler, dispatches ProcessMovementCommand, and returns 200 with the outcome", async () => {
       const verify = vi.fn().mockResolvedValue(true);
-      const deps = baseDeps({ qstashReceiver: { verify } });
+      const dispatch = vi.fn().mockResolvedValue({ outcome: "posted" });
+      const commandBus: ICommandBus = { dispatch: dispatch as unknown as ICommandBus["dispatch"] };
+      const deps = baseDeps({ qstashReceiver: { verify }, commandBus });
       const app = buildHostApp(deps);
       const movementId = "019e15c7-50a2-7d3c-bc44-8b3640e42e05";
 
@@ -86,7 +91,9 @@ describe("workerRoutes", () => {
       const body = await res.json();
       expect(body.ok).toBe(true);
       expect(body.movement_id).toBe(movementId);
+      expect(body.outcome).toBe("posted");
       expect(verify).toHaveBeenCalledOnce();
+      expect(dispatch).toHaveBeenCalledOnce();
     });
   });
 });

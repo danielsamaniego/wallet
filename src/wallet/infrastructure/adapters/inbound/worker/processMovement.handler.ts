@@ -1,5 +1,6 @@
 import { describeRoute, resolver } from "hono-openapi";
 import { z } from "zod";
+import type { ICommandBus } from "../../../../../utils/application/cqrs.js";
 import type { IIDGenerator } from "../../../../../utils/application/id.generator.js";
 import { handlerFactory } from "../../../../../utils/infrastructure/hono.context.js";
 import {
@@ -8,6 +9,7 @@ import {
 } from "../../../../../utils/infrastructure/hono.error.js";
 import { createAppContext } from "../../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
+import { ProcessMovementCommand } from "../../../../application/worker/processMovement/command.js";
 
 const mainLogTag = "ProcessMovementWorker";
 
@@ -18,24 +20,34 @@ const BodySchema = z.object({
 const ResponseSchema = z.object({
   ok: z.literal(true),
   movement_id: z.string(),
+  outcome: z.enum(["posted", "failed", "noop"]),
+  failed_reason: z.string().optional(),
 });
 
 /**
- * QStash worker endpoint scaffolding for the async movement-processing
- * pipeline (Phase 1C — no business logic yet).
+ * QStash worker endpoint. Once `qstashSignature` has verified the JWT
+ * and placed the raw body on the Hono context, this handler:
  *
- * The QStash signature middleware has already verified the JWT and
- * stored the raw body on the Hono context. This handler:
- *
- *   1. Parses + validates the body with Zod.
- *   2. Logs receipt with a tracking id.
- *   3. Returns 200 so QStash acknowledges the delivery.
- *
- * Phase 2 replaces step 2 with the actual `ProcessMovementUseCase`
- * dispatch (claim pending → run the existing deposit/withdraw/etc.
- * use case → publish result to Redis pub/sub).
+ *   1. Parses + validates `{ movement_id }` with Zod.
+ *   2. Dispatches `ProcessMovementCommand` through the command bus. The
+ *      `ProcessMovementUseCase` owns the full lifecycle: atomic claim
+ *      (`pending → processing`), per-type hydration of the saved
+ *      `queue_payload`, lock + tx envelope around the matching
+ *      `<op>Service.execute`, terminal transition (`posted` or
+ *      `failed`), and result publish to Redis pub/sub.
+ *   3. Returns 200 with `{ outcome, failed_reason? }` regardless of
+ *      whether the movement succeeded, failed, or was a noop — QStash
+ *      only retries on non-2xx, and we never want to retry a terminal
+ *      result. The bus only throws when no handler is registered
+ *      (i.e. the result publisher is not wired): that surfaces as a
+ *      500 via the global onError, and QStash will retry until the
+ *      configuration is fixed or the message hits the DLQ.
  */
-export function processMovementRoute(idGen: IIDGenerator, logger: ILogger) {
+export function processMovementRoute(
+  commandBus: ICommandBus,
+  idGen: IIDGenerator,
+  logger: ILogger,
+) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Internal"],
@@ -46,7 +58,7 @@ export function processMovementRoute(idGen: IIDGenerator, logger: ILogger) {
         "Not part of the public API contract.",
       responses: {
         200: {
-          description: "Delivery accepted",
+          description: "Delivery processed (posted, failed, or noop)",
           content: { "application/json": { schema: resolver(ResponseSchema) } },
         },
         400: {
@@ -65,9 +77,8 @@ export function processMovementRoute(idGen: IIDGenerator, logger: ILogger) {
 
       const rawBody = c.get("rawBody");
       if (rawBody === undefined) {
-        // Shouldn't happen in production — the middleware always sets rawBody
-        // before delegating. Treated as a 500 because it indicates a wiring
-        // bug, not a client mistake.
+        // Wiring bug: signature middleware always sets rawBody before
+        // delegating. Surfacing as 500 makes the misconfiguration loud.
         logger.error(ctx, `${methodLogTag} rawBody missing — middleware not wired?`);
         return errorResponse(c, "INTERNAL_ERROR", "raw body not captured", 500);
       }
@@ -89,10 +100,24 @@ export function processMovementRoute(idGen: IIDGenerator, logger: ILogger) {
       }
 
       const { movement_id } = result.data;
-      logger.info(ctx, `${methodLogTag} received`, { movement_id });
+      logger.info(ctx, `${methodLogTag} dispatching`, { movement_id });
 
-      // Phase 1C scaffolding: ack and return. Real processing lands in Phase 2.
-      return c.json({ ok: true, movement_id } as const, 200);
+      const outcome = await commandBus.dispatch(ctx, new ProcessMovementCommand(movement_id));
+
+      logger.info(ctx, `${methodLogTag} done`, {
+        movement_id,
+        outcome: outcome.outcome,
+      });
+
+      return c.json(
+        {
+          ok: true as const,
+          movement_id,
+          outcome: outcome.outcome,
+          ...(outcome.failedReason !== undefined ? { failed_reason: outcome.failedReason } : {}),
+        },
+        200,
+      );
     },
   );
 }

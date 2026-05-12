@@ -54,6 +54,8 @@ import { ListHoldsQuery } from "./application/query/listHolds/query.js";
 import { ListHoldsUseCase } from "./application/query/listHolds/usecase.js";
 import { ListWalletsQuery } from "./application/query/listWallets/query.js";
 import { ListWalletsUseCase } from "./application/query/listWallets/usecase.js";
+import { ProcessMovementCommand } from "./application/worker/processMovement/command.js";
+import { ProcessMovementUseCase } from "./application/worker/processMovement/usecase.js";
 // Repos
 import { PrismaHoldReadStore } from "./infrastructure/adapters/outbound/prisma/hold.readstore.js";
 import { PrismaHoldRepo } from "./infrastructure/adapters/outbound/prisma/hold.repo.js";
@@ -73,6 +75,7 @@ export function wire({
   txManager,
   lockRunner,
   movementQueuePublisher,
+  resultPublisher,
 }: SharedInfra): ModuleHandlers {
   // Repos
   const walletRepo = new PrismaWalletRepo(prisma, logger, idGen);
@@ -227,9 +230,30 @@ export function wire({
   // Async pipeline entry point. Registered only when the QStash publisher is
   // present in SharedInfra (i.e. config.asyncPipeline is fully set). When
   // absent, dispatching EnqueueMovementCommand will fail-fast at the bus —
-  // the HTTP handler refactor (Phase 2B.6) keeps the sync path in that case.
+  // the HTTP handler refactor (Phase 2B.7) keeps the sync path in that case.
   const enqueueMovement = movementQueuePublisher
     ? new EnqueueMovementUseCase(movementRepo, movementQueuePublisher, idGen, logger)
+    : undefined;
+
+  // Async-path worker dispatcher. Registered only when the result publisher
+  // is wired (config.qstash + TCP Redis). When absent, the worker route
+  // either is not mounted at all (no signing keys → 404) or returns the
+  // Phase 1C scaffolding ack (signing keys but no Redis → cannot notify the
+  // waiting handler). Either way the sync path remains the source of truth.
+  const processMovement = resultPublisher
+    ? new ProcessMovementUseCase(
+        txManager,
+        lockRunner,
+        movementRepo,
+        resultPublisher,
+        depositService,
+        withdrawService,
+        transferService,
+        chargeService,
+        adjustBalanceService,
+        captureHoldService,
+        logger,
+      )
     : undefined;
 
   return {
@@ -251,6 +275,7 @@ export function wire({
       { type: VoidHoldCommand.TYPE, handler: voidHold },
       { type: ExpireHoldsCommand.TYPE, handler: expireHolds },
       ...(enqueueMovement ? [{ type: EnqueueMovementCommand.TYPE, handler: enqueueMovement }] : []),
+      ...(processMovement ? [{ type: ProcessMovementCommand.TYPE, handler: processMovement }] : []),
     ],
     queries: [
       { type: GetWalletQuery.TYPE, handler: getWallet },

@@ -25,7 +25,11 @@ export function workerRoutes(deps: Dependencies) {
 
   const sig = qstashSignature(deps.qstashReceiver);
 
-  router.post("/process-movement", sig, ...processMovementRoute(deps.idGen, deps.logger));
+  router.post(
+    "/process-movement",
+    sig,
+    ...processMovementRoute(deps.commandBus, deps.idGen, deps.logger),
+  );
 
   return router;
 }

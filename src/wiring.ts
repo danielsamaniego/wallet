@@ -7,7 +7,9 @@ import { Redis as IORedis } from "ioredis";
 import type { IQStashReceiver } from "./utils/infrastructure/middleware/qstashSignature.js";
 import { createAppContext } from "./utils/kernel/context.js";
 import type { IMovementQueuePublisher } from "./wallet/domain/ports/movement.queue.publisher.js";
+import type { IResultPublisher } from "./wallet/domain/ports/result.publisher.js";
 import { QStashMovementQueuePublisher } from "./wallet/infrastructure/adapters/outbound/qstash/movement.queue.publisher.js";
+import { RedisResultPublisher } from "./wallet/infrastructure/adapters/outbound/redis/result.publisher.js";
 
 /**
  * Strips credentials from a redis[s]:// URL for safe logging.
@@ -73,6 +75,16 @@ export interface SharedInfra {
    * registered on the bus and the HTTP layer stays on the synchronous path.
    */
   movementQueuePublisher?: IMovementQueuePublisher;
+  /**
+   * Redis-backed pub/sub publisher used by the async worker to notify the
+   * awaiting HTTP handler that a movement reached a terminal state
+   * (`posted` or `failed`). Present only when `config.qstash` is set (the
+   * worker route is mounted) AND `config.walletLock.transport === "tcp"`
+   * (Upstash REST does not support pub/sub). When absent, the
+   * `ProcessMovementCommand` handler is not registered on the bus and the
+   * worker route stays on its Phase 1C scaffolding behaviour.
+   */
+  resultPublisher?: IResultPublisher;
 }
 
 export interface CommandRegistration {
@@ -323,6 +335,47 @@ export function wire(config: Config): Dependencies {
     });
   }
 
+  // ── Result publisher (optional, outbound for async pipeline) ───
+  // Wired only when QStash signing keys are configured (so the worker
+  // route is mounted AND can be reached) and the lock backend is on
+  // TCP Redis (Upstash REST does not support pub/sub). A dedicated
+  // ioredis client is used because the lock client is tuned for fast
+  // fall-through (500ms ceiling) whereas the publisher prefers to
+  // complete its SET+PUBLISH even under mild network pressure.
+  let resultPublisher: IResultPublisher | undefined;
+  if (config.qstash && config.walletLock && config.walletLock.transport === "tcp") {
+    const redisHost = safeRedisHost(config.walletLock.redisUrl);
+    const resultClient = new IORedis(config.walletLock.redisUrl, {
+      maxRetriesPerRequest: 2,
+      enableReadyCheck: true,
+      enableOfflineQueue: false,
+      commandTimeout: 2_000,
+      lazyConnect: true,
+    });
+    resultClient.on("error", (err: Error) => {
+      logger.warn(bootCtx, "RedisResultPublisher client error", {
+        redis_host: redisHost,
+        error: err.message,
+        error_name: err.name,
+      });
+    });
+    resultPublisher = new RedisResultPublisher(resultClient, logger);
+    logger.info(bootCtx, "result publisher wired", {
+      enabled: true,
+      transport: "tcp",
+      redis_host: redisHost,
+    });
+  } else {
+    logger.info(bootCtx, "result publisher disabled", {
+      enabled: false,
+      reason: !config.qstash
+        ? "config.qstash (signing keys) missing"
+        : !config.walletLock
+          ? "config.walletLock missing"
+          : "WALLET_LOCK_TRANSPORT must be tcp for pub/sub",
+    });
+  }
+
   const shared: SharedInfra = {
     prisma,
     logger,
@@ -331,6 +384,7 @@ export function wire(config: Config): Dependencies {
     idempotencyStore,
     lockRunner,
     ...(movementQueuePublisher !== undefined ? { movementQueuePublisher } : {}),
+    ...(resultPublisher !== undefined ? { resultPublisher } : {}),
   };
 
   // ── Modules ──────────────────────────────
