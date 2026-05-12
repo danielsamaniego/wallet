@@ -9,6 +9,7 @@ import { CreateWalletUseCase } from "@/wallet/application/command/createWallet/u
 import { CreateWalletCommand } from "@/wallet/application/command/createWallet/command.js";
 import type { IWalletRepository } from "@/wallet/domain/ports/wallet.repository.js";
 import { AppError, ErrorKind } from "@/utils/kernel/appError.js";
+import { ErrWalletAlreadyExists } from "@/wallet/domain/wallet/wallet.errors.js";
 import type { Wallet } from "@/wallet/domain/wallet/wallet.aggregate.js";
 
 // ── Shared fixtures ────────────────────────────────────────────────
@@ -40,7 +41,6 @@ describe("CreateWalletUseCase", () => {
       idGen = createMockIDGenerator([USER_WALLET_ID]);
       useCase = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
 
-      walletRepo.existsByOwner.mockResolvedValue(false);
       walletRepo.ensureSystemWalletShards.mockResolvedValue(undefined);
     });
 
@@ -78,7 +78,6 @@ describe("CreateWalletUseCase", () => {
       idGen = createMockIDGenerator([USER_WALLET_ID]);
       useCase = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
 
-      walletRepo.existsByOwner.mockResolvedValue(false);
       // ensureSystemWalletShards is idempotent — returns undefined whether
       // it inserted new shards or found them all existing.
       walletRepo.ensureSystemWalletShards.mockResolvedValue(undefined);
@@ -106,12 +105,14 @@ describe("CreateWalletUseCase", () => {
       idGen = createMockIDGenerator([USER_WALLET_ID]);
       useCase = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
 
-      walletRepo.existsByOwner.mockResolvedValue(true);
       walletRepo.ensureSystemWalletShards.mockResolvedValue(undefined);
+      // The adapter translates Prisma's P2002 unique-violation into the
+      // domain-level ErrWalletAlreadyExists. The use case just propagates it.
+      walletRepo.save.mockRejectedValue(ErrWalletAlreadyExists());
     });
 
     describe("When a wallet creation is attempted", () => {
-      it("Then it throws WALLET_ALREADY_EXISTS and does not save a user wallet", async () => {
+      it("Then save throws WALLET_ALREADY_EXISTS and the use case surfaces it", async () => {
         const cmd = new CreateWalletCommand(OWNER, PLATFORM, CURRENCY, SHARD_COUNT);
 
         const err = await useCase.handle(ctx, cmd).catch((e: unknown) => e);
@@ -120,12 +121,12 @@ describe("CreateWalletUseCase", () => {
           code: "WALLET_ALREADY_EXISTS",
           kind: ErrorKind.Conflict,
         });
-        // ensureSystemWalletShards runs before the existence check so that
-        // concurrent createWallet requests don't hit SERIALIZABLE conflicts on
-        // the shard rows inside the tx. It is idempotent; invoking it here is
-        // harmless even though the user wallet is rejected.
+        // ensureSystemWalletShards runs before the INSERT so that concurrent
+        // createWallet requests for the same (platform, currency) don't fight
+        // over the shard rows inside the tx. It is idempotent; invoking it
+        // here is harmless even though the user wallet INSERT then fails.
         expect(walletRepo.ensureSystemWalletShards).toHaveBeenCalledOnce();
-        expect(walletRepo.save).not.toHaveBeenCalled();
+        expect(walletRepo.save).toHaveBeenCalledOnce();
       });
     });
   });
@@ -136,7 +137,6 @@ describe("CreateWalletUseCase", () => {
       idGen = createMockIDGenerator([USER_WALLET_ID]);
       useCase = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
 
-      walletRepo.existsByOwner.mockResolvedValue(false);
       walletRepo.ensureSystemWalletShards.mockResolvedValue(undefined);
     });
 

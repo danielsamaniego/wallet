@@ -48,6 +48,11 @@ model Wallet {
   ledgerEntries             LedgerEntry[]
   holds                     Hold[]
 
+  // For user wallets, this 4-column unique reduces to a 3-column unique on
+  // (owner_id, platform_id, currency_code) — they always have shard_index=0
+  // by design (not sharded). The DB rejects duplicate user wallets with a
+  // unique violation; the application catches Prisma's P2002 and translates
+  // to ErrWalletAlreadyExists. No SELECT-before-INSERT is needed.
   @@unique([ownerId, platformId, currencyCode, shardIndex])
   @@index([platformId, status])
   @@index([platformId, currencyCode, isSystem])
