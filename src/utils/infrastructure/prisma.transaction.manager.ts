@@ -50,22 +50,19 @@ const CONNECTION_JITTER_MS = 100;
  *    the given time". The default of 2s is too aggressive when Accelerate
  *    is under load — the load test saw 846 hits of this error class.
  *
- *  - `timeout` (13s): hard cap on how long a single transaction body may
- *    run before Prisma forces a rollback. Sized to fall *just under*
- *    Accelerate's "Transaction duration" cap (15s in the dashboard) so
- *    Prisma rolls back cleanly before Accelerate kills the transaction
- *    server-side. If Accelerate's cap is later raised, raise this value
- *    in lockstep — leaving Prisma's timeout above Accelerate's produces
- *    the load-test pattern of "A query cannot be executed on an expired
- *    transaction" (105 hits) when Accelerate cuts mid-tx.
+ *  - `timeout` (30s): hard cap on how long a single transaction body may
+ *    run before Prisma forces a rollback. The default of 5s caused 105
+ *    "transaction has expired" errors when use cases ran longer than
+ *    expected under serverless cold-start + Accelerate latency.
  *
- * The full request envelope still fits inside Vercel `maxDuration: 55s`:
- * idempotency.acquire (~100ms) + lockRunner.wait (5s) + tx.maxWait (5s)
- * + tx body (≤13s) + release + idempotency.complete ≈ 23s in the worst
- * case, well under 55s.
+ * Sized to fit inside Vercel `maxDuration: 55s` together with the other
+ * timeouts in the request lifecycle (idempotency.acquire, lockRunner.wait,
+ * lockRunner.body, idempotency.complete) — see vercel.json for the full
+ * timeline. Worst-case sum stays around ~40s, leaving ~15s of buffer for
+ * cold-start, GC pauses, and network jitter.
  */
 const TX_MAX_WAIT_MS = 5000;
-const TX_TIMEOUT_MS = 13000;
+const TX_TIMEOUT_MS = 30000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
