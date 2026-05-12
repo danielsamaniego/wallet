@@ -56,3 +56,5 @@ tmp/
 
 ## Local-only load test script (kept out of repo; re-runnable locally)
 load-test.mjs
+load-test-reports/
+scripts/load-test/

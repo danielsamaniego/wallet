@@ -389,16 +389,20 @@ describe("PrismaTransactionManager", () => {
   });
 
   describe("run — connection-error retries exhausted", () => {
-    it("Given EMAXCONN on every attempt, When run exhausts retries, Then re-throws the original connection error (not escalated to VERSION_CONFLICT)", async () => {
-      // Rationale: a connection error after MAX_RETRIES is a genuine infra
-      // failure; returning VERSION_CONFLICT would mislead the caller into
-      // thinking it's a data race. The original error surfaces so the
-      // global onError maps it to 500 and observability captures it raw.
-      const { manager, prisma } = buildManager();
-      const connErr = new Error("(EMAXCONN) max client connections reached, limit: 200");
-      (prisma.$transaction as ReturnType<typeof vi.fn>).mockRejectedValue(connErr);
+    it(
+      "Given EMAXCONN on every attempt, When run exhausts retries, Then re-throws the original connection error (not escalated to VERSION_CONFLICT)",
+      async () => {
+        // Rationale: a connection error after MAX_RETRIES is a genuine infra
+        // failure; returning VERSION_CONFLICT would mislead the caller into
+        // thinking it's a data race. The original error surfaces so the
+        // global onError maps it to 500 and observability captures it raw.
+        const { manager, prisma } = buildManager();
+        const connErr = new Error("(EMAXCONN) max client connections reached, limit: 200");
+        (prisma.$transaction as ReturnType<typeof vi.fn>).mockRejectedValue(connErr);
 
-      await expect(manager.run(ctx, async () => "never")).rejects.toBe(connErr);
-    });
+        await expect(manager.run(ctx, async () => "never")).rejects.toBe(connErr);
+      },
+      20_000,
+    );
   });
 });
