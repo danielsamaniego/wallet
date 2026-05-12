@@ -63,10 +63,4 @@ export interface IWalletRepository {
    * already in use (instead of every supported currency blindly).
    */
   listSystemWalletCurrencies(ctx: AppContext, platformId: string): Promise<string[]>;
-  existsByOwner(
-    ctx: AppContext,
-    ownerId: string,
-    platformId: string,
-    currencyCode: string,
-  ): Promise<boolean>;
 }

@@ -5,7 +5,6 @@ import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
 import { Wallet } from "../../../domain/wallet/wallet.aggregate.js";
-import { ErrWalletAlreadyExists } from "../../../domain/wallet/wallet.errors.js";
 import type { CreateWalletCommand, CreateWalletResult } from "./command.js";
 
 const mainLogTag = "CreateWalletUseCase";
@@ -43,22 +42,12 @@ export class CreateWalletUseCase
       now,
     );
 
+    // No SELECT-before-INSERT: the (owner, platform, currency, shard_index=0)
+    // unique constraint on wallets rejects duplicates at the DB level. The
+    // adapter catches Prisma's P2002 and throws ErrWalletAlreadyExists. A
+    // pre-flight check would create predicate locks under SERIALIZABLE that
+    // abort concurrent unrelated creates.
     await this.txManager.run(ctx, async (txCtx) => {
-      const exists = await this.walletRepo.existsByOwner(
-        txCtx,
-        cmd.ownerId,
-        cmd.platformId,
-        cmd.currencyCode,
-      );
-      if (exists) {
-        this.logger.warn(txCtx, `${methodLogTag} wallet already exists for owner`, {
-          owner_id: cmd.ownerId,
-          platform_id: cmd.platformId,
-          currency_code: cmd.currencyCode,
-        });
-        throw ErrWalletAlreadyExists();
-      }
-
       const wallet = Wallet.create(walletId, cmd.ownerId, cmd.platformId, cmd.currencyCode, now);
       await this.walletRepo.save(txCtx, wallet);
     });

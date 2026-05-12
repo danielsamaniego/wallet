@@ -7,6 +7,7 @@ import { Wallet, type WalletStatus } from "../../../../domain/wallet/wallet.aggr
 import {
   ErrSystemWalletNotFound,
   ErrVersionConflict,
+  ErrWalletAlreadyExists,
 } from "../../../../domain/wallet/wallet.errors.js";
 
 type PrismaTransactionClient = Omit<
@@ -34,21 +35,41 @@ export class PrismaWalletRepo implements IWalletRepository {
     const db = this.client(ctx);
     if (wallet.version === 1) {
       this.logger.debug(ctx, "WalletRepo | save creating new wallet", { wallet_id: wallet.id });
-      await db.wallet.create({
-        data: {
-          id: wallet.id,
-          ownerId: wallet.ownerId,
-          platformId: wallet.platformId,
-          currencyCode: wallet.currencyCode,
-          cachedBalanceMinor: wallet.cachedBalanceMinor,
-          status: wallet.status,
-          version: wallet.version,
-          isSystem: wallet.isSystem,
-          shardIndex: wallet.shardIndex,
-          createdAt: BigInt(wallet.createdAt),
-          updatedAt: BigInt(wallet.updatedAt),
-        },
-      });
+      try {
+        await db.wallet.create({
+          data: {
+            id: wallet.id,
+            ownerId: wallet.ownerId,
+            platformId: wallet.platformId,
+            currencyCode: wallet.currencyCode,
+            cachedBalanceMinor: wallet.cachedBalanceMinor,
+            status: wallet.status,
+            version: wallet.version,
+            isSystem: wallet.isSystem,
+            shardIndex: wallet.shardIndex,
+            createdAt: BigInt(wallet.createdAt),
+            updatedAt: BigInt(wallet.updatedAt),
+          },
+        });
+      } catch (err) {
+        // P2002 = Prisma unique-constraint violation. For user wallets, the
+        // 4-column unique (owner_id, platform_id, currency_code, shard_index)
+        // rejects a duplicate (shard_index is always 0 for users), so this is
+        // the DB telling us the owner already has a wallet for this currency.
+        // Translating to the domain error lets the createWallet use case skip
+        // a SELECT-before-INSERT pre-flight check — which under SERIALIZABLE
+        // creates predicate locks that abort concurrent unrelated creates.
+        if (err instanceof Error && "code" in err && (err as { code: string }).code === "P2002") {
+          this.logger.warn(ctx, "WalletRepo | save duplicate owner", {
+            wallet_id: wallet.id,
+            owner_id: wallet.ownerId,
+            platform_id: wallet.platformId,
+            currency_code: wallet.currencyCode,
+          });
+          throw ErrWalletAlreadyExists();
+        }
+        throw err;
+      }
     } else {
       const previousVersion = wallet.version - 1;
       const result = await db.wallet.updateMany({
@@ -265,31 +286,6 @@ export class PrismaWalletRepo implements IWalletRepository {
       cachedBalanceMinor: result._sum.cachedBalanceMinor ?? 0n,
       shardCount: result._count._all,
     };
-  }
-
-  async existsByOwner(
-    ctx: AppContext,
-    ownerId: string,
-    platformId: string,
-    currencyCode: string,
-  ): Promise<boolean> {
-    this.logger.debug(ctx, "WalletRepo | existsByOwner", {
-      owner_id: ownerId,
-      platform_id: platformId,
-      currency_code: currencyCode,
-    });
-    const row = await this.client(ctx).wallet.findUnique({
-      where: {
-        ownerId_platformId_currencyCode_shardIndex: {
-          ownerId,
-          platformId,
-          currencyCode: currencyCode.toUpperCase(),
-          shardIndex: 0,
-        },
-      },
-      select: { id: true },
-    });
-    return row !== null;
   }
 
   private toDomain(row: {

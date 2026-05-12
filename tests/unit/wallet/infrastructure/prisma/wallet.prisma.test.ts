@@ -725,6 +725,31 @@ describe("PrismaWalletRepo", () => {
         }),
       });
     });
+
+    it("Given a duplicate (owner, platform, currency), When create rejects with P2002, Then throws WALLET_ALREADY_EXISTS", async () => {
+      // P2002 is Prisma's unique constraint violation code. For user wallets,
+      // the 4-column unique (owner_id, platform_id, currency_code, shard_index)
+      // rejects a duplicate (shard_index is always 0 for users). The adapter
+      // translates that into the domain error so the use case can stay
+      // Prisma-agnostic and skip a SELECT-before-INSERT pre-flight check.
+      const { repo, walletModel } = buildRepo();
+      const p2002 = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+      walletModel.create.mockRejectedValue(p2002);
+      const wallet = Wallet.create("w-dup", "owner-1", "platform-1", "USD", false, 1700000000000);
+
+      await expect(repo.save(ctx, wallet)).rejects.toMatchObject({
+        code: "WALLET_ALREADY_EXISTS",
+      });
+    });
+
+    it("Given a non-P2002 error from create, When save is called, Then rethrows the original error", async () => {
+      const { repo, walletModel } = buildRepo();
+      const dbErr = new Error("connection reset");
+      walletModel.create.mockRejectedValue(dbErr);
+      const wallet = Wallet.create("w-x", "owner-1", "platform-1", "USD", false, 1700000000000);
+
+      await expect(repo.save(ctx, wallet)).rejects.toBe(dbErr);
+    });
   });
 
   describe("save — existing wallet (version > 1)", () => {
@@ -996,38 +1021,6 @@ describe("PrismaWalletRepo", () => {
     });
   });
 
-  describe("existsByOwner", () => {
-    it("Given a wallet exists for owner, When existsByOwner is called, Then returns true", async () => {
-      const { repo, walletModel } = buildRepo();
-      walletModel.findUnique.mockResolvedValue(buildWalletRow({ ownerId: "owner-1" }));
-      const result = await repo.existsByOwner(ctx, "owner-1", "platform-1", "USD");
-      expect(result).toBe(true);
-    });
-
-    it("Given no wallet for owner, When existsByOwner is called, Then returns false", async () => {
-      const { repo, walletModel } = buildRepo();
-      walletModel.findUnique.mockResolvedValue(null);
-      const result = await repo.existsByOwner(ctx, "owner-x", "platform-1", "USD");
-      expect(result).toBe(false);
-    });
-
-    it("Given lowercase currency code, When existsByOwner is called, Then queries via unique index with shardIndex 0 and uppercased currency", async () => {
-      const { repo, walletModel } = buildRepo();
-      walletModel.findUnique.mockResolvedValue(null);
-      await repo.existsByOwner(ctx, "owner-1", "platform-1", "usd");
-      expect(walletModel.findUnique).toHaveBeenCalledWith({
-        where: {
-          ownerId_platformId_currencyCode_shardIndex: {
-            ownerId: "owner-1",
-            platformId: "platform-1",
-            currencyCode: "USD",
-            shardIndex: 0,
-          },
-        },
-        select: { id: true },
-      });
-    });
-  });
 
   describe("client — uses opCtx when present", () => {
     it("Given a transactional context, When findById is called, Then uses the transaction client", async () => {
