@@ -42,6 +42,7 @@ export class WithdrawUseCase implements ICommandHandler<WithdrawCommand, Withdra
         const movement = Movement.create({
           id: this.idGen.newId(),
           type: "withdrawal",
+          platformId: cmd.platformId,
           createdAt: Date.now(),
         });
         // movement first: ledger_entries.movement_id FK requires it.

@@ -41,6 +41,7 @@ export class ChargeUseCase implements ICommandHandler<ChargeCommand, ChargeResul
         const movement = Movement.create({
           id: this.idGen.newId(),
           type: "charge",
+          platformId: cmd.platformId,
           createdAt: Date.now(),
         });
         await this.movementRepo.save(txCtx, movement);

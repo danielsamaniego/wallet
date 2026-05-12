@@ -44,6 +44,7 @@ export class AdjustBalanceUseCase
         const movement = Movement.create({
           id: this.idGen.newId(),
           type: "adjustment",
+          platformId: cmd.platformId,
           reason: cmd.reason,
           createdAt: Date.now(),
         });

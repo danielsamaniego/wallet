@@ -69,6 +69,7 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
         const movement = Movement.create({
           id: this.idGen.newId(),
           type: "hold_capture",
+          platformId: cmd.platformId,
           createdAt: Date.now(),
         });
         await this.movementRepo.save(txCtx, movement);

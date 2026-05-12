@@ -52,6 +52,7 @@ export class ImportHistoricalEntryUseCase
         const movement = Movement.create({
           id: this.idGen.newId(),
           type: "adjustment",
+          platformId: cmd.platformId,
           reason: cmd.reason,
           createdAt: cmd.historicalCreatedAt,
         });

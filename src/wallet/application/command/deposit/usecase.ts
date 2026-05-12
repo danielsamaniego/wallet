@@ -53,6 +53,7 @@ export class DepositUseCase implements ICommandHandler<DepositCommand, DepositRe
         const movement = Movement.create({
           id: this.idGen.newId(),
           type: "deposit",
+          platformId: cmd.platformId,
           createdAt: Date.now(),
         });
         // movement first: ledger_entries.movement_id FK requires it.

@@ -23,12 +23,14 @@ export class PrismaMovementRepo implements IMovementRepository {
     this.logger.debug(ctx, "MovementRepo | save", {
       movement_id: movement.id,
       status: movement.status,
+      platform_id: movement.platformId,
     });
     await this.client(ctx).movement.create({
       data: {
         id: movement.id,
         type: movement.type,
         status: movement.status,
+        platformId: movement.platformId,
         reason: movement.reason,
         failedReason: movement.failedReason,
         createdAt: BigInt(movement.createdAt),

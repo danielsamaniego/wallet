@@ -1160,11 +1160,16 @@ describe("PrismaMovementRepo", () => {
     });
   });
 
-  describe("save — persists status and failedReason", () => {
-    it("Given a default movement, When save is called, Then it writes status='posted' and failedReason=null", async () => {
+  describe("save — persists status, platformId and failedReason", () => {
+    it("Given a default movement, When save is called, Then it writes status='posted', platformId, and failedReason=null", async () => {
       const { repo, movement } = buildRepo();
 
-      const mov = Movement.create({ id: "mov-1", type: "deposit", createdAt: 1700000000000 });
+      const mov = Movement.create({
+        id: "mov-1",
+        type: "deposit",
+        platformId: "platform-1",
+        createdAt: 1700000000000,
+      });
 
       await repo.save(ctx, mov);
 
@@ -1173,6 +1178,7 @@ describe("PrismaMovementRepo", () => {
           id: "mov-1",
           type: "deposit",
           status: "posted",
+          platformId: "platform-1",
           reason: null,
           failedReason: null,
           createdAt: 1700000000000n,
@@ -1180,12 +1186,13 @@ describe("PrismaMovementRepo", () => {
       });
     });
 
-    it("Given a failed movement, When save is called, Then it persists status and failedReason", async () => {
+    it("Given a failed movement, When save is called, Then it persists status, platformId and failedReason", async () => {
       const { repo, movement } = buildRepo();
 
       const mov = Movement.create({
         id: "mov-2",
         type: "deposit",
+        platformId: "platform-1",
         status: "failed",
         failedReason: "qstash_max_attempts_exceeded",
         createdAt: 1700000000000,
@@ -1198,6 +1205,7 @@ describe("PrismaMovementRepo", () => {
           id: "mov-2",
           type: "deposit",
           status: "failed",
+          platformId: "platform-1",
           reason: null,
           failedReason: "qstash_max_attempts_exceeded",
           createdAt: 1700000000000n,
@@ -1250,7 +1258,7 @@ describe("PrismaMovementReadStore", () => {
       expect(result!.created_at).toBe(1700000000000);
     });
 
-    it("Given the movement exists, When getById is called, Then the query filters by id and by platformId via the transactions/wallet path", async () => {
+    it("Given the movement exists, When getById is called, Then the query filters by id and by direct platformId OR the transactions/wallet path", async () => {
       const { store, movement } = buildReadStore();
       movement.findFirst.mockResolvedValue(buildMovementRow());
 
@@ -1259,7 +1267,10 @@ describe("PrismaMovementReadStore", () => {
       expect(movement.findFirst).toHaveBeenCalledWith({
         where: {
           id: "mov-1",
-          transactions: { some: { wallet: { platformId: "platform-1" } } },
+          OR: [
+            { platformId: "platform-1" },
+            { transactions: { some: { wallet: { platformId: "platform-1" } } } },
+          ],
         },
       });
     });

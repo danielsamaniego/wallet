@@ -18,14 +18,21 @@ export class PrismaMovementReadStore implements IMovementReadStore {
   ): Promise<MovementDTO | null> {
     this.logger.debug(ctx, "MovementReadStore | getById", { movement_id: movementId });
 
-    // Platform isolation: a movement is resolvable only when at least one
-    // of its transactions points at a wallet owned by the requesting
-    // platform. This blocks cross-tenant enumeration without leaking the
-    // movement's existence (caller maps null → 404).
+    // Platform isolation, two paths combined with OR:
+    //   1) NEW: direct `platformId` column match. Required for movements created
+    //      by the Phase 2B async pipeline that have no transactions yet
+    //      (status `pending` or `processing`).
+    //   2) LEGACY: transitive path through `transactions.wallet.platformId`,
+    //      kept as fallback for pre-Phase-2B-migration orphan rows whose
+    //      `platform_id` could not be backfilled (no transactions to derive
+    //      it from). They remain reachable through this path if the caller
+    //      legitimately owns one of their transactions' wallets.
+    // Both paths collapse a missing-or-foreign-tenant lookup to null → 404 so
+    // attackers cannot enumerate movement ids.
     const row = await this.prisma.movement.findFirst({
       where: {
         id: movementId,
-        transactions: { some: { wallet: { platformId } } },
+        OR: [{ platformId }, { transactions: { some: { wallet: { platformId } } } }],
       },
     });
 

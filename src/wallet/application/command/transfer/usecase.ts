@@ -60,6 +60,7 @@ export class TransferUseCase implements ICommandHandler<TransferCommand, Transfe
           const movement = Movement.create({
             id: this.idGen.newId(),
             type: "transfer",
+            platformId: cmd.platformId,
             createdAt: Date.now(),
           });
           await this.movementRepo.save(txCtx, movement);
