@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import { mock, mockReset } from "vitest-mock-extended";
 import {
   createMockIDGenerator,
@@ -5,343 +6,115 @@ import {
   createMockLogger,
   createMockTransactionManager,
 } from "@test/helpers/mocks/index.js";
-import { WalletBuilder } from "@test/helpers/builders/wallet.builder.js";
 import { createTestContext } from "@test/helpers/builders/context.builder.js";
 import { WithdrawUseCase } from "@/wallet/application/command/withdraw/usecase.js";
 import { WithdrawCommand } from "@/wallet/application/command/withdraw/command.js";
-import type { IWalletRepository } from "@/wallet/domain/ports/wallet.repository.js";
-import type { IHoldRepository } from "@/wallet/domain/ports/hold.repository.js";
-import type { ITransactionRepository } from "@/wallet/domain/ports/transaction.repository.js";
-import type { ILedgerEntryRepository } from "@/wallet/domain/ports/ledgerEntry.repository.js";
+import type { WithdrawService } from "@/wallet/application/command/withdraw/service.js";
 import type { IMovementRepository } from "@/wallet/domain/ports/movement.repository.js";
-import { AppError, ErrorKind } from "@/utils/kernel/appError.js";
 import type { Movement } from "@/wallet/domain/movement/movement.entity.js";
-import type { Transaction } from "@/wallet/domain/transaction/transaction.entity.js";
-import type { LedgerEntry } from "@/wallet/domain/ledgerEntry/ledgerEntry.entity.js";
-import type { Wallet } from "@/wallet/domain/wallet/wallet.aggregate.js";
 
 describe("WithdrawUseCase", () => {
-  const walletRepo = mock<IWalletRepository>();
-  const holdRepo = mock<IHoldRepository>();
-  const transactionRepo = mock<ITransactionRepository>();
-  const ledgerEntryRepo = mock<ILedgerEntryRepository>();
-  const movementRepo = mock<IMovementRepository>();
   const txManager = createMockTransactionManager();
-  const idGen = createMockIDGenerator(["tx-1", "mov-1", "ledger-1", "ledger-2"]);
+  const movementRepo = mock<IMovementRepository>();
+  const idGen = createMockIDGenerator(["mov-1"]);
   const logger = createMockLogger();
   const lockRunner = createMockLockRunner();
+  const withdrawService = mock<WithdrawService>();
 
   const sut = new WithdrawUseCase(
     txManager,
-    walletRepo,
-    holdRepo,
-    transactionRepo,
-    ledgerEntryRepo,
     movementRepo,
     idGen,
     logger,
     lockRunner,
+    withdrawService,
   );
-
   const ctx = createTestContext();
 
   beforeEach(() => {
-    mockReset(walletRepo);
-    mockReset(holdRepo);
-    mockReset(transactionRepo);
-    mockReset(ledgerEntryRepo);
     mockReset(movementRepo);
+    mockReset(withdrawService);
+    (txManager.run as ReturnType<typeof vi.fn>).mockClear();
+    (lockRunner.run as ReturnType<typeof vi.fn>).mockClear();
     idGen.reset();
+    withdrawService.execute.mockResolvedValue({ transactionId: "tx-1", movementId: "mov-1" });
   });
 
-  describe("Given an active user wallet with 10000 cents balance and no holds", () => {
-    const systemWallet = new WalletBuilder()
-      .withId("system-wallet-1")
-      .withPlatformId("platform-1")
-      .withCurrency("USD")
-      .withBalance(500000n)
-      .asSystem()
-      .build();
+  describe("Given a valid withdrawal command", () => {
+    const cmd = new WithdrawCommand("wallet-1", "platform-1", 3000n, "idem-1", 32, "ref-1");
 
-    beforeEach(() => {
-      walletRepo.findById.mockResolvedValue(
-        new WalletBuilder()
-          .withId("wallet-1")
-          .withPlatformId("platform-1")
-          .withCurrency("USD")
-          .withBalance(10000n)
-          .build(),
-      );
-      walletRepo.adjustSystemShardBalance.mockResolvedValue({ walletId: systemWallet.id, cachedBalanceMinor: 503000n });
-      walletRepo.save.mockResolvedValue(undefined);
-      
-      holdRepo.sumActiveHolds.mockResolvedValue(0n);
-      transactionRepo.save.mockResolvedValue(undefined);
-      ledgerEntryRepo.saveMany.mockResolvedValue(undefined);
-      movementRepo.save.mockResolvedValue(undefined);
-    });
-
-    describe("When withdrawing 3000 cents", () => {
-      const cmd = new WithdrawCommand("wallet-1", "platform-1", 3000n, "idem-1", 32, "ref-1");
-
-      it("Then it returns the transactionId and movementId", async () => {
-        const result = await sut.handle(ctx, cmd);
-
-        expect(result).toEqual({ transactionId: "tx-1", movementId: "mov-1" });
-      });
-
-      it("Then the user wallet balance is decreased", async () => {
+    describe("When handle is called", () => {
+      it("Then it acquires the per-wallet lock with key `wallet-lock:<walletId>`", async () => {
         await sut.handle(ctx, cmd);
 
-        const savedWallet = walletRepo.save.mock.calls[0]![1] as Wallet;
-        expect(savedWallet.cachedBalanceMinor).toBe(7000n);
-      });
-
-      it("Then the system wallet balance is adjusted with positive delta", async () => {
-        await sut.handle(ctx, cmd);
-
-        expect(walletRepo.adjustSystemShardBalance).toHaveBeenCalledWith(
+        expect(lockRunner.run).toHaveBeenCalledWith(
           expect.anything(),
-          "platform-1",
-          "USD",
-          expect.any(Number),
-                    3000n,
-                    expect.any(Number),
+          ["wallet-lock:wallet-1"],
+          expect.any(Function),
         );
       });
 
-      it("Then a Movement is created with type 'withdrawal'", async () => {
+      it("Then it opens a transaction via txManager.run", async () => {
+        await sut.handle(ctx, cmd);
+
+        expect(txManager.run).toHaveBeenCalledOnce();
+      });
+
+      it("Then it creates a Movement(type='withdrawal', status='posted') and saves it", async () => {
         await sut.handle(ctx, cmd);
 
         expect(movementRepo.save).toHaveBeenCalledOnce();
         const movement = movementRepo.save.mock.calls[0]![1] as Movement;
         expect(movement.id).toBe("mov-1");
         expect(movement.type).toBe("withdrawal");
+        expect(movement.status).toBe("posted");
       });
 
-      it("Then a Transaction is created with type 'withdrawal' and status 'completed'", async () => {
+      it("Then it delegates to WithdrawService.execute with the saved Movement", async () => {
         await sut.handle(ctx, cmd);
 
-        expect(transactionRepo.save).toHaveBeenCalledOnce();
-        const tx = transactionRepo.save.mock.calls[0]![1] as Transaction;
-        expect(tx.id).toBe("tx-1");
-        expect(tx.walletId).toBe("wallet-1");
-        expect(tx.counterpartWalletId).toBe("system-wallet-1");
-        expect(tx.type).toBe("withdrawal");
-        expect(tx.amountMinor).toBe(3000n);
-        expect(tx.status).toBe("completed");
-        expect(tx.idempotencyKey).toBe("idem-1");
-        expect(tx.reference).toBe("ref-1");
-        expect(tx.movementId).toBe("mov-1");
+        expect(withdrawService.execute).toHaveBeenCalledOnce();
+        const [, calledCmd, calledMovement] = withdrawService.execute.mock.calls[0]!;
+        expect(calledCmd).toBe(cmd);
+        expect((calledMovement as Movement).id).toBe("mov-1");
       });
 
-      it("Then two LedgerEntries are created (DEBIT user + CREDIT system)", async () => {
-        await sut.handle(ctx, cmd);
+      it("Then it returns whatever the service returned", async () => {
+        withdrawService.execute.mockResolvedValue({
+          transactionId: "tx-from-service",
+          movementId: "mov-1",
+        });
 
-        expect(ledgerEntryRepo.saveMany).toHaveBeenCalledOnce();
-        const entries = ledgerEntryRepo.saveMany.mock.calls[0]![1] as LedgerEntry[];
-        expect(entries).toHaveLength(2);
-
-        const debitEntry = entries.find((e) => e.entryType === "DEBIT")!;
-        expect(debitEntry.walletId).toBe("wallet-1");
-        expect(debitEntry.amountMinor).toBe(-3000n);
-        expect(debitEntry.balanceAfterMinor).toBe(7000n);
-        expect(debitEntry.transactionId).toBe("tx-1");
-        expect(debitEntry.movementId).toBe("mov-1");
-
-        const creditEntry = entries.find((e) => e.entryType === "CREDIT")!;
-        expect(creditEntry.walletId).toBe("system-wallet-1");
-        expect(creditEntry.amountMinor).toBe(3000n);
-        expect(creditEntry.balanceAfterMinor).toBe(503000n);
-        expect(creditEntry.transactionId).toBe("tx-1");
-        expect(creditEntry.movementId).toBe("mov-1");
-      });
-    });
-
-    describe("When withdrawing the exact available balance (boundary)", () => {
-      const cmd = new WithdrawCommand("wallet-1", "platform-1", 10000n, "idem-boundary", 32);
-
-      it("Then it succeeds and returns transactionId and movementId", async () => {
         const result = await sut.handle(ctx, cmd);
 
-        expect(result).toEqual({ transactionId: "tx-1", movementId: "mov-1" });
+        expect(result).toEqual({ transactionId: "tx-from-service", movementId: "mov-1" });
       });
 
-      it("Then the user wallet balance becomes zero", async () => {
+      it("Then the Movement is saved before the service runs (FK ordering)", async () => {
+        const order: string[] = [];
+        movementRepo.save.mockImplementation(async () => {
+          order.push("movement.save");
+        });
+        withdrawService.execute.mockImplementation(async () => {
+          order.push("service.execute");
+          return { transactionId: "tx-1", movementId: "mov-1" };
+        });
+
         await sut.handle(ctx, cmd);
 
-        const savedWallet = walletRepo.save.mock.calls[0]![1] as Wallet;
-        expect(savedWallet.cachedBalanceMinor).toBe(0n);
+        expect(order).toEqual(["movement.save", "service.execute"]);
       });
     });
   });
 
-  describe("Given a wallet with insufficient funds (balance minus holds < amount)", () => {
-    beforeEach(() => {
-      walletRepo.findById.mockResolvedValue(
-        new WalletBuilder()
-          .withId("wallet-1")
-          .withPlatformId("platform-1")
-          .withCurrency("USD")
-          .withBalance(5000n)
-          .build(),
-      );
-      walletRepo.adjustSystemShardBalance.mockResolvedValue({
-        walletId: "system-wallet-1",
-        cachedBalanceMinor: 0n,
-      });
-      holdRepo.sumActiveHolds.mockResolvedValue(3000n);
-    });
+  describe("Given the service throws (business-rule failure)", () => {
+    const cmd = new WithdrawCommand("wallet-1", "platform-1", 3000n, "idem-2", 32);
 
-    describe("When withdrawing more than available balance", () => {
-      const cmd = new WithdrawCommand("wallet-1", "platform-1", 3000n, "idem-insuf", 32);
+    describe("When handle is called", () => {
+      it("Then the error propagates out of the lock + tx envelope", async () => {
+        withdrawService.execute.mockRejectedValue(new Error("INSUFFICIENT_FUNDS"));
 
-      it("Then it throws INSUFFICIENT_FUNDS", async () => {
-        await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
-          return err.kind === ErrorKind.DomainRule && err.code === "INSUFFICIENT_FUNDS";
-        });
-      });
-    });
-  });
-
-  describe("Given a system wallet (isSystem = true) with zero balance", () => {
-    beforeEach(() => {
-      const systemWalletAsUser = new WalletBuilder()
-        .withId("system-wallet-1")
-        .withPlatformId("platform-1")
-        .withCurrency("USD")
-        .withBalance(0n)
-        .asSystem()
-        .build();
-
-      const counterpartSystem = new WalletBuilder()
-        .withId("system-wallet-2")
-        .withPlatformId("platform-1")
-        .withCurrency("USD")
-        .withBalance(0n)
-        .asSystem()
-        .build();
-
-      walletRepo.findById.mockResolvedValue(systemWalletAsUser);
-      walletRepo.adjustSystemShardBalance.mockResolvedValue({ walletId: counterpartSystem.id, cachedBalanceMinor: counterpartSystem.cachedBalanceMinor });
-      walletRepo.save.mockResolvedValue(undefined);
-      
-      holdRepo.sumActiveHolds.mockResolvedValue(0n);
-      transactionRepo.save.mockResolvedValue(undefined);
-      ledgerEntryRepo.saveMany.mockResolvedValue(undefined);
-      movementRepo.save.mockResolvedValue(undefined);
-    });
-
-    describe("When withdrawing 5000 cents (exceeding balance)", () => {
-      const cmd = new WithdrawCommand("system-wallet-1", "platform-1", 5000n, "idem-sys", 32);
-
-      it("Then it succeeds because system wallets bypass the funds check", async () => {
-        const result = await sut.handle(ctx, cmd);
-
-        expect(result).toEqual({ transactionId: "tx-1", movementId: "mov-1" });
-      });
-
-      it("Then the system wallet balance goes negative", async () => {
-        await sut.handle(ctx, cmd);
-
-        const savedWallet = walletRepo.save.mock.calls[0]![1] as Wallet;
-        expect(savedWallet.cachedBalanceMinor).toBe(-5000n);
-      });
-    });
-  });
-
-  describe("Given a frozen wallet", () => {
-    beforeEach(() => {
-      walletRepo.findById.mockResolvedValue(
-        new WalletBuilder()
-          .withId("wallet-1")
-          .withPlatformId("platform-1")
-          .withCurrency("USD")
-          .asFrozen()
-          .build(),
-      );
-      walletRepo.adjustSystemShardBalance.mockResolvedValue({
-        walletId: "system-wallet-1",
-        cachedBalanceMinor: 0n,
-      });
-      holdRepo.sumActiveHolds.mockResolvedValue(0n);
-    });
-
-    describe("When withdrawing", () => {
-      const cmd = new WithdrawCommand("wallet-1", "platform-1", 1000n, "idem-frozen", 32);
-
-      it("Then it throws WALLET_NOT_ACTIVE", async () => {
-        await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
-          return err.kind === ErrorKind.DomainRule && err.code === "WALLET_NOT_ACTIVE";
-        });
-      });
-    });
-  });
-
-  describe("Given a wallet belonging to a different platform", () => {
-    beforeEach(() => {
-      walletRepo.findById.mockResolvedValue(
-        new WalletBuilder()
-          .withId("wallet-1")
-          .withPlatformId("platform-other")
-          .withCurrency("USD")
-          .build(),
-      );
-    });
-
-    describe("When withdrawing with platformId 'platform-1'", () => {
-      const cmd = new WithdrawCommand("wallet-1", "platform-1", 1000n, "idem-plat", 32);
-
-      it("Then it throws WALLET_NOT_FOUND (platform mismatch)", async () => {
-        await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
-          return err.kind === ErrorKind.NotFound && err.code === "WALLET_NOT_FOUND";
-        });
-      });
-    });
-  });
-
-  describe("Given the wallet does not exist", () => {
-    beforeEach(() => {
-      walletRepo.findById.mockResolvedValue(null);
-    });
-
-    describe("When withdrawing", () => {
-      const cmd = new WithdrawCommand("nonexistent", "platform-1", 1000n, "idem-nf", 32);
-
-      it("Then it throws WALLET_NOT_FOUND", async () => {
-        await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
-          return err.kind === ErrorKind.NotFound && err.code === "WALLET_NOT_FOUND";
-        });
-      });
-    });
-  });
-
-  describe("Given the system wallet does not exist", () => {
-    beforeEach(() => {
-      walletRepo.findById.mockResolvedValue(
-        new WalletBuilder()
-          .withId("wallet-1")
-          .withPlatformId("platform-1")
-          .withCurrency("USD")
-          .withBalance(10000n)
-          .build(),
-      );
-      holdRepo.sumActiveHolds.mockResolvedValue(0n);
-      walletRepo.adjustSystemShardBalance.mockRejectedValue(
-        AppError.internal(
-          "SYSTEM_WALLET_NOT_FOUND",
-          "system wallet not found for platform platform-1, currency USD",
-        ),
-      );
-    });
-
-    describe("When withdrawing", () => {
-      const cmd = new WithdrawCommand("wallet-1", "platform-1", 1000n, "idem-sys-nf", 32);
-
-      it("Then it throws SYSTEM_WALLET_NOT_FOUND", async () => {
-        await expect(sut.handle(ctx, cmd)).rejects.toSatisfy((err: AppError) => {
-          return err.kind === ErrorKind.Internal && err.code === "SYSTEM_WALLET_NOT_FOUND";
-        });
+        await expect(sut.handle(ctx, cmd)).rejects.toThrow("INSUFFICIENT_FUNDS");
       });
     });
   });

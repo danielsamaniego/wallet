@@ -1,17 +1,21 @@
 import type { ModuleHandlers, SharedInfra } from "../wiring.js";
 // Commands & Queries (for bus registration)
 import { AdjustBalanceCommand } from "./application/command/adjustBalance/command.js";
+import { AdjustBalanceService } from "./application/command/adjustBalance/service.js";
 import { AdjustBalanceUseCase } from "./application/command/adjustBalance/usecase.js";
 import { CaptureHoldCommand } from "./application/command/captureHold/command.js";
+import { CaptureHoldService } from "./application/command/captureHold/service.js";
 // Use cases
 import { CaptureHoldUseCase } from "./application/command/captureHold/usecase.js";
 import { ChargeCommand } from "./application/command/charge/command.js";
+import { ChargeService } from "./application/command/charge/service.js";
 import { ChargeUseCase } from "./application/command/charge/usecase.js";
 import { CloseWalletCommand } from "./application/command/closeWallet/command.js";
 import { CloseWalletUseCase } from "./application/command/closeWallet/usecase.js";
 import { CreateWalletCommand } from "./application/command/createWallet/command.js";
 import { CreateWalletUseCase } from "./application/command/createWallet/usecase.js";
 import { DepositCommand } from "./application/command/deposit/command.js";
+import { DepositService } from "./application/command/deposit/service.js";
 import { DepositUseCase } from "./application/command/deposit/usecase.js";
 import { ExpireHoldsCommand } from "./application/command/expireHolds/command.js";
 import { ExpireHoldsUseCase } from "./application/command/expireHolds/usecase.js";
@@ -20,16 +24,19 @@ import { FreezeWalletUseCase } from "./application/command/freezeWallet/usecase.
 // TODO(historical-import-temp): Remove these two imports together with the
 // rest of the import-historical-entry feature after migration.
 import { ImportHistoricalEntryCommand } from "./application/command/importHistoricalEntry/command.js";
+import { ImportHistoricalEntryService } from "./application/command/importHistoricalEntry/service.js";
 import { ImportHistoricalEntryUseCase } from "./application/command/importHistoricalEntry/usecase.js";
 import { PlaceHoldCommand } from "./application/command/placeHold/command.js";
 import { PlaceHoldUseCase } from "./application/command/placeHold/usecase.js";
 import { TransferCommand } from "./application/command/transfer/command.js";
+import { TransferService } from "./application/command/transfer/service.js";
 import { TransferUseCase } from "./application/command/transfer/usecase.js";
 import { UnfreezeWalletCommand } from "./application/command/unfreezeWallet/command.js";
 import { UnfreezeWalletUseCase } from "./application/command/unfreezeWallet/usecase.js";
 import { VoidHoldCommand } from "./application/command/voidHold/command.js";
 import { VoidHoldUseCase } from "./application/command/voidHold/usecase.js";
 import { WithdrawCommand } from "./application/command/withdraw/command.js";
+import { WithdrawService } from "./application/command/withdraw/service.js";
 import { WithdrawUseCase } from "./application/command/withdraw/usecase.js";
 import { GetHoldQuery } from "./application/query/getHold/query.js";
 import { GetHoldUseCase } from "./application/query/getHold/usecase.js";
@@ -78,63 +85,88 @@ export function wire({
 
   // Use cases
   const createWallet = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
-  const adjustBalance = new AdjustBalanceUseCase(
-    txManager,
+  const adjustBalanceService = new AdjustBalanceService(
     walletRepo,
     holdRepo,
     transactionRepo,
     ledgerEntryRepo,
+    idGen,
+    logger,
+  );
+  const adjustBalance = new AdjustBalanceUseCase(
+    txManager,
     movementRepo,
     idGen,
     logger,
     lockRunner,
+    adjustBalanceService,
+  );
+  const depositService = new DepositService(
+    walletRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    idGen,
+    logger,
   );
   const deposit = new DepositUseCase(
     txManager,
-    walletRepo,
-    transactionRepo,
-    ledgerEntryRepo,
     movementRepo,
     idGen,
     logger,
     lockRunner,
+    depositService,
+  );
+  const withdrawService = new WithdrawService(
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    idGen,
+    logger,
   );
   const withdraw = new WithdrawUseCase(
     txManager,
-    walletRepo,
-    holdRepo,
-    transactionRepo,
-    ledgerEntryRepo,
     movementRepo,
     idGen,
     logger,
     lockRunner,
+    withdrawService,
+  );
+  const chargeService = new ChargeService(
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    idGen,
+    logger,
   );
   const charge = new ChargeUseCase(
     txManager,
-    walletRepo,
-    holdRepo,
-    transactionRepo,
-    ledgerEntryRepo,
     movementRepo,
     idGen,
     logger,
     lockRunner,
+    chargeService,
   );
   const freezeWallet = new FreezeWalletUseCase(txManager, walletRepo, logger, lockRunner);
   const unfreezeWallet = new UnfreezeWalletUseCase(txManager, walletRepo, logger, lockRunner);
   // TODO(historical-import-temp): Remove this use case instantiation together
   // with the rest of the import-historical-entry feature after migration.
-  const importHistoricalEntry = new ImportHistoricalEntryUseCase(
-    txManager,
+  const importHistoricalEntryService = new ImportHistoricalEntryService(
     walletRepo,
     holdRepo,
     transactionRepo,
     ledgerEntryRepo,
+    idGen,
+    logger,
+  );
+  const importHistoricalEntry = new ImportHistoricalEntryUseCase(
+    txManager,
     movementRepo,
     idGen,
     logger,
     lockRunner,
+    importHistoricalEntryService,
   );
   const closeWallet = new CloseWalletUseCase(txManager, walletRepo, holdRepo, logger, lockRunner);
   const getWallet = new GetWalletUseCase(walletReadStore, logger);
@@ -144,16 +176,21 @@ export function wire({
   const getTransactions = new GetTransactionsUseCase(transactionReadStore, logger);
   const getLedgerEntries = new GetLedgerEntriesUseCase(ledgerEntryReadStore, logger);
   const getMovement = new GetMovementUseCase(movementReadStore, logger);
-  const transfer = new TransferUseCase(
-    txManager,
+  const transferService = new TransferService(
     walletRepo,
     holdRepo,
     transactionRepo,
     ledgerEntryRepo,
+    idGen,
+    logger,
+  );
+  const transfer = new TransferUseCase(
+    txManager,
     movementRepo,
     idGen,
     logger,
     lockRunner,
+    transferService,
   );
   const placeHold = new PlaceHoldUseCase(
     txManager,
@@ -163,16 +200,23 @@ export function wire({
     logger,
     lockRunner,
   );
-  const captureHold = new CaptureHoldUseCase(
-    txManager,
+  const captureHoldService = new CaptureHoldService(
     walletRepo,
     holdRepo,
     transactionRepo,
     ledgerEntryRepo,
+    idGen,
+    logger,
+  );
+  const captureHold = new CaptureHoldUseCase(
+    txManager,
+    walletRepo,
+    holdRepo,
     movementRepo,
     idGen,
     logger,
     lockRunner,
+    captureHoldService,
   );
   const voidHold = new VoidHoldUseCase(txManager, walletRepo, holdRepo, logger, lockRunner);
   const expireHolds = new ExpireHoldsUseCase(holdRepo, logger);

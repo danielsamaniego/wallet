@@ -4,32 +4,39 @@ import type { LockRunner } from "../../../../utils/application/lock.runner.js";
 import type { ITransactionManager } from "../../../../utils/application/transaction.manager.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
-import { systemWalletShardIndex } from "../../../../utils/kernel/shard.js";
-import { ErrHoldExpired, ErrHoldNotFound } from "../../../domain/hold/hold.errors.js";
-import { LedgerEntry } from "../../../domain/ledgerEntry/ledgerEntry.entity.js";
+import { ErrHoldNotFound } from "../../../domain/hold/hold.errors.js";
 import { Movement } from "../../../domain/movement/movement.entity.js";
 import type { IHoldRepository } from "../../../domain/ports/hold.repository.js";
-import type { ILedgerEntryRepository } from "../../../domain/ports/ledgerEntry.repository.js";
 import type { IMovementRepository } from "../../../domain/ports/movement.repository.js";
-import type { ITransactionRepository } from "../../../domain/ports/transaction.repository.js";
 import type { IWalletRepository } from "../../../domain/ports/wallet.repository.js";
-import { Transaction } from "../../../domain/transaction/transaction.entity.js";
-import { ErrWalletNotFound } from "../../../domain/wallet/wallet.errors.js";
 import type { CaptureHoldCommand, CaptureHoldResult } from "./command.js";
+import type { CaptureHoldService } from "./service.js";
 
 const mainLogTag = "CaptureHoldUseCase";
 
+/**
+ * Synchronous-path orchestrator for capturing a hold. Owns:
+ *
+ *   - the pre-lock cross-tenant guard: resolves the hold → wallet → platform
+ *     BEFORE acquiring the lock, so an attacker cannot DoS another tenant
+ *     by hammering a known holdId. Cross-tenant requests collapse to 404
+ *     before any expensive work happens;
+ *   - per-wallet lock + tx envelope;
+ *   - Movement creation/save.
+ *
+ * Business rules live in `CaptureHoldService`, reused verbatim by the
+ * Phase 2 async worker.
+ */
 export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, CaptureHoldResult> {
   constructor(
     private readonly txManager: ITransactionManager,
     private readonly walletRepo: IWalletRepository,
     private readonly holdRepo: IHoldRepository,
-    private readonly transactionRepo: ITransactionRepository,
-    private readonly ledgerEntryRepo: ILedgerEntryRepository,
     private readonly movementRepo: IMovementRepository,
     private readonly idGen: IIDGenerator,
     private readonly logger: ILogger,
     private readonly lockRunner: LockRunner,
+    private readonly captureHoldService: CaptureHoldService,
   ) {}
 
   async handle(ctx: AppContext, cmd: CaptureHoldCommand): Promise<CaptureHoldResult> {
@@ -37,6 +44,7 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
 
     this.logger.debug(ctx, `${methodLogTag} start`, { hold_id: cmd.holdId });
 
+    // Pre-lock cross-tenant guard — see class doc.
     const holdForKey = await this.holdRepo.findById(ctx, cmd.holdId);
     if (!holdForKey) {
       this.logger.warn(ctx, `${methodLogTag} hold not found`, { hold_id: cmd.holdId });
@@ -54,117 +62,20 @@ export class CaptureHoldUseCase implements ICommandHandler<CaptureHoldCommand, C
       throw ErrHoldNotFound(cmd.holdId);
     }
 
-    const txId = this.idGen.newId();
-    const movementId = this.idGen.newId();
-    let walletCurrency = "";
+    let result!: CaptureHoldResult;
 
     await this.lockRunner.run(ctx, [`wallet-lock:${holdForKey.walletId}`], async () => {
       await this.txManager.run(ctx, async (txCtx) => {
-        const hold = await this.holdRepo.findById(txCtx, cmd.holdId);
-        if (!hold) {
-          this.logger.warn(txCtx, `${methodLogTag} hold not found`, { hold_id: cmd.holdId });
-          throw ErrHoldNotFound(cmd.holdId);
-        }
-
-        // Wallet re-read inside the tx. Platform ownership was validated in
-        // the pre-lock guard and platformId is immutable, so we only defend
-        // against the wallet being deleted in the tiny window between
-        // pre-lock and tx start (theoretical; no current API deletes wallets).
-        const wallet = await this.walletRepo.findById(txCtx, hold.walletId);
-        if (!wallet) {
-          this.logger.warn(txCtx, `${methodLogTag} wallet disappeared after pre-lock`, {
-            wallet_id: hold.walletId,
-          });
-          throw ErrWalletNotFound(hold.walletId);
-        }
-        walletCurrency = wallet.currencyCode;
-
-        const now = Date.now();
-
-        if (hold.isExpired(now)) {
-          this.logger.info(txCtx, `${methodLogTag} hold expired on access`, {
-            hold_id: hold.id,
-            wallet_id: hold.walletId,
-            currency_code: wallet.currencyCode,
-            expires_at: hold.expiresAt,
-          });
-          hold.expire(now);
-          try {
-            await this.holdRepo.transitionStatus(txCtx, hold.id, "active", "expired", now);
-          } catch {
-            /* already expired/changed by another process — that's fine */
-          }
-          throw ErrHoldExpired(cmd.holdId);
-        }
-
-        hold.capture(now);
-
-        const movement = Movement.create({ id: movementId, type: "hold_capture", createdAt: now });
-
-        wallet.withdraw(hold.amountMinor, wallet.cachedBalanceMinor, now);
-
-        const shardIndex = systemWalletShardIndex(wallet.id, cmd.systemWalletShardCount);
-        const systemSide = await this.walletRepo.adjustSystemShardBalance(
-          txCtx,
-          wallet.platformId,
-          wallet.currencyCode,
-          shardIndex,
-          hold.amountMinor,
-          now,
-        );
-
-        const tx = Transaction.create({
-          id: txId,
-          walletId: wallet.id,
-          counterpartWalletId: systemSide.walletId,
+        const movement = Movement.create({
+          id: this.idGen.newId(),
           type: "hold_capture",
-          amountMinor: hold.amountMinor,
-          status: "completed",
-          idempotencyKey: cmd.idempotencyKey,
-          reference: hold.reference,
-          metadata: null,
-          holdId: hold.id,
-          movementId,
-          createdAt: now,
+          createdAt: Date.now(),
         });
-
-        const debitEntry = LedgerEntry.create({
-          id: this.idGen.newId(),
-          transactionId: txId,
-          walletId: wallet.id,
-          entryType: "DEBIT",
-          amountMinor: -hold.amountMinor,
-          balanceAfterMinor: wallet.cachedBalanceMinor,
-          movementId,
-          createdAt: now,
-        });
-
-        const creditEntry = LedgerEntry.create({
-          id: this.idGen.newId(),
-          transactionId: txId,
-          walletId: systemSide.walletId,
-          entryType: "CREDIT",
-          amountMinor: hold.amountMinor,
-          balanceAfterMinor: systemSide.cachedBalanceMinor,
-          movementId,
-          createdAt: now,
-        });
-
-        // movement first: ledger_entries.movement_id FK requires it
         await this.movementRepo.save(txCtx, movement);
-        await this.holdRepo.transitionStatus(txCtx, hold.id, "active", "captured", now);
-        await this.walletRepo.save(txCtx, wallet);
-        await this.transactionRepo.save(txCtx, tx);
-        await this.ledgerEntryRepo.saveMany(txCtx, [debitEntry, creditEntry]);
+        result = await this.captureHoldService.execute(txCtx, cmd, movement);
       });
     });
 
-    this.logger.info(ctx, `${methodLogTag} hold captured`, {
-      hold_id: cmd.holdId,
-      currency_code: walletCurrency,
-      transaction_id: txId,
-    });
-
-    return { transactionId: txId, movementId };
+    return result;
   }
 }

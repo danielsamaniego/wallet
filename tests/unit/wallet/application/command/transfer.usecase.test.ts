@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import { mock, mockReset } from "vitest-mock-extended";
 import {
   createMockIDGenerator,
@@ -5,508 +6,148 @@ import {
   createMockLogger,
   createMockTransactionManager,
 } from "@test/helpers/mocks/index.js";
-import { WalletBuilder } from "@test/helpers/builders/wallet.builder.js";
 import { createTestContext } from "@test/helpers/builders/context.builder.js";
 import { TransferUseCase } from "@/wallet/application/command/transfer/usecase.js";
 import { TransferCommand } from "@/wallet/application/command/transfer/command.js";
-import type { IWalletRepository } from "@/wallet/domain/ports/wallet.repository.js";
-import type { IHoldRepository } from "@/wallet/domain/ports/hold.repository.js";
-import type { ITransactionRepository } from "@/wallet/domain/ports/transaction.repository.js";
-import type { ILedgerEntryRepository } from "@/wallet/domain/ports/ledgerEntry.repository.js";
+import type { TransferService } from "@/wallet/application/command/transfer/service.js";
 import type { IMovementRepository } from "@/wallet/domain/ports/movement.repository.js";
 import { AppError, ErrorKind } from "@/utils/kernel/appError.js";
-import type { Wallet } from "@/wallet/domain/wallet/wallet.aggregate.js";
-
-// ── Shared fixtures ────────────────────────────────────────────────
+import type { Movement } from "@/wallet/domain/movement/movement.entity.js";
 
 const PLATFORM = "platform-1";
-const CURRENCY = "USD";
-const IDEMPOTENCY_KEY = "idem-1";
-
-// IDs returned by the mock generator: sourceTxId, targetTxId, movementId, debitEntryId, creditEntryId
-const SOURCE_TX_ID = "tx-out-1";
-const TARGET_TX_ID = "tx-in-1";
-const MOVEMENT_ID = "mov-1";
-const DEBIT_ENTRY_ID = "le-debit-1";
-const CREDIT_ENTRY_ID = "le-credit-1";
-
-function makeIds(): string[] {
-  return [SOURCE_TX_ID, TARGET_TX_ID, MOVEMENT_ID, DEBIT_ENTRY_ID, CREDIT_ENTRY_ID];
-}
-
-// ── Test suite ─────────────────────────────────────────────────────
+const IDEM = "idem-1";
 
 describe("TransferUseCase", () => {
-  const walletRepo = mock<IWalletRepository>();
-  const holdRepo = mock<IHoldRepository>();
-  const transactionRepo = mock<ITransactionRepository>();
-  const ledgerEntryRepo = mock<ILedgerEntryRepository>();
-  const movementRepo = mock<IMovementRepository>();
   const txManager = createMockTransactionManager();
+  const movementRepo = mock<IMovementRepository>();
+  const idGen = createMockIDGenerator(["mov-1"]);
   const logger = createMockLogger();
   const lockRunner = createMockLockRunner();
-  let idGen: ReturnType<typeof createMockIDGenerator>;
-  let useCase: TransferUseCase;
+  const transferService = mock<TransferService>();
+
+  const sut = new TransferUseCase(
+    txManager,
+    movementRepo,
+    idGen,
+    logger,
+    lockRunner,
+    transferService,
+  );
   const ctx = createTestContext();
 
   beforeEach(() => {
-    mockReset(walletRepo);
-    mockReset(holdRepo);
-    mockReset(transactionRepo);
-    mockReset(ledgerEntryRepo);
     mockReset(movementRepo);
-    idGen = createMockIDGenerator(makeIds());
-    useCase = new TransferUseCase(
-      txManager,
-      walletRepo,
-      holdRepo,
-      transactionRepo,
-      ledgerEntryRepo,
-      movementRepo,
-      idGen,
-      logger,
-      lockRunner,
-    );
+    mockReset(transferService);
+    (txManager.run as ReturnType<typeof vi.fn>).mockClear();
+    (lockRunner.run as ReturnType<typeof vi.fn>).mockClear();
+    idGen.reset();
+    transferService.execute.mockResolvedValue({
+      sourceTransactionId: "tx-out-1",
+      targetTransactionId: "tx-in-1",
+      movementId: "mov-1",
+    });
   });
 
-  // ── Happy path ─────────────────────────────────────────────────
+  describe("Given a valid transfer command", () => {
+    const cmd = new TransferCommand("wallet-source", "wallet-target", PLATFORM, 2500n, IDEM);
 
-  describe("Given two active wallets with the same currency and sufficient funds", () => {
-    const sourceWallet = new WalletBuilder()
-      .withId("wallet-source")
-      .withPlatformId(PLATFORM)
-      .withCurrency(CURRENCY)
-      .withBalance(10000n) // $100.00
-      .build();
+    describe("When handle is called", () => {
+      it("Then it acquires per-wallet locks on BOTH wallets", async () => {
+        await sut.handle(ctx, cmd);
 
-    const targetWallet = new WalletBuilder()
-      .withId("wallet-target")
-      .withOwnerId("owner-target")
-      .withPlatformId(PLATFORM)
-      .withCurrency(CURRENCY)
-      .withBalance(5000n) // $50.00
-      .build();
-
-    beforeEach(() => {
-      walletRepo.findById
-        .mockResolvedValueOnce(sourceWallet)
-        .mockResolvedValueOnce(targetWallet);
-      holdRepo.sumActiveHolds.mockResolvedValue(0n);
-    });
-
-    describe("When a transfer of $25.00 is executed", () => {
-      it("Then it returns sourceTransactionId, targetTransactionId, and movementId", async () => {
-        const cmd = new TransferCommand(
-          sourceWallet.id,
-          targetWallet.id,
-          PLATFORM,
-          2500n,
-          IDEMPOTENCY_KEY,
+        expect(lockRunner.run).toHaveBeenCalledWith(
+          expect.anything(),
+          ["wallet-lock:wallet-source", "wallet-lock:wallet-target"],
+          expect.any(Function),
         );
+      });
 
-        const result = await useCase.handle(ctx, cmd);
+      it("Then it opens a transaction via txManager.run", async () => {
+        await sut.handle(ctx, cmd);
+
+        expect(txManager.run).toHaveBeenCalledOnce();
+      });
+
+      it("Then it creates a Movement(type='transfer', status='posted') and saves it", async () => {
+        await sut.handle(ctx, cmd);
+
+        expect(movementRepo.save).toHaveBeenCalledOnce();
+        const movement = movementRepo.save.mock.calls[0]![1] as Movement;
+        expect(movement.id).toBe("mov-1");
+        expect(movement.type).toBe("transfer");
+        expect(movement.status).toBe("posted");
+      });
+
+      it("Then it delegates to TransferService.execute with the saved Movement", async () => {
+        await sut.handle(ctx, cmd);
+
+        expect(transferService.execute).toHaveBeenCalledOnce();
+        const [, calledCmd, calledMovement] = transferService.execute.mock.calls[0]!;
+        expect(calledCmd).toBe(cmd);
+        expect((calledMovement as Movement).id).toBe("mov-1");
+      });
+
+      it("Then it returns whatever the service returned", async () => {
+        transferService.execute.mockResolvedValue({
+          sourceTransactionId: "service-tx-out",
+          targetTransactionId: "service-tx-in",
+          movementId: "mov-1",
+        });
+
+        const result = await sut.handle(ctx, cmd);
 
         expect(result).toEqual({
-          sourceTransactionId: SOURCE_TX_ID,
-          targetTransactionId: TARGET_TX_ID,
-          movementId: MOVEMENT_ID,
+          sourceTransactionId: "service-tx-out",
+          targetTransactionId: "service-tx-in",
+          movementId: "mov-1",
         });
       });
 
-      it("Then it creates 2 transactions (transfer_out + transfer_in)", async () => {
-        const cmd = new TransferCommand(
-          sourceWallet.id,
-          targetWallet.id,
-          PLATFORM,
-          2500n,
-          IDEMPOTENCY_KEY,
-        );
+      it("Then the Movement is saved before the service runs (FK ordering)", async () => {
+        const order: string[] = [];
+        movementRepo.save.mockImplementation(async () => {
+          order.push("movement.save");
+        });
+        transferService.execute.mockImplementation(async () => {
+          order.push("service.execute");
+          return {
+            sourceTransactionId: "tx-out-1",
+            targetTransactionId: "tx-in-1",
+            movementId: "mov-1",
+          };
+        });
 
-        await useCase.handle(ctx, cmd);
+        await sut.handle(ctx, cmd);
 
-        expect(transactionRepo.saveMany).toHaveBeenCalledOnce();
-        const [transactions] = transactionRepo.saveMany.mock.calls[0]!.slice(1) as [unknown[]];
-        expect(transactions).toHaveLength(2);
-      });
-
-      it("Then it creates 2 ledger entries (DEBIT + CREDIT)", async () => {
-        const cmd = new TransferCommand(
-          sourceWallet.id,
-          targetWallet.id,
-          PLATFORM,
-          2500n,
-          IDEMPOTENCY_KEY,
-        );
-
-        await useCase.handle(ctx, cmd);
-
-        expect(ledgerEntryRepo.saveMany).toHaveBeenCalledOnce();
-        const [entries] = ledgerEntryRepo.saveMany.mock.calls[0]!.slice(1) as [unknown[]];
-        expect(entries).toHaveLength(2);
-      });
-
-      it("Then it creates 1 movement", async () => {
-        const cmd = new TransferCommand(
-          sourceWallet.id,
-          targetWallet.id,
-          PLATFORM,
-          2500n,
-          IDEMPOTENCY_KEY,
-        );
-
-        await useCase.handle(ctx, cmd);
-
-        expect(movementRepo.save).toHaveBeenCalledOnce();
+        expect(order).toEqual(["movement.save", "service.execute"]);
       });
     });
   });
-
-  // ── Same wallet ────────────────────────────────────────────────
 
   describe("Given source and target are the same wallet", () => {
     describe("When a transfer is attempted", () => {
-      it("Then it throws SAME_WALLET", async () => {
-        const cmd = new TransferCommand(
-          "wallet-same",
-          "wallet-same",
-          PLATFORM,
-          1000n,
-          IDEMPOTENCY_KEY,
-        );
+      it("Then it throws SAME_WALLET without acquiring a lock or opening a transaction", async () => {
+        const cmd = new TransferCommand("wallet-x", "wallet-x", PLATFORM, 1000n, IDEM);
 
-        const err = await useCase.handle(ctx, cmd).catch((e: unknown) => e);
+        const err = await sut.handle(ctx, cmd).catch((e: unknown) => e);
+
         expect(err).toBeInstanceOf(AppError);
-        expect(err).toMatchObject({
-          code: "SAME_WALLET",
-          kind: ErrorKind.Validation,
-        });
+        expect(err).toMatchObject({ code: "SAME_WALLET", kind: ErrorKind.Validation });
+        expect(lockRunner.run).not.toHaveBeenCalled();
+        expect(txManager.run).not.toHaveBeenCalled();
+        expect(transferService.execute).not.toHaveBeenCalled();
       });
     });
   });
 
-  // ── Currency mismatch ──────────────────────────────────────────
+  describe("Given the service throws (business-rule failure)", () => {
+    const cmd = new TransferCommand("wallet-source", "wallet-target", PLATFORM, 1000n, IDEM);
 
-  describe("Given source wallet is USD and target wallet is EUR", () => {
-    beforeEach(() => {
-      const source = new WalletBuilder()
-        .withId("wallet-usd")
-        .withPlatformId(PLATFORM)
-        .withCurrency("USD")
-        .withBalance(10000n)
-        .build();
+    describe("When handle is called", () => {
+      it("Then the error propagates out of the lock + tx envelope", async () => {
+        transferService.execute.mockRejectedValue(new Error("CURRENCY_MISMATCH"));
 
-      const target = new WalletBuilder()
-        .withId("wallet-eur")
-        .withOwnerId("owner-eur")
-        .withPlatformId(PLATFORM)
-        .withCurrency("EUR")
-        .withBalance(5000n)
-        .build();
-
-      walletRepo.findById
-        .mockResolvedValueOnce(source)
-        .mockResolvedValueOnce(target);
-    });
-
-    describe("When a transfer is attempted", () => {
-      it("Then it throws CURRENCY_MISMATCH", async () => {
-        const cmd = new TransferCommand(
-          "wallet-usd",
-          "wallet-eur",
-          PLATFORM,
-          1000n,
-          IDEMPOTENCY_KEY,
-        );
-
-        const err = await useCase.handle(ctx, cmd).catch((e: unknown) => e);
-        expect(err).toBeInstanceOf(AppError);
-        expect(err).toMatchObject({
-          code: "CURRENCY_MISMATCH",
-          kind: ErrorKind.DomainRule,
-        });
-      });
-    });
-  });
-
-  // ── Insufficient funds ─────────────────────────────────────────
-
-  describe("Given source wallet has $100 balance with $60 in active holds", () => {
-    beforeEach(() => {
-      const source = new WalletBuilder()
-        .withId("wallet-low")
-        .withPlatformId(PLATFORM)
-        .withCurrency(CURRENCY)
-        .withBalance(10000n) // $100.00
-        .build();
-
-      const target = new WalletBuilder()
-        .withId("wallet-target-2")
-        .withOwnerId("owner-target-2")
-        .withPlatformId(PLATFORM)
-        .withCurrency(CURRENCY)
-        .withBalance(5000n)
-        .build();
-
-      walletRepo.findById
-        .mockResolvedValueOnce(source)
-        .mockResolvedValueOnce(target);
-      holdRepo.sumActiveHolds.mockResolvedValue(6000n); // $60.00 held
-    });
-
-    describe("When a transfer of $50 is attempted (available = $40)", () => {
-      it("Then it throws INSUFFICIENT_FUNDS", async () => {
-        const cmd = new TransferCommand(
-          "wallet-low",
-          "wallet-target-2",
-          PLATFORM,
-          5000n, // $50 > $40 available
-          IDEMPOTENCY_KEY,
-        );
-
-        const err = await useCase.handle(ctx, cmd).catch((e: unknown) => e);
-        expect(err).toBeInstanceOf(AppError);
-        expect(err).toMatchObject({
-          code: "INSUFFICIENT_FUNDS",
-          kind: ErrorKind.DomainRule,
-        });
-      });
-    });
-  });
-
-  // ── Source wallet not found ─────────────────────────────────────
-
-  describe("Given source wallet does not exist", () => {
-    beforeEach(() => {
-      walletRepo.findById.mockResolvedValueOnce(null);
-    });
-
-    describe("When a transfer is attempted", () => {
-      it("Then it throws WALLET_NOT_FOUND", async () => {
-        const cmd = new TransferCommand(
-          "wallet-missing",
-          "wallet-target",
-          PLATFORM,
-          1000n,
-          IDEMPOTENCY_KEY,
-        );
-
-        const err = await useCase.handle(ctx, cmd).catch((e: unknown) => e);
-        expect(err).toBeInstanceOf(AppError);
-        expect(err).toMatchObject({
-          code: "WALLET_NOT_FOUND",
-          kind: ErrorKind.NotFound,
-        });
-      });
-    });
-  });
-
-  // ── Target wallet not found ───────────────────────────────────
-
-  describe("Given target wallet does not exist", () => {
-    beforeEach(() => {
-      const source = new WalletBuilder()
-        .withId("wallet-src-ok")
-        .withPlatformId(PLATFORM)
-        .withCurrency(CURRENCY)
-        .withBalance(10000n)
-        .build();
-
-      walletRepo.findById
-        .mockResolvedValueOnce(source)
-        .mockResolvedValueOnce(null);
-    });
-
-    describe("When a transfer is attempted", () => {
-      it("Then it throws WALLET_NOT_FOUND", async () => {
-        const cmd = new TransferCommand(
-          "wallet-src-ok",
-          "wallet-missing-tgt",
-          PLATFORM,
-          1000n,
-          IDEMPOTENCY_KEY,
-        );
-
-        const err = await useCase.handle(ctx, cmd).catch((e: unknown) => e);
-        expect(err).toBeInstanceOf(AppError);
-        expect(err).toMatchObject({
-          code: "WALLET_NOT_FOUND",
-          kind: ErrorKind.NotFound,
-        });
-      });
-    });
-  });
-
-  // ── Platform mismatch on source ────────────────────────────────
-
-  describe("Given source wallet belongs to a different platform", () => {
-    beforeEach(() => {
-      const source = new WalletBuilder()
-        .withId("wallet-other-plat")
-        .withPlatformId("platform-other")
-        .withCurrency(CURRENCY)
-        .withBalance(10000n)
-        .build();
-
-      walletRepo.findById.mockResolvedValueOnce(source);
-    });
-
-    describe("When a transfer is attempted with platform-1", () => {
-      it("Then it throws WALLET_NOT_FOUND", async () => {
-        const cmd = new TransferCommand(
-          "wallet-other-plat",
-          "wallet-target",
-          PLATFORM,
-          1000n,
-          IDEMPOTENCY_KEY,
-        );
-
-        const err = await useCase.handle(ctx, cmd).catch((e: unknown) => e);
-        expect(err).toBeInstanceOf(AppError);
-        expect(err).toMatchObject({
-          code: "WALLET_NOT_FOUND",
-          kind: ErrorKind.NotFound,
-        });
-      });
-    });
-  });
-
-  // ── Platform mismatch on target ────────────────────────────────
-
-  describe("Given target wallet belongs to a different platform", () => {
-    beforeEach(() => {
-      const source = new WalletBuilder()
-        .withId("wallet-source-ok")
-        .withPlatformId(PLATFORM)
-        .withCurrency(CURRENCY)
-        .withBalance(10000n)
-        .build();
-
-      const target = new WalletBuilder()
-        .withId("wallet-target-bad-plat")
-        .withOwnerId("owner-bad-plat")
-        .withPlatformId("platform-other")
-        .withCurrency(CURRENCY)
-        .withBalance(5000n)
-        .build();
-
-      walletRepo.findById
-        .mockResolvedValueOnce(source)
-        .mockResolvedValueOnce(target);
-    });
-
-    describe("When a transfer is attempted with platform-1", () => {
-      it("Then it throws WALLET_NOT_FOUND", async () => {
-        const cmd = new TransferCommand(
-          "wallet-source-ok",
-          "wallet-target-bad-plat",
-          PLATFORM,
-          1000n,
-          IDEMPOTENCY_KEY,
-        );
-
-        const err = await useCase.handle(ctx, cmd).catch((e: unknown) => e);
-        expect(err).toBeInstanceOf(AppError);
-        expect(err).toMatchObject({
-          code: "WALLET_NOT_FOUND",
-          kind: ErrorKind.NotFound,
-        });
-      });
-    });
-  });
-
-  // ── Deadlock prevention: ID-sorted save order ──────────────────
-
-  describe("Given source.id > target.id (alphabetically)", () => {
-    beforeEach(() => {
-      // "wallet-zzz" > "wallet-aaa" — target should be saved first
-      const source = new WalletBuilder()
-        .withId("wallet-zzz")
-        .withPlatformId(PLATFORM)
-        .withCurrency(CURRENCY)
-        .withBalance(10000n)
-        .build();
-
-      const target = new WalletBuilder()
-        .withId("wallet-aaa")
-        .withOwnerId("owner-aaa")
-        .withPlatformId(PLATFORM)
-        .withCurrency(CURRENCY)
-        .withBalance(5000n)
-        .build();
-
-      walletRepo.findById
-        .mockResolvedValueOnce(source)
-        .mockResolvedValueOnce(target);
-      holdRepo.sumActiveHolds.mockResolvedValue(0n);
-    });
-
-    describe("When a transfer is executed", () => {
-      it("Then target wallet (lower ID) is saved before source wallet (higher ID)", async () => {
-        const cmd = new TransferCommand(
-          "wallet-zzz",
-          "wallet-aaa",
-          PLATFORM,
-          1000n,
-          IDEMPOTENCY_KEY,
-        );
-
-        await useCase.handle(ctx, cmd);
-
-        // walletRepo.save is called twice: first with lower-ID wallet, then higher-ID wallet
-        expect(walletRepo.save).toHaveBeenCalledTimes(2);
-        const firstSavedWallet = walletRepo.save.mock.calls[0]![1] as Wallet;
-        const secondSavedWallet = walletRepo.save.mock.calls[1]![1] as Wallet;
-        expect(firstSavedWallet.id).toBe("wallet-aaa");
-        expect(secondSavedWallet.id).toBe("wallet-zzz");
-      });
-    });
-  });
-
-  // ── Minimum transfer: 1 cent ───────────────────────────────────
-
-  describe("Given two valid wallets with sufficient funds", () => {
-    beforeEach(() => {
-      const source = new WalletBuilder()
-        .withId("wallet-min-src")
-        .withPlatformId(PLATFORM)
-        .withCurrency(CURRENCY)
-        .withBalance(1n) // exactly 1 cent
-        .build();
-
-      const target = new WalletBuilder()
-        .withId("wallet-min-tgt")
-        .withOwnerId("owner-min-tgt")
-        .withPlatformId(PLATFORM)
-        .withCurrency(CURRENCY)
-        .withBalance(0n)
-        .build();
-
-      walletRepo.findById
-        .mockResolvedValueOnce(source)
-        .mockResolvedValueOnce(target);
-      holdRepo.sumActiveHolds.mockResolvedValue(0n);
-    });
-
-    describe("When a transfer of 1 cent is executed", () => {
-      it("Then it succeeds and returns valid IDs", async () => {
-        const cmd = new TransferCommand(
-          "wallet-min-src",
-          "wallet-min-tgt",
-          PLATFORM,
-          1n,
-          IDEMPOTENCY_KEY,
-        );
-
-        const result = await useCase.handle(ctx, cmd);
-
-        expect(result).toEqual({
-          sourceTransactionId: SOURCE_TX_ID,
-          targetTransactionId: TARGET_TX_ID,
-          movementId: MOVEMENT_ID,
-        });
-        expect(movementRepo.save).toHaveBeenCalledOnce();
-        expect(transactionRepo.saveMany).toHaveBeenCalledOnce();
-        expect(ledgerEntryRepo.saveMany).toHaveBeenCalledOnce();
+        await expect(sut.handle(ctx, cmd)).rejects.toThrow("CURRENCY_MISMATCH");
       });
     });
   });
