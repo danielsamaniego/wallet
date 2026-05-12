@@ -8,7 +8,7 @@ import { isConnectionError } from "./connection.retry.extension.js";
 const mainLogTag = "PrismaTransactionManager";
 
 /** Max internal retries on retryable errors before escalating to client. */
-const MAX_RETRIES = 10;
+const MAX_RETRIES = 15;
 
 /**
  * Base delay in ms for exponential backoff ceiling on VERSION_CONFLICT /
@@ -17,10 +17,10 @@ const MAX_RETRIES = 10;
  *
  * Tight schedule on purpose — these conflicts resolve fast once the losing
  * transactions desynchronise via jitter. The cap prevents the later retries
- * from blowing past TX_TIMEOUT_MS (a single uncapped attempt-10 ceiling would
- * be ~15s on its own).
+ * from blowing past TX_TIMEOUT_MS (a single uncapped attempt-15 ceiling would
+ * be ~500s on its own).
  *
- * Worst-case sleep budget across all attempts: 30+60+120+240+480 + 5×500 ≈ 2.93s.
+ * Worst-case sleep budget across all attempts: 30+60+120+240+480 + 10×500 ≈ 5.93s.
  */
 const CONFLICT_BASE_DELAY_MS = 30;
 const CONFLICT_MAX_DELAY_MS = 500;
