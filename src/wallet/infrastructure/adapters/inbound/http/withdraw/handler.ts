@@ -7,12 +7,14 @@ import {
   ErrorResponseSchema,
   validationHook,
 } from "../../../../../../utils/infrastructure/hono.error.js";
-import { AppError } from "../../../../../../utils/kernel/appError.js";
 import {
   WithdrawCommand,
   type WithdrawResult,
 } from "../../../../../application/command/withdraw/command.js";
-import { asyncDispatch } from "../../../../../application/worker/asyncDispatch.js";
+import {
+  asyncDispatch,
+  rebuildAppErrorFromFailedOutcome,
+} from "../../../../../application/worker/asyncDispatch.js";
 import type { MutationHandlerDeps } from "../types.js";
 import { BodySchema, ParamSchema, ResponseSchema } from "./schemas.js";
 
@@ -89,7 +91,7 @@ export function withdrawRoute(deps: MutationHandlerDeps) {
         if (outcome.kind === "pending") {
           return c.json({ movement_id: outcome.movementId, status: "pending" as const }, 202);
         }
-        throw AppError.domainRule("MOVEMENT_FAILED", outcome.failedReason);
+        throw rebuildAppErrorFromFailedOutcome(outcome);
       }
 
       const result = await deps.commandBus.dispatch(

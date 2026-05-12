@@ -12,15 +12,35 @@ export type MovementResultStatus = "posted" | "failed";
 export interface MovementResult {
   movementId: string;
   status: MovementResultStatus;
-  /** Free-form code emitted only when `status === "failed"`. */
+  /**
+   * Human-readable reason (the AppError's `msg` when the worker caught
+   * an `AppError`, otherwise `Error.message` or the stringified value).
+   * Only populated when `status === "failed"`. Mirrored on
+   * `Movement.failed_reason`.
+   */
   failedReason?: string | null;
+  /**
+   * Original `AppError.kind` string when the worker caught an AppError
+   * (`NOT_FOUND`, `DOMAIN_RULE`, `CONFLICT`, etc.) so the awaiting HTTP
+   * handler can rebuild the precise error and the global onError maps
+   * it to the same status the sync path would have returned (404 vs
+   * 422 vs 409 etc.). Absent when the worker caught a non-AppError
+   * (handler falls back to a generic 422 in that case).
+   */
+  failedKind?: string;
+  /**
+   * Original `AppError.code` string (e.g. `WALLET_NOT_FOUND`,
+   * `INSUFFICIENT_FUNDS`). Always paired with `failedKind`.
+   */
+  failedCode?: string;
   /**
    * Operation result body captured from the matching service (e.g.
    * `DepositResult`, `TransferResult`). Only populated when
-   * `status === "posted"` — failures carry `failedReason` instead.
-   * Loose `Record<string, unknown>` so the publisher does not need to
-   * know about every operation result type; the HTTP handler that
-   * dispatched the enqueue casts to its expected shape.
+   * `status === "posted"` — failures carry `failedReason`/`failedKind`/
+   * `failedCode` instead. Loose `Record<string, unknown>` so the
+   * publisher does not need to know about every operation result type;
+   * the HTTP handler that dispatched the enqueue casts to its expected
+   * shape.
    *
    * The contract is "what the sync use case would have returned" so an
    * async handler can build the same response body as the sync path —

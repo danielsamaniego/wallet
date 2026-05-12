@@ -1112,6 +1112,52 @@ describe("Wallet command HTTP handlers", () => {
         expect(res.status).toBe(202);
       });
 
+      it("deposit: failed with full AppError fidelity (NOT_FOUND) → handler reconstructs and onError returns 404 — same status as sync path", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-nf" }),
+        };
+        const deps = withAsyncDispatch(commandBus, {
+          movementId: "mov-nf",
+          status: "failed",
+          failedReason: "wallet w1 not found",
+          failedKind: "NOT_FOUND",
+          failedCode: "WALLET_NOT_FOUND",
+        });
+        const app = await buildAppWithOnError();
+        app.post("/wallets/:walletId/deposit", ...depositRoute(deps));
+        const res = await app.request("/wallets/wallet-1/deposit", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "i" },
+          body: JSON.stringify({ amount_minor: 100 }),
+        });
+        expect(res.status).toBe(404);
+        const body = await res.json();
+        expect(body).toEqual({ error: "WALLET_NOT_FOUND", message: "wallet w1 not found" });
+      });
+
+      it("withdraw: failed with full AppError fidelity (DOMAIN_RULE) → handler reconstructs and onError returns 422 with the original INSUFFICIENT_FUNDS code", async () => {
+        const commandBus: ICommandBus = {
+          dispatch: vi.fn().mockResolvedValue({ movementId: "mov-if" }),
+        };
+        const deps = withAsyncDispatch(commandBus, {
+          movementId: "mov-if",
+          status: "failed",
+          failedReason: "wallet has insufficient available funds",
+          failedKind: "DOMAIN_RULE",
+          failedCode: "INSUFFICIENT_FUNDS",
+        });
+        const app = await buildAppWithOnError();
+        app.post("/wallets/:walletId/withdraw", ...withdrawRoute(deps));
+        const res = await app.request("/wallets/wallet-1/withdraw", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": "i" },
+          body: JSON.stringify({ amount_minor: 100_000 }),
+        });
+        expect(res.status).toBe(422);
+        const body = await res.json();
+        expect(body.error).toBe("INSUFFICIENT_FUNDS");
+      });
+
       it("captureHold: failed branch → 422", async () => {
         const commandBus: ICommandBus = {
           dispatch: vi.fn().mockResolvedValue({ movementId: "mov-fch" }),

@@ -117,6 +117,29 @@ describe("RedisResultSubscriber", () => {
     });
   });
 
+  describe("Given a failed result with full AppError fidelity (kind + code + reason)", () => {
+    it("Then waitFor returns the MovementResult including failedKind + failedCode so the handler can rebuild the AppError", async () => {
+      const payload = JSON.stringify({
+        movementId: "mov-f",
+        status: "failed",
+        failedReason: "wallet w1 not found",
+        failedKind: "NOT_FOUND",
+        failedCode: "WALLET_NOT_FOUND",
+      });
+      const { subscriber } = buildSubscriber(async () => payload);
+
+      const result = await subscriber.waitFor(ctx, "mov-f", { timeoutMs: 1500 });
+
+      expect(result).toEqual({
+        movementId: "mov-f",
+        status: "failed",
+        failedReason: "wallet w1 not found",
+        failedKind: "NOT_FOUND",
+        failedCode: "WALLET_NOT_FOUND",
+      });
+    });
+  });
+
   describe("Given a posted result that carries a service body", () => {
     it("Then waitFor returns the parsed MovementResult including the body so the awaiting handler can rebuild the sync-shape response", async () => {
       const payload = JSON.stringify({

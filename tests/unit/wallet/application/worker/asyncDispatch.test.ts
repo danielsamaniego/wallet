@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { mock } from "vitest-mock-extended";
-import { asyncDispatch } from "@/wallet/application/worker/asyncDispatch.js";
+import {
+  asyncDispatch,
+  rebuildAppErrorFromFailedOutcome,
+} from "@/wallet/application/worker/asyncDispatch.js";
+import { AppError, ErrorKind } from "@/utils/kernel/appError.js";
 import { EnqueueMovementCommand } from "@/wallet/application/command/enqueueMovement/command.js";
 import type { ICommandBus } from "@/utils/application/cqrs.js";
 import type { IResultSubscriber } from "@/wallet/domain/ports/result.subscriber.js";
@@ -191,6 +195,41 @@ describe("asyncDispatch", () => {
     });
   });
 
+  describe("Given the worker publishes a failed result with full AppError fidelity", () => {
+    it("Then the helper surfaces failedKind + failedCode so the handler can rebuild the original AppError and return the same HTTP status as the sync path", async () => {
+      const dispatch = vi.fn().mockResolvedValue({ movementId: "mov-af" });
+      const subscriber = mock<IResultSubscriber>();
+      subscriber.waitFor.mockResolvedValue({
+        movementId: "mov-af",
+        status: "failed",
+        failedReason: "wallet w1 not found",
+        failedKind: "NOT_FOUND",
+        failedCode: "WALLET_NOT_FOUND",
+      });
+
+      const result = await asyncDispatch(
+        ctx,
+        bus(dispatch as unknown as ICommandBus["dispatch"]),
+        subscriber,
+        1500,
+        {
+          type: "deposit",
+          platformId: PLATFORM_ID,
+          idempotencyKey: IDEM_KEY,
+          queuePayload: {},
+        },
+      );
+
+      expect(result).toEqual({
+        kind: "failed",
+        movementId: "mov-af",
+        failedReason: "wallet w1 not found",
+        failedKind: "NOT_FOUND",
+        failedCode: "WALLET_NOT_FOUND",
+      });
+    });
+  });
+
   describe("Given the worker publishes a failed result without a reason (defensive fallback)", () => {
     it("Then the helper returns failedReason='unknown' so the handler always has a non-empty string to surface", async () => {
       const dispatch = vi.fn().mockResolvedValue({ movementId: "mov-2" });
@@ -263,6 +302,66 @@ describe("asyncDispatch", () => {
         ),
       ).rejects.toThrow("no handler registered");
       expect(subscriber.waitFor).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("rebuildAppErrorFromFailedOutcome", () => {
+  describe("Given full AppError fidelity from the worker (kind + code + reason)", () => {
+    it("Then it rebuilds an AppError with the original kind + code so the global onError maps to the same status the sync path would have returned", () => {
+      const err = rebuildAppErrorFromFailedOutcome({
+        failedReason: "wallet w1 not found",
+        failedKind: "NOT_FOUND",
+        failedCode: "WALLET_NOT_FOUND",
+      });
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.kind).toBe(ErrorKind.NotFound);
+      expect(err.code).toBe("WALLET_NOT_FOUND");
+      expect(err.msg).toBe("wallet w1 not found");
+    });
+
+    it("Then DOMAIN_RULE maps back to the DomainRule enum (round-trip)", () => {
+      const err = rebuildAppErrorFromFailedOutcome({
+        failedReason: "insufficient funds",
+        failedKind: "DOMAIN_RULE",
+        failedCode: "INSUFFICIENT_FUNDS",
+      });
+      expect(err.kind).toBe(ErrorKind.DomainRule);
+      expect(err.code).toBe("INSUFFICIENT_FUNDS");
+    });
+  });
+
+  describe("Given only failedReason (worker caught a non-AppError throw — e.g. raw Prisma error)", () => {
+    it("Then it falls back to AppError.domainRule + MOVEMENT_FAILED so the response is still well-formed (422)", () => {
+      const err = rebuildAppErrorFromFailedOutcome({
+        failedReason: "connection refused",
+      });
+      expect(err.kind).toBe(ErrorKind.DomainRule);
+      expect(err.code).toBe("MOVEMENT_FAILED");
+      expect(err.msg).toBe("connection refused");
+    });
+  });
+
+  describe("Given an unrecognised failedKind (defensive — worker version mismatch could publish an unknown enum)", () => {
+    it("Then it falls back to MOVEMENT_FAILED so the handler never crashes on an enum drift", () => {
+      const err = rebuildAppErrorFromFailedOutcome({
+        failedReason: "x",
+        failedKind: "FUTURE_KIND_WE_DONT_KNOW",
+        failedCode: "FUTURE_CODE",
+      });
+      expect(err.kind).toBe(ErrorKind.DomainRule);
+      expect(err.code).toBe("MOVEMENT_FAILED");
+    });
+  });
+
+  describe("Given failedKind without failedCode (or vice versa — partial fidelity)", () => {
+    it("Then it falls back to MOVEMENT_FAILED because reconstruction requires both", () => {
+      const err = rebuildAppErrorFromFailedOutcome({
+        failedReason: "x",
+        failedKind: "NOT_FOUND",
+        // failedCode intentionally omitted
+      });
+      expect(err.code).toBe("MOVEMENT_FAILED");
     });
   });
 });

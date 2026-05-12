@@ -427,6 +427,67 @@ describe("ProcessMovementUseCase", () => {
     });
   });
 
+  describe("Given the service throws an AppError (the common case — domain rejections)", () => {
+    const movement = makeProcessing("withdrawal", {
+      walletId: "w1",
+      amountMinor: "10000",
+      idempotencyKey: "k",
+      systemWalletShardCount: 32,
+    });
+
+    beforeEach(async () => {
+      const { AppError } = await import("@/utils/kernel/appError.js");
+      movementRepo.markProcessing.mockResolvedValue(movement);
+      withdrawService.execute.mockRejectedValue(
+        AppError.domainRule("INSUFFICIENT_FUNDS", "wallet has insufficient available funds"),
+      );
+    });
+
+    it("Then the publish carries failedKind + failedCode so the handler can reconstruct the original AppError and the global onError returns 422 (not a generic 422 MOVEMENT_FAILED)", async () => {
+      await sut.handle(ctx, new ProcessMovementCommand(MOV_ID));
+      expect(resultPublisher.publish).toHaveBeenCalledWith(expect.anything(), {
+        movementId: MOV_ID,
+        status: "failed",
+        failedReason: "wallet has insufficient available funds",
+        failedKind: "DOMAIN_RULE",
+        failedCode: "INSUFFICIENT_FUNDS",
+      });
+    });
+
+    it("Then markFailed uses the AppError.msg (not the cause-decorated Error.message) as the reason", async () => {
+      await sut.handle(ctx, new ProcessMovementCommand(MOV_ID));
+      expect(movementRepo.markFailed).toHaveBeenCalledWith(
+        expect.anything(),
+        MOV_ID,
+        "wallet has insufficient available funds",
+      );
+    });
+  });
+
+  describe("Given the service throws an AppError.notFound (so the handler should rebuild a 404)", () => {
+    const movement = makeProcessing("deposit", {
+      walletId: "w1",
+      amountMinor: "100",
+      idempotencyKey: "k",
+      systemWalletShardCount: 32,
+    });
+
+    beforeEach(async () => {
+      const { AppError } = await import("@/utils/kernel/appError.js");
+      movementRepo.markProcessing.mockResolvedValue(movement);
+      depositService.execute.mockRejectedValue(
+        AppError.notFound("WALLET_NOT_FOUND", "wallet w1 not found"),
+      );
+    });
+
+    it("Then the publish carries failedKind='NOT_FOUND' so the awaiting handler returns 404, matching the sync path", async () => {
+      await sut.handle(ctx, new ProcessMovementCommand(MOV_ID));
+      const [, msg] = resultPublisher.publish.mock.calls[0]!;
+      expect(msg.failedKind).toBe("NOT_FOUND");
+      expect(msg.failedCode).toBe("WALLET_NOT_FOUND");
+    });
+  });
+
   describe("Given the service throws a non-Error value (defensive coverage)", () => {
     const movement = makeProcessing("deposit", {
       walletId: "w1",

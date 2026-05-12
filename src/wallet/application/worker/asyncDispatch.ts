@@ -1,8 +1,11 @@
 import type { ICommandBus } from "../../../utils/application/cqrs.js";
+import { AppError, ErrorKind } from "../../../utils/kernel/appError.js";
 import type { AppContext } from "../../../utils/kernel/context.js";
 import type { MovementQueuePayload, MovementType } from "../../domain/movement/movement.entity.js";
 import type { IResultSubscriber } from "../../domain/ports/result.subscriber.js";
 import { EnqueueMovementCommand } from "../command/enqueueMovement/command.js";
+
+const KNOWN_ERROR_KINDS: ReadonlySet<string> = new Set(Object.values(ErrorKind));
 
 /**
  * Result the HTTP handler observes after kicking off the async path.
@@ -18,7 +21,15 @@ import { EnqueueMovementCommand } from "../command/enqueueMovement/command.js";
  */
 export type AsyncDispatchOutcome<TBody> =
   | { kind: "completed"; movementId: string; body: TBody }
-  | { kind: "failed"; movementId: string; failedReason: string }
+  | {
+      kind: "failed";
+      movementId: string;
+      failedReason: string;
+      /** Original `AppError.kind` string when the worker caught an AppError. */
+      failedKind?: string;
+      /** Original `AppError.code` string when the worker caught an AppError. */
+      failedCode?: string;
+    }
   | { kind: "pending"; movementId: string };
 
 export interface AsyncDispatchInput {
@@ -80,6 +91,8 @@ export async function asyncDispatch<TBody>(
       kind: "failed",
       movementId,
       failedReason: observed.failedReason ?? "unknown",
+      ...(observed.failedKind !== undefined ? { failedKind: observed.failedKind } : {}),
+      ...(observed.failedCode !== undefined ? { failedCode: observed.failedCode } : {}),
     };
   }
 
@@ -92,4 +105,28 @@ export async function asyncDispatch<TBody>(
     movementId,
     body: (observed.body ?? {}) as unknown as TBody,
   };
+}
+
+/**
+ * Reconstructs the original AppError from a `failed` outcome so the
+ * handler throws something the global onError can map to the same HTTP
+ * status the sync path would have returned (404 / 422 / 409 / etc.).
+ *
+ * When the worker captured the AppError fidelity (`failedKind` +
+ * `failedCode`), rebuild with the original kind + code. When either is
+ * missing or `failedKind` is not a recognised `ErrorKind` value (defensive
+ * — a future worker version could publish an unknown enum), fall back
+ * to `domainRule` + `MOVEMENT_FAILED` so the response is still
+ * well-formed.
+ */
+export function rebuildAppErrorFromFailedOutcome(outcome: {
+  failedReason: string;
+  failedKind?: string;
+  failedCode?: string;
+}): AppError {
+  const { failedKind, failedCode, failedReason } = outcome;
+  if (failedKind !== undefined && failedCode !== undefined && KNOWN_ERROR_KINDS.has(failedKind)) {
+    return AppError.create(failedKind as ErrorKind, failedCode, failedReason);
+  }
+  return AppError.domainRule("MOVEMENT_FAILED", failedReason);
 }

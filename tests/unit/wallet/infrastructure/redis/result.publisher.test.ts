@@ -79,6 +79,29 @@ describe("RedisResultPublisher", () => {
     });
   });
 
+  describe("Given a failed result with full AppError fidelity (kind + code + reason)", () => {
+    it("Then the payload carries failedKind + failedCode + failedReason so the handler can rebuild the AppError verbatim", async () => {
+      const { publisher, set } = buildPublisher();
+
+      await publisher.publish(ctx, {
+        movementId: "mov-3",
+        status: "failed",
+        failedReason: "wallet w1 not found",
+        failedKind: "NOT_FOUND",
+        failedCode: "WALLET_NOT_FOUND",
+      });
+
+      const [, payload] = set.mock.calls[0]!;
+      expect(JSON.parse(payload as string)).toEqual({
+        movementId: "mov-3",
+        status: "failed",
+        failedReason: "wallet w1 not found",
+        failedKind: "NOT_FOUND",
+        failedCode: "WALLET_NOT_FOUND",
+      });
+    });
+  });
+
   describe("Given a posted result carrying the service body (e.g. transactionId)", () => {
     it("Then the body round-trips through JSON intact so the awaiting handler can rebuild the sync-shape response", async () => {
       const { publisher, set, publish } = buildPublisher();

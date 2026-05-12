@@ -1,6 +1,7 @@
 import type { ICommandHandler } from "../../../../utils/application/cqrs.js";
 import type { LockRunner } from "../../../../utils/application/lock.runner.js";
 import type { ITransactionManager } from "../../../../utils/application/transaction.manager.js";
+import { AppError } from "../../../../utils/kernel/appError.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
 import type { Movement } from "../../../domain/movement/movement.entity.js";
@@ -97,11 +98,22 @@ export class ProcessMovementUseCase
       });
       return { outcome: "posted" };
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
+      // Capture AppError kind/code so the awaiting HTTP handler can
+      // rebuild the precise error and the global onError maps it to the
+      // same status the sync path would have returned. Non-AppError
+      // throws (e.g. raw Prisma errors that escaped translation) flow
+      // through with only `reason` — handler degrades to a generic 422.
+      const isAppError = AppError.is(err);
+      const reason = isAppError ? err.msg : err instanceof Error ? err.message : String(err);
+      const failedKind = isAppError ? err.kind : undefined;
+      const failedCode = isAppError ? err.code : undefined;
+
       this.logger.warn(ctx, `${methodLogTag} processing failed`, {
         movement_id: movementId,
         movement_type: claimed.type,
         error: reason,
+        ...(failedKind !== undefined ? { kind: failedKind } : {}),
+        ...(failedCode !== undefined ? { code: failedCode } : {}),
       });
 
       // Best-effort markFailed. If this also throws, log but keep going —
@@ -121,6 +133,8 @@ export class ProcessMovementUseCase
           movementId,
           status: "failed",
           failedReason: reason,
+          ...(failedKind !== undefined ? { failedKind } : {}),
+          ...(failedCode !== undefined ? { failedCode } : {}),
         });
       } catch (pubErr) {
         this.logger.error(ctx, `${methodLogTag} publish(failed) also threw`, {
