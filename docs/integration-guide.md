@@ -82,7 +82,7 @@ machine-driven branching. The `message` is for humans.
 | `422` | `INSUFFICIENT_FUNDS` / `INVALID_AMOUNT` / `CURRENCY_MISMATCH` | ❌ No | Domain rule violation |
 | `429` | `RATE_LIMIT_EXCEEDED` | ✅ Yes | Honour `Retry-After` if present, otherwise back off |
 | `500` | `INTERNAL_ERROR` | ✅ **Yes — same key** | Unexpected server bug. Rare. The original request may or may not have committed; the same key guarantees no double-execution on retry |
-| **`503`** | **`SERVICE_UNAVAILABLE`** | ✅ **Yes — same key** | **Transient infra saturation (DB pool exhausted, Accelerate engine error, network blip). Server signals this explicitly. Honour `Retry-After` header (seconds).** |
+| **`503`** | **`SERVICE_UNAVAILABLE`** | ✅ **Yes — same key** | **Transient infra saturation (DB pool exhausted, engine error, network blip). Server signals this explicitly. Honour `Retry-After` header (seconds).** |
 | `502/504` | (no body) | ✅ **Yes — same key** | Transient gateway / lambda timeout |
 
 **Rule of thumb:** anything that returns 409 with `LOCK_CONTENDED` /
@@ -203,9 +203,9 @@ async function callWalletApi(
 
 The 5-attempt loop above handles transient contention (a few hundred
 milliseconds to a couple of seconds). It does **not** help when the
-service is degraded for minutes — Accelerate is rate-limited, the DB
-is saturated, the lambda is queue-throttled, etc. After exhausting
-retries you have these options, in order of preference:
+service is degraded for minutes — the DB is saturated, the lambda is
+queue-throttled, etc. After exhausting retries you have these options,
+in order of preference:
 
 1. **Persist the operation as "pending" with its `Idempotency-Key`**
    and surface it to a background worker that retries asynchronously

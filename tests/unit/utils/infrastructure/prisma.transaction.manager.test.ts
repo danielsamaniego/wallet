@@ -38,13 +38,10 @@ describe("PrismaTransactionManager", () => {
     });
 
     it("Given any transaction, When run is called, Then passes Serializable + maxWait + timeout to $transaction", async () => {
-      // The defaults Prisma uses (maxWait 2s, timeout 5s) caused the load
-      // test's 846 "Unable to start a transaction" and 105 "transaction
-      // expired" errors. Our values:
-      //   - maxWait 5s: absorbs Accelerate pool wait under load
-      //   - timeout 13s: stays *just under* Accelerate's 15s Transaction
-      //     duration cap so Prisma rolls back cleanly before Accelerate
-      //     kills the tx server-side
+      // Prisma's defaults (maxWait 2s, timeout 5s) are too tight under
+      // serverless cold-start + lock-acquire overhead. Explicit values
+      // sized to fit inside Vercel's maxDuration with headroom for the
+      // rest of the request lifecycle.
       const { manager, prisma } = buildManager();
       (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(async (fn: Function) =>
         fn({}),
@@ -57,7 +54,7 @@ describe("PrismaTransactionManager", () => {
         expect.objectContaining({
           isolationLevel: "Serializable",
           maxWait: 5000,
-          timeout: 13000,
+          timeout: 30000,
         }),
       );
     });

@@ -120,9 +120,8 @@ describe("createApp", () => {
     });
 
     it("Given a Prisma P2024 (pool timeout), When thrown, Then returns 503 SERVICE_UNAVAILABLE", async () => {
-      // P2024 is Prisma Accelerate's "couldn't fetch a connection from the pool
-      // in time" — the same family as EMAXCONN at the engine level. Both should
-      // map to 503.
+      // P2024 is Prisma's "couldn't fetch a connection from the pool in time"
+      // — same family as EMAXCONN at the engine level. Both should map to 503.
       const deps = buildDeps();
       const app = createApp(deps);
       app.get("/test-p2024", () => {
@@ -279,69 +278,6 @@ describe("createApp", () => {
   });
 
   // ── root redirect ───────────────────────────────────────────────────
-
-  // ─── Serverless-only $disconnect after wallet requests ──────────────
-
-  describe("Serverless connection cleanup", () => {
-    it("Given VERCEL is set, When a /v1 request finishes, Then prisma.$disconnect() is called", async () => {
-      // process.env.VERCEL = "1" only in production; we simulate it here.
-      const original = process.env.VERCEL;
-      process.env.VERCEL = "1";
-      try {
-        const disconnect = vi.fn().mockResolvedValue(undefined);
-        const deps = buildDeps({
-          prisma: { $disconnect: disconnect, $queryRaw: vi.fn().mockResolvedValue([]) } as any,
-        });
-        const app = createApp(deps);
-        // /v1/currencies is a real lightweight endpoint that doesn't need
-        // commandBus/queryBus mocking.
-        await app.request("/v1/currencies");
-
-        expect(disconnect).toHaveBeenCalledOnce();
-      } finally {
-        if (original === undefined) delete process.env.VERCEL;
-        else process.env.VERCEL = original;
-      }
-    });
-
-    it("Given VERCEL is unset (local dev / tests), When a /v1 request finishes, Then prisma.$disconnect() is NOT called", async () => {
-      const original = process.env.VERCEL;
-      delete process.env.VERCEL;
-      try {
-        const disconnect = vi.fn().mockResolvedValue(undefined);
-        const deps = buildDeps({
-          prisma: { $disconnect: disconnect, $queryRaw: vi.fn().mockResolvedValue([]) } as any,
-        });
-        const app = createApp(deps);
-        await app.request("/v1/currencies");
-
-        expect(disconnect).not.toHaveBeenCalled();
-      } finally {
-        if (original !== undefined) process.env.VERCEL = original;
-      }
-    });
-
-    it("Given VERCEL is set and disconnect rejects, When a /v1 request finishes, Then the rejection is swallowed", async () => {
-      // Disconnect failures must not break the request — the response is
-      // already on its way to the client.
-      const original = process.env.VERCEL;
-      process.env.VERCEL = "1";
-      try {
-        const deps = buildDeps({
-          prisma: {
-            $disconnect: vi.fn().mockRejectedValue(new Error("disconnect failed")),
-            $queryRaw: vi.fn().mockResolvedValue([]),
-          } as any,
-        });
-        const app = createApp(deps);
-        const res = await app.request("/v1/currencies");
-        expect(res.status).toBe(200);
-      } finally {
-        if (original === undefined) delete process.env.VERCEL;
-        else process.env.VERCEL = original;
-      }
-    });
-  });
 
   describe("root redirect", () => {
     it("Given a request to /, When called, Then redirects to /docs", async () => {

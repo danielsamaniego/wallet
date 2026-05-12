@@ -1,14 +1,6 @@
 -- Immutable ledger enforcement for financial audit trail tables.
 -- Apply after Prisma migrations via: prisma db execute --file prisma/immutable_ledger.sql
 
--- Production sets statement_timeout=20s and idle_in_transaction_session_timeout=5s
--- on the runtime role as a last-line defence against orphaned queries. Trigger
--- and constraint creation in this file is fast (<1s) but we disable both caps
--- defensively so a slow database can never abort the install partway through.
--- These SET commands apply to the current psql session only — no global change.
-SET statement_timeout = 0;
-SET idle_in_transaction_session_timeout = 0;
-
 -- Level 1: Trigger that prevents UPDATE and DELETE on immutable tables.
 -- Shared function used by all append-only financial tables.
 CREATE OR REPLACE FUNCTION prevent_immutable_modify()

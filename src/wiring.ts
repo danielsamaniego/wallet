@@ -1,6 +1,5 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import { withAccelerate } from "@prisma/extension-accelerate";
 import { Redis as UpstashRedis } from "@upstash/redis";
 import { Redis as IORedis } from "ioredis";
 import { createAppContext } from "./utils/kernel/context.js";
@@ -134,32 +133,13 @@ export function wire(config: Config): Dependencies {
   // correlatable across the module.
   const bootCtx = createAppContext(idGen);
 
-  // Two transports for Postgres:
-  //   - `prisma://` / `prisma+postgres://` → Prisma Accelerate. HTTP transport
-  //     to Accelerate's edge; Accelerate maintains the real TCP pool against
-  //     the database. Solves serverless cold-start `EMAXCONN` because Vercel
-  //     no longer opens TCPs to PgBouncer/Postgres directly.
-  //   - everything else → direct TCP via `@prisma/adapter-pg` (Docker locally,
-  //     bare Postgres or Supabase pooler in non-Accelerate environments).
-  // The `connectionRetryExtension` wraps both so transient errors
-  // (EMAXCONN, ECONNRESET, P2024 pool-timeout, P6008 engine-conn) retry
-  // transparently before bubbling up as 500.
-  const isAccelerate =
-    config.databaseUrl.startsWith("prisma://") ||
-    config.databaseUrl.startsWith("prisma+postgres://");
-  const baseClient = isAccelerate
-    ? (new PrismaClient({ accelerateUrl: config.databaseUrl }).$extends(
-        withAccelerate(),
-      ) as unknown as PrismaClient)
-    : new PrismaClient({
-        adapter: new PrismaPg({ connectionString: config.databaseUrl }),
-      });
-  const prisma = baseClient.$extends(
+  const adapter = new PrismaPg({ connectionString: config.databaseUrl });
+  // Every query goes through the connection-retry extension: transient
+  // EMAXCONN / "too many clients" / ECONNRESET failures retry transparently
+  // with exponential backoff before surfacing to the caller as 500.
+  const prisma = new PrismaClient({ adapter }).$extends(
     connectionRetryExtension(logger, bootCtx),
   ) as unknown as PrismaClient;
-  logger.info(bootCtx, "prisma client wired", {
-    transport: isAccelerate ? "accelerate" : "tcp",
-  });
   const txManager = new PrismaTransactionManager(prisma, logger);
 
   const idempotencyStore = new PrismaIdempotencyStore(prisma, idGen);

@@ -12,38 +12,30 @@ const DEFAULT_JITTER_MS = 100;
 /**
  * Recognises transient errors that should be retried transparently.
  *
- * The match is substring-based on the error message because the exact
- * surface varies across the stack: `pg` raises libpq-style codes,
- * PgBouncer forwards server-side strings verbatim, `@prisma/adapter-pg`
- * wraps them with its own prefix, and Prisma Accelerate emits its own
- * `P2024` / `P5xxx` / `P6xxx` error codes. Covered signals:
+ * Two signal types:
  *
- *   Direct-TCP / pooler family:
- *   - `EMAXCONN` / `max client connections` — Supabase PgBouncer cap reached
- *     (compute size fixes `max_client_conn`; under burst of cold serverless
- *     invocations the pooler rejects new clients until existing ones release)
- *   - `too many clients` — Postgres server-side client cap
- *   - `connection terminated` / `ECONNRESET` / `ETIMEDOUT` — transient socket
- *     drops, usually during pool rotation or brief network hiccups
- *   - `ECONNREFUSED` — pooler restarted or briefly unavailable
+ *   1. Prisma error codes (checked first when `err.code` is present):
+ *      - `P2024` — "Timed out fetching a new connection from the pool".
+ *        Prisma's generic pool-timeout under load.
  *
- *   Prisma Accelerate family:
- *   - `P2024` — timed out fetching a connection from Accelerate's pool
- *     (pool exhaustion under burst; identical role to EMAXCONN upstream)
- *   - `P5009` / `P6004` — engine/query timeout reaching the database
- *   - `P5011` — too many requests, Accelerate rate-limited
- *   - `P6008` — Accelerate engine couldn't connect to the database
+ *   2. Substring match on the error message (covers libpq, pooler-forwarded
+ *      server-side strings, and `@prisma/adapter-pg` wrappers):
+ *      - `EMAXCONN` / `max client connections` — pooler client cap reached
+ *      - `too many clients` — Postgres server-side client cap
+ *      - `connection terminated` / `ECONNRESET` / `ETIMEDOUT` — transient
+ *        socket drops during pool rotation or brief network hiccups
+ *      - `ECONNREFUSED` — pooler restarted or briefly unavailable
  *
  * Domain errors (VERSION_CONFLICT, unique constraint violations, validation)
  * do NOT match — they belong to higher layers (TransactionManager,
- * use cases) and must not be retried blindly at the infra level. Same for
- * `P6009` (response size exceeded) — that's a query bug, not a transient
- * failure; retrying would just burn the budget.
+ * use cases) and must not be retried blindly at the infra level.
  */
 export function isConnectionError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
+  const code = (err as Error & { code?: string }).code;
+  if (code === "P2024") return true;
   const msg = err.message.toLowerCase();
-  if (
+  return (
     msg.includes("emaxconn") ||
     msg.includes("max client connections") ||
     msg.includes("too many clients") ||
@@ -52,29 +44,6 @@ export function isConnectionError(err: unknown): boolean {
     msg.includes("econnrefused") ||
     msg.includes("econnreset") ||
     msg.includes("etimedout")
-  ) {
-    return true;
-  }
-  // Prisma error codes — match either via the typed `code` field (preferred,
-  // exact) or via substring on the message (fallback for wrapped errors).
-  const code = (err as { code?: unknown }).code;
-  if (typeof code === "string") {
-    if (
-      code === "P2024" ||
-      code === "P5009" ||
-      code === "P5011" ||
-      code === "P6004" ||
-      code === "P6008"
-    ) {
-      return true;
-    }
-  }
-  return (
-    msg.includes("p2024") ||
-    msg.includes("p5009") ||
-    msg.includes("p5011") ||
-    msg.includes("p6004") ||
-    msg.includes("p6008")
   );
 }
 
