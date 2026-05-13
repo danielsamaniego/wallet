@@ -38,6 +38,7 @@ Standalone backend service providing digital wallet functionality as a platform 
 
 See `docs/architecture/` for full details.
 
+
 ---
 
 ## Local Development
