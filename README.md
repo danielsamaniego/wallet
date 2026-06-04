@@ -2,6 +2,7 @@
 
 Digital wallet microservice — DDD + Hexagonal + CQRS with Hono.
 
+
 ## Overview
 
 Standalone backend service providing digital wallet functionality as a platform service. Other platforms integrate via REST API using API keys.
