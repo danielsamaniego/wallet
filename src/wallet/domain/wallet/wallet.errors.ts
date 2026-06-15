@@ -51,6 +51,9 @@ export const ErrCurrencyMismatch = () =>
 export const ErrSameWallet = () =>
   AppError.validation("SAME_WALLET", "source and target wallets must be different");
 
+export const ErrInvalidBatchOperations = (message: string) =>
+  AppError.validation("INVALID_BATCH_OPERATIONS", message);
+
 export const ErrSystemWalletNotFound = (platformId: string, currencyCode: string) =>
   AppError.internal(
     "SYSTEM_WALLET_NOT_FOUND",

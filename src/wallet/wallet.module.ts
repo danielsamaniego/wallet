@@ -2,6 +2,8 @@ import type { ModuleHandlers, SharedInfra } from "../wiring.js";
 // Commands & Queries (for bus registration)
 import { AdjustBalanceCommand } from "./application/command/adjustBalance/command.js";
 import { AdjustBalanceUseCase } from "./application/command/adjustBalance/usecase.js";
+import { ApplyBatchOperationsCommand } from "./application/command/applyBatchOperations/command.js";
+import { ApplyBatchOperationsUseCase } from "./application/command/applyBatchOperations/usecase.js";
 import { CaptureHoldCommand } from "./application/command/captureHold/command.js";
 // Use cases
 import { CaptureHoldUseCase } from "./application/command/captureHold/usecase.js";
@@ -150,6 +152,17 @@ export function wire({
     logger,
     lockRunner,
   );
+  const applyBatchOperations = new ApplyBatchOperationsUseCase(
+    txManager,
+    walletRepo,
+    holdRepo,
+    transactionRepo,
+    ledgerEntryRepo,
+    movementRepo,
+    idGen,
+    logger,
+    lockRunner,
+  );
   const placeHold = new PlaceHoldUseCase(
     txManager,
     walletRepo,
@@ -183,6 +196,7 @@ export function wire({
       { type: WithdrawCommand.TYPE, handler: withdraw },
       { type: ChargeCommand.TYPE, handler: charge },
       { type: TransferCommand.TYPE, handler: transfer },
+      { type: ApplyBatchOperationsCommand.TYPE, handler: applyBatchOperations },
       { type: FreezeWalletCommand.TYPE, handler: freezeWallet },
       { type: UnfreezeWalletCommand.TYPE, handler: unfreezeWallet },
       { type: CloseWalletCommand.TYPE, handler: closeWallet },

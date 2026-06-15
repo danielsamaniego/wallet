@@ -140,6 +140,17 @@ Internal components and workflows.
 4. Two ledger entries; `cached_balance_minor` updated.
 5. Semantically distinct from withdrawal: charge represents a platform-initiated fee or commission, not an external egress. The funds stay within the platform ecosystem (system wallet).
 
+### Flow 11: Apply Batch Operations (atomic)
+
+Some platform flows are intrinsically multi-step: a settlement credits a vendor for a sale and, in the same breath, charges a commission and withholds a holdback. Applying those as separate calls leaves a window where only some landed. `POST /v1/wallets/batch-operations` applies N operations **atomically** — all in one SERIALIZABLE transaction under one idempotency key, all-or-nothing.
+
+1. Platform provides 2+ operations, each `{ wallet_id, type (deposit | withdraw | charge | adjust), amount_minor, reason? }`, plus an idempotency key and optional reference/metadata. For `adjust`, `amount_minor` is **signed** (positive = credit, negative = debit) and `reason` is required; for the others it is a positive magnitude.
+2. **Each operation produces its own normal movement** (`deposit` / `withdrawal` / `charge` / `adjustment`) with its own balanced pair of ledger entries — identical to the single-operation commands. There is no synthetic grouping movement type; operations are correlated by the shared `reference` / `metadata` (e.g. a settlement id).
+3. All referenced wallets must belong to the calling platform, share one currency, and be **active**; system wallets are never a direct target.
+4. By default operations are applied in a **deterministic order independent of the request ordering**: (a) credits (`deposit`, positive `adjust`), then (b) fund-requiring debits (`charge`, `withdraw`), then (c) balance-reducing `adjust`s last. So a debit can draw on funds a sibling credit provides, and a negative `adjust` (the only op allowed to go below zero) never spuriously starves a sibling charge. Passing `preserve_operation_order: true` disables the reordering and applies operations in the exact request order — the caller then owns funding correctness (a debit listed before its funding credit fails with `INSUFFICIENT_FUNDS`). Each operation enforces its own balance rule: `deposit` / `withdraw` / `charge` keep the wallet non-negative (else the whole batch is rejected with `INSUFFICIENT_FUNDS`); a negative `adjust` may drive the balance below zero only when the platform has `allowNegativeBalance` enabled and the wallet has no active holds (otherwise `INSUFFICIENT_FUNDS` / `ADJUST_WOULD_BREAK_ACTIVE_HOLDS`).
+5. Wallet ownership, existence and currency are validated **before** any lock is taken (a read-only pre-flight), so the endpoint never locks a wallet the caller does not own.
+6. Atomicity comes from the single DB transaction + single idempotency key, not from collapsing the operations into one movement — each movement remains a self-contained, balanced journal entry.
+
 ---
 
 ## Business Rules
