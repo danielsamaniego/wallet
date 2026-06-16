@@ -6,6 +6,7 @@ import { apiKeyAuth } from "../../../../../utils/infrastructure/middleware/apiKe
 import { idempotency } from "../../../../../utils/infrastructure/middleware/idempotency.js";
 import type { Dependencies } from "../../../../../wiring.js";
 import { adjustBalanceRoute } from "./adjustBalance/handler.js";
+import { batchOperationsRoute } from "./batchOperations/handler.js";
 import { chargeRoute } from "./charge/handler.js";
 import { closeWalletRoute } from "./closeWallet/handler.js";
 import { createWalletRoute } from "./createWallet/handler.js";
@@ -39,6 +40,9 @@ export function walletRoutes(deps: Dependencies) {
 
   // Commands
   router.post("/", auth, idemp, ...createWalletRoute(deps.commandBus));
+  // Static path registered before the "/:walletId/*" group so it is never
+  // shadowed by the wallet-id parameter routes.
+  router.post("/batch-operations", auth, idemp, ...batchOperationsRoute(deps.commandBus));
   router.post("/:walletId/deposit", auth, idemp, ...depositRoute(deps.commandBus));
   router.post("/:walletId/withdraw", auth, idemp, ...withdrawRoute(deps.commandBus));
   router.post("/:walletId/charge", auth, idemp, ...chargeRoute(deps.commandBus));

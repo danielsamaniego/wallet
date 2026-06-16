@@ -2,6 +2,8 @@
 
 ## Current Focus
 
+**Atomic batch operations landed (`POST /v1/wallets/batch-operations`).** New command `ApplyBatchOperations` applies N operations (`deposit` | `withdraw` | `charge`) atomically — all in one SERIALIZABLE transaction under one idempotency key, all-or-nothing. Built for consumer settlement flows (sale credit + commission + holdback in one call) so partial application is impossible. **Each operation produces its own normal movement** (deposit/withdrawal/charge) — no synthetic grouping type; atomicity comes from the shared transaction + idempotency key, and operations correlate via shared `reference`/`metadata`. Credits apply before debits; the resulting available balance of every touched wallet must stay non-negative or the whole batch is rejected with `INSUFFICIENT_FUNDS`. Multi-wallet locking reuses the transfer pattern (sorted + deduped lock keys). Full 100% unit coverage maintained; E2E in [tests/e2e/wallet/batch-operations.e2e.test.ts](../tests/e2e/wallet/batch-operations.e2e.test.ts).
+
 **System wallet sharding landed.** The system wallet is no longer a single hot row per `(platform, currency)`. It is physically fanned out across N shards (default 32, configurable per platform via `platforms.system_wallet_shard_count`, only-increase). Every movement routes to a shard via a deterministic FNV-1a hash of the user wallet id and writes with a single `UPDATE … RETURNING` (atomic increment, no read-then-write). This closes the residual hot-row surface left behind by the distributed lock, which serialized user wallets only.
 
 **Sharding feature (completed):**

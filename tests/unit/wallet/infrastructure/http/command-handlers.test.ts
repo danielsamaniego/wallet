@@ -15,6 +15,7 @@ import { createWalletRoute } from "@/wallet/infrastructure/adapters/inbound/http
 import { depositRoute } from "@/wallet/infrastructure/adapters/inbound/http/deposit/handler.js";
 import { freezeWalletRoute } from "@/wallet/infrastructure/adapters/inbound/http/freezeWallet/handler.js";
 import { getWalletRoute } from "@/wallet/infrastructure/adapters/inbound/http/getWallet/handler.js";
+import { batchOperationsRoute } from "@/wallet/infrastructure/adapters/inbound/http/batchOperations/handler.js";
 import { placeHoldRoute } from "@/wallet/infrastructure/adapters/inbound/http/placeHold/handler.js";
 import { transferRoute } from "@/wallet/infrastructure/adapters/inbound/http/transfer/handler.js";
 import { unfreezeWalletRoute } from "@/wallet/infrastructure/adapters/inbound/http/unfreezeWallet/handler.js";
@@ -388,6 +389,177 @@ describe("Wallet command HTTP handlers", () => {
         target_transaction_id: "txn-in",
         movement_id: "mov-xfer",
       });
+    });
+  });
+
+  // ── batchOperations ────────────────────────────────────────────
+  describe("batchOperationsRoute", () => {
+    it("Given a valid batch body, When POST is called, Then dispatches ApplyBatchOperationsCommand and returns 201", async () => {
+      const commandBus: ICommandBus = {
+        dispatch: vi.fn().mockResolvedValue({
+          operations: [
+            { movementId: "mov-a", transactionId: "txn-a" },
+            { movementId: "mov-b", transactionId: "txn-b" },
+          ],
+        }),
+      };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      const handlers = batchOperationsRoute(commandBus);
+      app.post("/wallets/batch-operations", ...handlers);
+
+      const res = await app.request("/wallets/batch-operations", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "idem-1" },
+        body: JSON.stringify({
+          operations: [
+            { wallet_id: "wallet-1", type: "deposit", amount_minor: 10000, reason: "sale" },
+            { wallet_id: "wallet-1", type: "charge", amount_minor: 1500, reason: "commission" },
+          ],
+          reference: "settlement-1",
+          metadata: { settlementId: "s-1" },
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body).toEqual({
+        operations: [
+          { movement_id: "mov-a", transaction_id: "txn-a" },
+          { movement_id: "mov-b", transaction_id: "txn-b" },
+        ],
+      });
+    });
+
+    it("Given a body with fewer than two operations, When POST is called, Then returns 400 and does not dispatch", async () => {
+      const commandBus: ICommandBus = { dispatch: vi.fn() };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      app.post("/wallets/batch-operations", ...batchOperationsRoute(commandBus));
+
+      const res = await app.request("/wallets/batch-operations", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "idem-1" },
+        body: JSON.stringify({
+          operations: [{ wallet_id: "wallet-1", type: "deposit", amount_minor: 1 }],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(commandBus.dispatch).not.toHaveBeenCalled();
+    });
+
+    it("Given no idempotency-key header, When POST is called, Then dispatches with empty idempotencyKey", async () => {
+      const dispatch = vi.fn().mockResolvedValue({
+        operations: [
+          { movementId: "mov-a", transactionId: "txn-a" },
+          { movementId: "mov-b", transactionId: "txn-b" },
+        ],
+      });
+      const commandBus: ICommandBus = { dispatch };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      app.post("/wallets/batch-operations", ...batchOperationsRoute(commandBus));
+
+      const res = await app.request("/wallets/batch-operations", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          operations: [
+            { wallet_id: "wallet-1", type: "deposit", amount_minor: 10000 },
+            { wallet_id: "wallet-1", type: "charge", amount_minor: 1500 },
+          ],
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(dispatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ idempotencyKey: "" }),
+      );
+    });
+
+    it("Given a valid adjust operation (signed amount + reason), When POST is called, Then returns 201", async () => {
+      const commandBus: ICommandBus = {
+        dispatch: vi.fn().mockResolvedValue({
+          operations: [
+            { movementId: "mov-a", transactionId: "txn-a" },
+            { movementId: "mov-b", transactionId: "txn-b" },
+          ],
+        }),
+      };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      app.post("/wallets/batch-operations", ...batchOperationsRoute(commandBus));
+
+      const res = await app.request("/wallets/batch-operations", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "idem-1" },
+        body: JSON.stringify({
+          operations: [
+            { wallet_id: "wallet-1", type: "deposit", amount_minor: 10000 },
+            { wallet_id: "wallet-1", type: "adjust", amount_minor: -1500, reason: "correction" },
+          ],
+        }),
+      });
+
+      expect(res.status).toBe(201);
+    });
+
+    it("Given an adjust with amount_minor 0, When POST is called, Then returns 400 and does not dispatch", async () => {
+      const commandBus: ICommandBus = { dispatch: vi.fn() };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      app.post("/wallets/batch-operations", ...batchOperationsRoute(commandBus));
+
+      const res = await app.request("/wallets/batch-operations", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "idem-1" },
+        body: JSON.stringify({
+          operations: [
+            { wallet_id: "wallet-1", type: "deposit", amount_minor: 100 },
+            { wallet_id: "wallet-1", type: "adjust", amount_minor: 0, reason: "noop" },
+          ],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(commandBus.dispatch).not.toHaveBeenCalled();
+    });
+
+    it("Given an adjust without a reason, When POST is called, Then returns 400 and does not dispatch", async () => {
+      const commandBus: ICommandBus = { dispatch: vi.fn() };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      app.post("/wallets/batch-operations", ...batchOperationsRoute(commandBus));
+
+      const res = await app.request("/wallets/batch-operations", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "idem-1" },
+        body: JSON.stringify({
+          operations: [
+            { wallet_id: "wallet-1", type: "deposit", amount_minor: 100 },
+            { wallet_id: "wallet-1", type: "adjust", amount_minor: -50 },
+          ],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(commandBus.dispatch).not.toHaveBeenCalled();
+    });
+
+    it("Given a non-adjust operation with a non-positive amount, When POST is called, Then returns 400", async () => {
+      const commandBus: ICommandBus = { dispatch: vi.fn() };
+      const app = withContext(new Hono<{ Variables: HonoVariables }>());
+      app.post("/wallets/batch-operations", ...batchOperationsRoute(commandBus));
+
+      const res = await app.request("/wallets/batch-operations", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "idem-1" },
+        body: JSON.stringify({
+          operations: [
+            { wallet_id: "wallet-1", type: "deposit", amount_minor: 100 },
+            { wallet_id: "wallet-1", type: "charge", amount_minor: 0 },
+          ],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(commandBus.dispatch).not.toHaveBeenCalled();
     });
   });
 
