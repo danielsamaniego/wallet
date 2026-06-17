@@ -37,6 +37,8 @@ import { GetHoldQuery } from "./application/query/getHold/query.js";
 import { GetHoldUseCase } from "./application/query/getHold/usecase.js";
 import { GetLedgerEntriesQuery } from "./application/query/getLedgerEntries/query.js";
 import { GetLedgerEntriesUseCase } from "./application/query/getLedgerEntries/usecase.js";
+import { GetMovementQuery } from "./application/query/getMovement/query.js";
+import { GetMovementUseCase } from "./application/query/getMovement/usecase.js";
 import { GetTransactionsQuery } from "./application/query/getTransactions/query.js";
 import { GetTransactionsUseCase } from "./application/query/getTransactions/usecase.js";
 import { GetWalletQuery } from "./application/query/getWallet/query.js";
@@ -146,6 +148,7 @@ export function wire({
   const getTransactions = new GetTransactionsUseCase(transactionReadStore, logger);
   const getLedgerEntries = new GetLedgerEntriesUseCase(ledgerEntryReadStore, logger);
   const getWalletMovements = new GetWalletMovementsUseCase(walletMovementReadStore, logger);
+  const getMovement = new GetMovementUseCase(walletMovementReadStore, logger);
   const transfer = new TransferUseCase(
     txManager,
     walletRepo,
@@ -218,6 +221,7 @@ export function wire({
       { type: GetTransactionsQuery.TYPE, handler: getTransactions },
       { type: GetLedgerEntriesQuery.TYPE, handler: getLedgerEntries },
       { type: GetWalletMovementsQuery.TYPE, handler: getWalletMovements },
+      { type: GetMovementQuery.TYPE, handler: getMovement },
     ],
   };
 }

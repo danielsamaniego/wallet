@@ -6,6 +6,7 @@ import type { IQueryBus } from "@/utils/application/cqrs.js";
 
 import { getHoldRoute } from "@/wallet/infrastructure/adapters/inbound/http/getHold/handler.js";
 import { getLedgerEntriesRoute } from "@/wallet/infrastructure/adapters/inbound/http/getLedgerEntries/handler.js";
+import { getMovementRoute } from "@/wallet/infrastructure/adapters/inbound/http/getMovement/handler.js";
 import { getTransactionsRoute } from "@/wallet/infrastructure/adapters/inbound/http/getTransactions/handler.js";
 import { getWalletMovementsRoute } from "@/wallet/infrastructure/adapters/inbound/http/getWalletMovements/handler.js";
 import { listCurrenciesRoute } from "@/wallet/infrastructure/adapters/inbound/http/listCurrencies/handler.js";
@@ -125,6 +126,25 @@ describe("Wallet query HTTP handlers", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.movements).toEqual([]);
+      expect(queryBus.dispatch).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ── getMovement ────────────────────────────────────────────────
+  describe("getMovementRoute", () => {
+    it("Given valid walletId and movementId params, When GET is called, Then it dispatches GetMovementQuery and returns 200", async () => {
+      const queryBus: IQueryBus = {
+        dispatch: vi.fn().mockResolvedValue({ movement_id: "mv-1", transaction_id: "tx-1" }),
+      };
+
+      const handlers = getMovementRoute(queryBus);
+      const app = buildApp("/wallets/:walletId/movements/:movementId", handlers);
+
+      const res = await app.request("/wallets/wallet-1/movements/mv-1");
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.movement_id).toBe("mv-1");
       expect(queryBus.dispatch).toHaveBeenCalledOnce();
     });
   });

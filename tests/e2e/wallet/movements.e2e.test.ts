@@ -216,4 +216,55 @@ describe("Wallet Movements (statement) E2E", () => {
       expect(res.status).toBe(400);
     });
   });
+
+  // ── Get movement by id (R3) ───────────────────────────────────────────────
+
+  describe("Given a wallet with an adjustment movement", () => {
+    it("Then GET /movements/:movementId returns that single movement with balance, reason and metadata", async () => {
+      const walletId = await createWallet("mv-byid-user");
+      await deposit(walletId, 8000);
+      await adjust(walletId, 2000, "bonus", { order_id: "ord-1" });
+
+      const list = await app.request(`/v1/wallets/${walletId}/movements`);
+      const target = (await list.json()).movements.find(
+        (m: { type: string }) => m.type === "adjustment_credit",
+      );
+      expect(target).toBeDefined();
+
+      const res = await app.request(`/v1/wallets/${walletId}/movements/${target.movement_id}`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.movement_id).toBe(target.movement_id);
+      expect(body.type).toBe("adjustment_credit");
+      expect(body.direction).toBe("credit");
+      expect(body.amount_minor).toBe(2000);
+      expect(body.reason).toBe("bonus");
+      expect(body.metadata).toEqual({ order_id: "ord-1" });
+      expect(body.balance_before_minor).toBe(8000);
+      expect(body.balance_after_minor).toBe(10000);
+    });
+  });
+
+  describe("Given a non-existent movement id", () => {
+    it("Then GET /movements/:movementId returns 404", async () => {
+      const walletId = await createWallet("mv-byid-404-user");
+      await deposit(walletId, 1000);
+
+      const fakeMovement = "019560a0-0000-7000-8000-0000000000bb";
+      const res = await app.request(`/v1/wallets/${walletId}/movements/${fakeMovement}`);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("Given a movement in the victim platform's wallet", () => {
+    it("Then the attacker platform cannot read it by id (404)", async () => {
+      const victimWalletId = await createWallet("mv-byid-victim");
+      await deposit(victimWalletId, 5000);
+      const list = await app.request(`/v1/wallets/${victimWalletId}/movements`);
+      const mvId = (await list.json()).movements[0].movement_id;
+
+      const res = await app.attackerRequest(`/v1/wallets/${victimWalletId}/movements/${mvId}`);
+      expect(res.status).toBe(404);
+    });
+  });
 });

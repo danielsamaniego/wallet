@@ -36,7 +36,7 @@ describe("PrismaWalletMovementReadStore", () => {
   const ctx = createTestContext();
 
   function buildReadStore() {
-    const transaction = { findMany: vi.fn() };
+    const transaction = { findMany: vi.fn(), findFirst: vi.fn() };
     const wallet = { findFirst: vi.fn() };
     const prisma = { transaction, wallet } as never;
     const logger = createMockLogger();
@@ -154,6 +154,41 @@ describe("PrismaWalletMovementReadStore", () => {
 
       expect(result!.movements).toEqual([]);
       expect(result!.next_cursor).toBeNull();
+    });
+  });
+
+  describe("getOne", () => {
+    it("Given the wallet does not belong to the platform, When getOne is called, Then it returns null", async () => {
+      const { store, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue(null);
+
+      const result = await store.getOne(ctx, "wallet-1", "mv-1", "wrong-platform");
+
+      expect(result).toBeNull();
+    });
+
+    it("Given the movement exists for the wallet, When getOne is called, Then it returns the statement line", async () => {
+      const { store, transaction, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
+      transaction.findFirst.mockResolvedValue(buildMovementRow());
+
+      const result = await store.getOne(ctx, "wallet-1", "mv-1", "platform-1");
+
+      expect(result).not.toBeNull();
+      expect(result!.movement_id).toBe("mv-1");
+      expect(result!.direction).toBe("debit");
+      expect(result!.balance_before_minor).toBe(10000);
+      expect(result!.balance_after_minor).toBe(5000);
+    });
+
+    it("Given the movement does not exist for the wallet, When getOne is called, Then it returns null", async () => {
+      const { store, transaction, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
+      transaction.findFirst.mockResolvedValue(null);
+
+      const result = await store.getOne(ctx, "wallet-1", "mv-404", "platform-1");
+
+      expect(result).toBeNull();
     });
   });
 });

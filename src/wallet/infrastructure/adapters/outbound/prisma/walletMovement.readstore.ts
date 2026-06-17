@@ -108,6 +108,50 @@ export class PrismaWalletMovementReadStore implements IWalletMovementReadStore {
     };
   }
 
+  async getOne(
+    ctx: AppContext,
+    walletId: string,
+    movementId: string,
+    platformId: string,
+  ): Promise<WalletMovementDTO | null> {
+    this.logger.debug(ctx, "WalletMovementReadStore | getOne", {
+      wallet_id: walletId,
+      movement_id: movementId,
+    });
+
+    const wallet = await this.prisma.wallet.findFirst({
+      where: { id: walletId, platformId },
+      select: { id: true },
+    });
+    if (!wallet) {
+      this.logger.info(ctx, "WalletMovementReadStore | getOne wallet not found", {
+        wallet_id: walletId,
+        platform_id: platformId,
+      });
+      return null;
+    }
+
+    const row = await this.prisma.transaction.findFirst({
+      where: { walletId, movementId },
+      include: {
+        movement: { select: { reason: true } },
+        ledgerEntries: {
+          where: { walletId },
+          select: { entryType: true, amountMinor: true, balanceAfterMinor: true },
+        },
+      },
+    });
+    if (!row) {
+      this.logger.info(ctx, "WalletMovementReadStore | getOne movement not found", {
+        wallet_id: walletId,
+        movement_id: movementId,
+      });
+      return null;
+    }
+
+    return this.toDTO(row as unknown as MovementRow);
+  }
+
   private toDTO(row: MovementRow): WalletMovementDTO | null {
     // Exactly one ledger entry belongs to this wallet for this transaction. A
     // transaction with no ledger entry for this wallet (e.g. never settled) is

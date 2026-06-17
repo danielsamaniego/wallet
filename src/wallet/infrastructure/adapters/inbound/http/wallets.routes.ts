@@ -13,6 +13,7 @@ import { createWalletRoute } from "./createWallet/handler.js";
 import { depositRoute } from "./deposit/handler.js";
 import { freezeWalletRoute } from "./freezeWallet/handler.js";
 import { getLedgerEntriesRoute } from "./getLedgerEntries/handler.js";
+import { getMovementRoute } from "./getMovement/handler.js";
 import { getTransactionsRoute } from "./getTransactions/handler.js";
 import { getWalletRoute } from "./getWallet/handler.js";
 import { getWalletMovementsRoute } from "./getWalletMovements/handler.js";
@@ -67,6 +68,7 @@ export function walletRoutes(deps: Dependencies) {
   router.get("/:walletId/transactions", auth, ...getTransactionsRoute(deps.queryBus));
   router.get("/:walletId/ledger", auth, ...getLedgerEntriesRoute(deps.queryBus));
   router.get("/:walletId/movements", auth, ...getWalletMovementsRoute(deps.queryBus));
+  router.get("/:walletId/movements/:movementId", auth, ...getMovementRoute(deps.queryBus));
 
   return router;
 }
