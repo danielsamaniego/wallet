@@ -165,6 +165,29 @@ describe("PrismaStatementReadStore", () => {
 
       expect(result!.entries).toHaveLength(1);
     });
+
+    it("Given a free-text query with LIKE wildcards, When getByWallet is called, Then they are escaped to match literally", async () => {
+      const { store, transaction, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
+      transaction.findMany.mockResolvedValue([]);
+
+      await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing(), "a_b%c\\d");
+
+      // Recursively find the `contains` value passed to Prisma.
+      const findContains = (obj: unknown): string | undefined => {
+        if (obj && typeof obj === "object") {
+          for (const [k, v] of Object.entries(obj)) {
+            if (k === "contains" && typeof v === "string") return v;
+            const found = findContains(v);
+            if (found !== undefined) return found;
+          }
+        }
+        return undefined;
+      };
+
+      const where = transaction.findMany.mock.calls[0][0].where;
+      expect(findContains(where)).toBe("a\\_b\\%c\\\\d");
+    });
   });
 
   describe("getOne", () => {

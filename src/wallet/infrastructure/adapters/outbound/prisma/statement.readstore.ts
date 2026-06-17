@@ -44,6 +44,15 @@ interface MovementRow extends MovementRowBase {
   ledgerEntries: LedgerEntryFields[];
 }
 
+/**
+ * Escapes SQL LIKE wildcards so free-text search is matched literally. Prisma's
+ * `contains` compiles to `ILIKE '%value%'` without escaping, so a raw `_`/`%`/`\`
+ * would behave as a wildcard. Postgres LIKE uses `\` as the default escape char.
+ */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 export class PrismaStatementReadStore implements IStatementReadStore {
   constructor(
     private readonly prisma: PrismaClient,
@@ -57,7 +66,7 @@ export class PrismaStatementReadStore implements IStatementReadStore {
     listing: ListingQuery,
     q?: string,
   ): Promise<PaginatedStatement | null> {
-    this.logger.debug(ctx, "WalletMovementReadStore | getByWallet", {
+    this.logger.debug(ctx, "StatementReadStore | getByWallet", {
       wallet_id: walletId,
       has_query: q !== undefined,
     });
@@ -68,7 +77,7 @@ export class PrismaStatementReadStore implements IStatementReadStore {
       select: { id: true },
     });
     if (!wallet) {
-      this.logger.info(ctx, "WalletMovementReadStore | getByWallet wallet not found", {
+      this.logger.info(ctx, "StatementReadStore | getByWallet wallet not found", {
         wallet_id: walletId,
         platform_id: platformId,
       });
@@ -77,11 +86,14 @@ export class PrismaStatementReadStore implements IStatementReadStore {
 
     // Free-text `q` is a case-insensitive substring match on reference/reason,
     // confined to this wallet (the walletId filter already bounds the scan).
+    // LIKE wildcards in the user input are escaped so they match literally —
+    // otherwise `_`/`%` would act as wildcards (over-matching / probing).
     const baseWhere: Record<string, unknown> = { walletId };
     if (q) {
+      const term = escapeLike(q);
       baseWhere.OR = [
-        { reference: { contains: q, mode: "insensitive" } },
-        { movement: { reason: { contains: q, mode: "insensitive" } } },
+        { reference: { contains: term, mode: "insensitive" } },
+        { movement: { reason: { contains: term, mode: "insensitive" } } },
       ];
     }
 
@@ -118,7 +130,7 @@ export class PrismaStatementReadStore implements IStatementReadStore {
       }
     }
 
-    this.logger.debug(ctx, "WalletMovementReadStore | getByWallet result", {
+    this.logger.debug(ctx, "StatementReadStore | getByWallet result", {
       wallet_id: walletId,
       count: items.length,
       has_more: hasMore,
@@ -138,7 +150,7 @@ export class PrismaStatementReadStore implements IStatementReadStore {
     movementId: string,
     platformId: string,
   ): Promise<StatementEntryDTO | null> {
-    this.logger.debug(ctx, "WalletMovementReadStore | getOne", {
+    this.logger.debug(ctx, "StatementReadStore | getOne", {
       wallet_id: walletId,
       movement_id: movementId,
     });
@@ -148,7 +160,7 @@ export class PrismaStatementReadStore implements IStatementReadStore {
       select: { id: true },
     });
     if (!wallet) {
-      this.logger.info(ctx, "WalletMovementReadStore | getOne wallet not found", {
+      this.logger.info(ctx, "StatementReadStore | getOne wallet not found", {
         wallet_id: walletId,
         platform_id: platformId,
       });
@@ -166,7 +178,7 @@ export class PrismaStatementReadStore implements IStatementReadStore {
       },
     });
     if (!row) {
-      this.logger.info(ctx, "WalletMovementReadStore | getOne movement not found", {
+      this.logger.info(ctx, "StatementReadStore | getOne movement not found", {
         wallet_id: walletId,
         movement_id: movementId,
       });
