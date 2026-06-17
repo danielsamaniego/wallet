@@ -332,4 +332,27 @@ describe("Charge E2E", () => {
       expect(await getBalance(walletId)).toBe(4000);
     });
   });
+
+  // ── R1: charge is filterable via type filter ───────────────────────────
+
+  describe("Given a wallet with a deposit and a charge", () => {
+    it("Then GET /transactions?filter[type]=charge returns only the charge", async () => {
+      const walletId = await createWallet("charge-filter-user");
+      await deposit(walletId, 5000);
+      await app.request(`/v1/wallets/${walletId}/charge`, {
+        method: "POST",
+        headers: { "Idempotency-Key": nextKey() },
+        body: JSON.stringify({ amount_minor: 1000, reference: "FILTERABLE_FEE" }),
+      });
+
+      const res = await app.request(
+        `/v1/wallets/${walletId}/transactions?filter%5Btype%5D=charge`,
+      );
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.transactions.length).toBeGreaterThan(0);
+      expect(body.transactions.every((t: { type: string }) => t.type === "charge")).toBe(true);
+    });
+  });
 });

@@ -404,4 +404,36 @@ describe("Balance Adjustments E2E", () => {
       });
     });
   });
+
+  // ── R1: adjustment legs are filterable via the type filter ─────────────
+
+  describe("Given a wallet with credit and debit adjustments", () => {
+    it("Then GET /transactions filtered by type in [adjustment_credit,adjustment_debit] returns both", async () => {
+      const walletId = await createWallet("adjust-filter-owner");
+      await deposit(walletId, 10000);
+
+      const credit = await app.request(`/v1/wallets/${walletId}/adjust`, {
+        method: "POST",
+        headers: { "Idempotency-Key": nextKey("adjust-credit-filter") },
+        body: JSON.stringify({ amount_minor: 2000, reason: "credit adj" }),
+      });
+      expect(credit.status).toBe(201);
+
+      const debit = await app.request(`/v1/wallets/${walletId}/adjust`, {
+        method: "POST",
+        headers: { "Idempotency-Key": nextKey("adjust-debit-filter") },
+        body: JSON.stringify({ amount_minor: -1000, reason: "debit adj" }),
+      });
+      expect(debit.status).toBe(201);
+
+      const res = await app.request(
+        `/v1/wallets/${walletId}/transactions?filter%5Btype%5D=adjustment_credit,adjustment_debit`,
+      );
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      const types = body.transactions.map((t: { type: string }) => t.type).sort();
+      expect(types).toEqual(["adjustment_credit", "adjustment_debit"]);
+    });
+  });
 });

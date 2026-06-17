@@ -15,7 +15,16 @@ const listingConfig: ListingConfig = {
       prismaName: "type",
       type: "enum",
       operators: ["eq", "in"],
-      enumValues: ["deposit", "withdrawal", "transfer_in", "transfer_out", "hold_capture"],
+      enumValues: [
+        "deposit",
+        "withdrawal",
+        "transfer_in",
+        "transfer_out",
+        "hold_capture",
+        "charge",
+        "adjustment_credit",
+        "adjustment_debit",
+      ],
     },
     {
       apiName: "status",
