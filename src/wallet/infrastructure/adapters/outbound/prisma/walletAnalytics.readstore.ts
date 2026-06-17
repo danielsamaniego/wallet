@@ -13,7 +13,7 @@ import type {
   BalancePointDTO,
   BalanceTimeSeriesResponseDTO,
 } from "../../../../application/query/getBalanceTimeseries/query.js";
-import type { MoneyFlowSummaryDTO } from "../../../../application/query/getMoneyFlow/query.js";
+import type { CashFlowSummaryDTO } from "../../../../application/query/getCashFlow/query.js";
 
 export class PrismaWalletAnalyticsReadStore implements IWalletAnalyticsReadStore {
   constructor(
@@ -29,21 +29,21 @@ export class PrismaWalletAnalyticsReadStore implements IWalletAnalyticsReadStore
     return wallet !== null;
   }
 
-  async getMoneyFlow(
+  async getCashFlow(
     ctx: AppContext,
     walletId: string,
     platformId: string,
     fromMs: number,
     toMs: number,
-  ): Promise<MoneyFlowSummaryDTO | null> {
-    this.logger.debug(ctx, "WalletAnalyticsReadStore | getMoneyFlow", {
+  ): Promise<CashFlowSummaryDTO | null> {
+    this.logger.debug(ctx, "WalletAnalyticsReadStore | getCashFlow", {
       wallet_id: walletId,
       from_ms: fromMs,
       to_ms: toMs,
     });
 
     if (!(await this.walletExists(walletId, platformId))) {
-      this.logger.info(ctx, "WalletAnalyticsReadStore | getMoneyFlow wallet not found", {
+      this.logger.info(ctx, "WalletAnalyticsReadStore | getCashFlow wallet not found", {
         wallet_id: walletId,
         platform_id: platformId,
       });

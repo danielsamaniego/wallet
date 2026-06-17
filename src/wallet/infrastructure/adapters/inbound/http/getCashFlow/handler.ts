@@ -8,18 +8,18 @@ import {
   ErrorResponseSchema,
   validationHook,
 } from "../../../../../../utils/infrastructure/hono.error.js";
-import { GetMoneyFlowQuery } from "../../../../../application/query/getMoneyFlow/query.js";
+import { GetCashFlowQuery } from "../../../../../application/query/getCashFlow/query.js";
 import { ParamSchema, QueryParamsSchema, ResponseSchema } from "./schemas.js";
 
-export function getMoneyFlowRoute(queryBus: IQueryBus) {
+export function getCashFlowRoute(queryBus: IQueryBus) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],
-      summary: "Wallet money-flow summary",
+      summary: "Wallet cash-flow summary",
       description: "Total income (credits) vs expense (debits) and net over a time range.",
       responses: {
         200: {
-          description: "Money-flow summary",
+          description: "Cash-flow summary",
           content: { "application/json": { schema: resolver(ResponseSchema) } },
         },
         400: {
@@ -41,7 +41,7 @@ export function getMoneyFlowRoute(queryBus: IQueryBus) {
 
       const result = await queryBus.dispatch(
         ctx,
-        new GetMoneyFlowQuery(walletId, ctx.platformId, from, to),
+        new GetCashFlowQuery(walletId, ctx.platformId, from, to),
       );
 
       return c.json(result, 200);

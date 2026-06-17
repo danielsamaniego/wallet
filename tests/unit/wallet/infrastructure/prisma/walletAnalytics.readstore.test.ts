@@ -19,14 +19,14 @@ describe("PrismaWalletAnalyticsReadStore", () => {
     return { store, ledgerEntry, wallet };
   }
 
-  // ── getMoneyFlow ──────────────────────────────────────────────────────────
+  // ── getCashFlow ──────────────────────────────────────────────────────────
 
-  describe("getMoneyFlow", () => {
+  describe("getCashFlow", () => {
     it("Given the wallet does not belong to the platform, Then it returns null", async () => {
       const { store, wallet } = buildReadStore();
       wallet.findFirst.mockResolvedValue(null);
 
-      const result = await store.getMoneyFlow(ctx, "wallet-1", "wrong-platform", D1, D2);
+      const result = await store.getCashFlow(ctx, "wallet-1", "wrong-platform", D1, D2);
 
       expect(result).toBeNull();
     });
@@ -39,7 +39,7 @@ describe("PrismaWalletAnalyticsReadStore", () => {
         { entryType: "DEBIT", _sum: { amountMinor: -3000n } },
       ]);
 
-      const result = await store.getMoneyFlow(ctx, "wallet-1", "platform-1", D1, D2);
+      const result = await store.getCashFlow(ctx, "wallet-1", "platform-1", D1, D2);
 
       expect(result).toEqual({
         income_minor: 10000,
@@ -54,7 +54,7 @@ describe("PrismaWalletAnalyticsReadStore", () => {
       wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
       ledgerEntry.groupBy.mockResolvedValue([{ entryType: "CREDIT", _sum: { amountMinor: null } }]);
 
-      const result = await store.getMoneyFlow(ctx, "wallet-1", "platform-1", D1, D1);
+      const result = await store.getCashFlow(ctx, "wallet-1", "platform-1", D1, D1);
 
       expect(result).toEqual({ income_minor: 0, expense_minor: 0, net_minor: 0, days: 1 });
     });

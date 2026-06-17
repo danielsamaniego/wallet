@@ -3,7 +3,7 @@ import { createTestApp, type TestApp } from "../setup/test-app.js";
 
 const DAY = 86_400_000;
 
-describe("Wallet Analytics E2E (money-flow + balance-timeseries)", () => {
+describe("Wallet Analytics E2E (cash-flow + balance-timeseries)", () => {
   let app: TestApp;
   let idempCounter = 0;
 
@@ -58,7 +58,7 @@ describe("Wallet Analytics E2E (money-flow + balance-timeseries)", () => {
       const from = now - DAY;
       const to = now + DAY;
 
-      const res = await app.request(`/v1/wallets/${walletId}/money-flow?from=${from}&to=${to}`);
+      const res = await app.request(`/v1/wallets/${walletId}/analytics/cash-flow?from=${from}&to=${to}`);
       expect(res.status).toBe(200);
       const body = await res.json();
 
@@ -72,7 +72,7 @@ describe("Wallet Analytics E2E (money-flow + balance-timeseries)", () => {
   describe("Given an invalid range where to < from", () => {
     it("Then money-flow returns 400", async () => {
       const walletId = await createWallet("an-badrange-user");
-      const res = await app.request(`/v1/wallets/${walletId}/money-flow?from=2000&to=1000`);
+      const res = await app.request(`/v1/wallets/${walletId}/analytics/cash-flow?from=2000&to=1000`);
       expect(res.status).toBe(400);
     });
   });
@@ -81,7 +81,7 @@ describe("Wallet Analytics E2E (money-flow + balance-timeseries)", () => {
     it("Then money-flow returns 401", async () => {
       const walletId = await createWallet("an-auth-user");
       const res = await app.unauthenticatedRequest(
-        `/v1/wallets/${walletId}/money-flow?from=1&to=2`,
+        `/v1/wallets/${walletId}/analytics/cash-flow?from=1&to=2`,
       );
       expect(res.status).toBe(401);
     });
@@ -99,7 +99,7 @@ describe("Wallet Analytics E2E (money-flow + balance-timeseries)", () => {
       const today = new Date(now).toISOString().slice(0, 10);
 
       const res = await app.request(
-        `/v1/wallets/${walletId}/balance-timeseries?from=${from}&to=${now}`,
+        `/v1/wallets/${walletId}/analytics/balance-timeseries?from=${from}&to=${now}`,
       );
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -115,7 +115,7 @@ describe("Wallet Analytics E2E (money-flow + balance-timeseries)", () => {
     it("Then balance-timeseries returns 400 RANGE_TOO_LARGE", async () => {
       const walletId = await createWallet("an-range-user");
       const res = await app.request(
-        `/v1/wallets/${walletId}/balance-timeseries?from=0&to=${Date.now()}`,
+        `/v1/wallets/${walletId}/analytics/balance-timeseries?from=0&to=${Date.now()}`,
       );
       expect(res.status).toBe(400);
       expect((await res.json()).error).toBe("RANGE_TOO_LARGE");
@@ -126,7 +126,7 @@ describe("Wallet Analytics E2E (money-flow + balance-timeseries)", () => {
     it("Then balance-timeseries returns 404", async () => {
       const fakeId = "019560a0-0000-7000-8000-0000000000cc";
       const res = await app.request(
-        `/v1/wallets/${fakeId}/balance-timeseries?from=1&to=2`,
+        `/v1/wallets/${fakeId}/analytics/balance-timeseries?from=1&to=2`,
       );
       expect(res.status).toBe(404);
     });
@@ -139,7 +139,7 @@ describe("Wallet Analytics E2E (money-flow + balance-timeseries)", () => {
 
       const now = Date.now();
       const res = await app.attackerRequest(
-        `/v1/wallets/${victimWalletId}/money-flow?from=${now - DAY}&to=${now}`,
+        `/v1/wallets/${victimWalletId}/analytics/cash-flow?from=${now - DAY}&to=${now}`,
       );
       expect(res.status).toBe(404);
     });

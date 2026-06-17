@@ -7,7 +7,7 @@ import type { IQueryBus } from "@/utils/application/cqrs.js";
 import { getHoldRoute } from "@/wallet/infrastructure/adapters/inbound/http/getHold/handler.js";
 import { getBalanceTimeseriesRoute } from "@/wallet/infrastructure/adapters/inbound/http/getBalanceTimeseries/handler.js";
 import { getLedgerEntriesRoute } from "@/wallet/infrastructure/adapters/inbound/http/getLedgerEntries/handler.js";
-import { getMoneyFlowRoute } from "@/wallet/infrastructure/adapters/inbound/http/getMoneyFlow/handler.js";
+import { getCashFlowRoute } from "@/wallet/infrastructure/adapters/inbound/http/getCashFlow/handler.js";
 import { getStatementEntryRoute } from "@/wallet/infrastructure/adapters/inbound/http/getStatementEntry/handler.js";
 import { getTransactionsRoute } from "@/wallet/infrastructure/adapters/inbound/http/getTransactions/handler.js";
 import { getStatementRoute } from "@/wallet/infrastructure/adapters/inbound/http/getStatement/handler.js";
@@ -151,9 +151,9 @@ describe("Wallet query HTTP handlers", () => {
     });
   });
 
-  // ── getMoneyFlow ───────────────────────────────────────────────
-  describe("getMoneyFlowRoute", () => {
-    it("Given a valid walletId and range, When GET is called, Then it dispatches GetMoneyFlowQuery and returns 200", async () => {
+  // ── getCashFlow ───────────────────────────────────────────────
+  describe("getCashFlowRoute", () => {
+    it("Given a valid walletId and range, When GET is called, Then it dispatches GetCashFlowQuery and returns 200", async () => {
       const queryBus: IQueryBus = {
         dispatch: vi.fn().mockResolvedValue({
           income_minor: 0,
@@ -163,11 +163,11 @@ describe("Wallet query HTTP handlers", () => {
         }),
       };
 
-      const handlers = getMoneyFlowRoute(queryBus);
-      const app = buildApp("/wallets/:walletId/money-flow", handlers);
+      const handlers = getCashFlowRoute(queryBus);
+      const app = buildApp("/wallets/:walletId/analytics/cash-flow", handlers);
 
       const res = await app.request(
-        "/wallets/wallet-1/money-flow?from=1700000000000&to=1700100000000",
+        "/wallets/wallet-1/analytics/cash-flow?from=1700000000000&to=1700100000000",
       );
 
       expect(res.status).toBe(200);
@@ -183,10 +183,10 @@ describe("Wallet query HTTP handlers", () => {
       };
 
       const handlers = getBalanceTimeseriesRoute(queryBus);
-      const app = buildApp("/wallets/:walletId/balance-timeseries", handlers);
+      const app = buildApp("/wallets/:walletId/analytics/balance-timeseries", handlers);
 
       const res = await app.request(
-        "/wallets/wallet-1/balance-timeseries?from=1700000000000&to=1700100000000",
+        "/wallets/wallet-1/analytics/balance-timeseries?from=1700000000000&to=1700100000000",
       );
 
       expect(res.status).toBe(200);

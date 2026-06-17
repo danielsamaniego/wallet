@@ -3,17 +3,17 @@ import { AppError } from "../../../../utils/kernel/appError.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
 import type { IWalletAnalyticsReadStore } from "../../ports/walletAnalytics.readstore.js";
-import type { GetMoneyFlowQuery, MoneyFlowSummaryDTO } from "./query.js";
+import type { CashFlowSummaryDTO, GetCashFlowQuery } from "./query.js";
 
-const mainLogTag = "GetMoneyFlowUseCase";
+const mainLogTag = "GetCashFlowUseCase";
 
-export class GetMoneyFlowUseCase implements IQueryHandler<GetMoneyFlowQuery, MoneyFlowSummaryDTO> {
+export class GetCashFlowUseCase implements IQueryHandler<GetCashFlowQuery, CashFlowSummaryDTO> {
   constructor(
     private readonly readStore: IWalletAnalyticsReadStore,
     private readonly logger: ILogger,
   ) {}
 
-  async handle(ctx: AppContext, query: GetMoneyFlowQuery): Promise<MoneyFlowSummaryDTO> {
+  async handle(ctx: AppContext, query: GetCashFlowQuery): Promise<CashFlowSummaryDTO> {
     const methodLogTag = `${mainLogTag} | handle`;
 
     this.logger.debug(ctx, `${methodLogTag} start`, {
@@ -22,7 +22,7 @@ export class GetMoneyFlowUseCase implements IQueryHandler<GetMoneyFlowQuery, Mon
       to_ms: query.toMs,
     });
 
-    const result = await this.readStore.getMoneyFlow(
+    const result = await this.readStore.getCashFlow(
       ctx,
       query.walletId,
       query.platformId,

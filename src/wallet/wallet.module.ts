@@ -35,12 +35,12 @@ import { WithdrawCommand } from "./application/command/withdraw/command.js";
 import { WithdrawUseCase } from "./application/command/withdraw/usecase.js";
 import { GetBalanceTimeseriesQuery } from "./application/query/getBalanceTimeseries/query.js";
 import { GetBalanceTimeseriesUseCase } from "./application/query/getBalanceTimeseries/usecase.js";
+import { GetCashFlowQuery } from "./application/query/getCashFlow/query.js";
+import { GetCashFlowUseCase } from "./application/query/getCashFlow/usecase.js";
 import { GetHoldQuery } from "./application/query/getHold/query.js";
 import { GetHoldUseCase } from "./application/query/getHold/usecase.js";
 import { GetLedgerEntriesQuery } from "./application/query/getLedgerEntries/query.js";
 import { GetLedgerEntriesUseCase } from "./application/query/getLedgerEntries/usecase.js";
-import { GetMoneyFlowQuery } from "./application/query/getMoneyFlow/query.js";
-import { GetMoneyFlowUseCase } from "./application/query/getMoneyFlow/usecase.js";
 import { GetStatementQuery } from "./application/query/getStatement/query.js";
 import { GetStatementUseCase } from "./application/query/getStatement/usecase.js";
 import { GetStatementEntryQuery } from "./application/query/getStatementEntry/query.js";
@@ -157,7 +157,7 @@ export function wire({
   const getLedgerEntries = new GetLedgerEntriesUseCase(ledgerEntryReadStore, logger);
   const getStatement = new GetStatementUseCase(statementReadStore, logger);
   const getStatementEntry = new GetStatementEntryUseCase(statementReadStore, logger);
-  const getMoneyFlow = new GetMoneyFlowUseCase(walletAnalyticsReadStore, logger);
+  const getCashFlow = new GetCashFlowUseCase(walletAnalyticsReadStore, logger);
   const getBalanceTimeseries = new GetBalanceTimeseriesUseCase(walletAnalyticsReadStore, logger);
   const transfer = new TransferUseCase(
     txManager,
@@ -232,7 +232,7 @@ export function wire({
       { type: GetLedgerEntriesQuery.TYPE, handler: getLedgerEntries },
       { type: GetStatementQuery.TYPE, handler: getStatement },
       { type: GetStatementEntryQuery.TYPE, handler: getStatementEntry },
-      { type: GetMoneyFlowQuery.TYPE, handler: getMoneyFlow },
+      { type: GetCashFlowQuery.TYPE, handler: getCashFlow },
       { type: GetBalanceTimeseriesQuery.TYPE, handler: getBalanceTimeseries },
     ],
   };

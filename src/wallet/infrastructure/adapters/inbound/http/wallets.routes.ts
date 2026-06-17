@@ -13,8 +13,8 @@ import { createWalletRoute } from "./createWallet/handler.js";
 import { depositRoute } from "./deposit/handler.js";
 import { freezeWalletRoute } from "./freezeWallet/handler.js";
 import { getBalanceTimeseriesRoute } from "./getBalanceTimeseries/handler.js";
+import { getCashFlowRoute } from "./getCashFlow/handler.js";
 import { getLedgerEntriesRoute } from "./getLedgerEntries/handler.js";
-import { getMoneyFlowRoute } from "./getMoneyFlow/handler.js";
 import { getStatementRoute } from "./getStatement/handler.js";
 import { getStatementEntryRoute } from "./getStatementEntry/handler.js";
 import { getTransactionsRoute } from "./getTransactions/handler.js";
@@ -71,8 +71,12 @@ export function walletRoutes(deps: Dependencies) {
   router.get("/:walletId/ledger", auth, ...getLedgerEntriesRoute(deps.queryBus));
   router.get("/:walletId/statement", auth, ...getStatementRoute(deps.queryBus));
   router.get("/:walletId/statement/:movementId", auth, ...getStatementEntryRoute(deps.queryBus));
-  router.get("/:walletId/balance-timeseries", auth, ...getBalanceTimeseriesRoute(deps.queryBus));
-  router.get("/:walletId/money-flow", auth, ...getMoneyFlowRoute(deps.queryBus));
+  router.get(
+    "/:walletId/analytics/balance-timeseries",
+    auth,
+    ...getBalanceTimeseriesRoute(deps.queryBus),
+  );
+  router.get("/:walletId/analytics/cash-flow", auth, ...getCashFlowRoute(deps.queryBus));
 
   return router;
 }
