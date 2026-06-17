@@ -14,6 +14,7 @@ import { getWalletMovementsRoute } from "@/wallet/infrastructure/adapters/inboun
 import { listCurrenciesRoute } from "@/wallet/infrastructure/adapters/inbound/http/listCurrencies/handler.js";
 import { listHoldsRoute } from "@/wallet/infrastructure/adapters/inbound/http/listHolds/handler.js";
 import { listWalletsRoute } from "@/wallet/infrastructure/adapters/inbound/http/listWallets/handler.js";
+import { searchMovementsRoute } from "@/wallet/infrastructure/adapters/inbound/http/searchMovements/handler.js";
 
 /**
  * Builds a minimal Hono app with tracking context that mounts the given route handlers.
@@ -190,6 +191,25 @@ describe("Wallet query HTTP handlers", () => {
       );
 
       expect(res.status).toBe(200);
+      expect(queryBus.dispatch).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ── searchMovements ────────────────────────────────────────────
+  describe("searchMovementsRoute", () => {
+    it("Given a free-text query, When GET is called, Then it dispatches SearchMovementsQuery and returns 200", async () => {
+      const queryBus: IQueryBus = {
+        dispatch: vi.fn().mockResolvedValue({ movements: [], next_cursor: null }),
+      };
+
+      const handlers = searchMovementsRoute(queryBus);
+      const app = buildApp("/movements/search", handlers);
+
+      const res = await app.request("/movements/search?q=INV");
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.movements).toEqual([]);
       expect(queryBus.dispatch).toHaveBeenCalledOnce();
     });
   });
