@@ -15,6 +15,7 @@ import { freezeWalletRoute } from "./freezeWallet/handler.js";
 import { getLedgerEntriesRoute } from "./getLedgerEntries/handler.js";
 import { getTransactionsRoute } from "./getTransactions/handler.js";
 import { getWalletRoute } from "./getWallet/handler.js";
+import { getWalletMovementsRoute } from "./getWalletMovements/handler.js";
 // TODO(historical-import-temp): Remove this import together with the route
 // registration and the whole importHistoricalEntry/ folder after migration.
 import { importHistoricalEntryRoute } from "./importHistoricalEntry/handler.js";
@@ -65,6 +66,7 @@ export function walletRoutes(deps: Dependencies) {
   router.get("/:walletId", auth, ...getWalletRoute(deps.queryBus));
   router.get("/:walletId/transactions", auth, ...getTransactionsRoute(deps.queryBus));
   router.get("/:walletId/ledger", auth, ...getLedgerEntriesRoute(deps.queryBus));
+  router.get("/:walletId/movements", auth, ...getWalletMovementsRoute(deps.queryBus));
 
   return router;
 }

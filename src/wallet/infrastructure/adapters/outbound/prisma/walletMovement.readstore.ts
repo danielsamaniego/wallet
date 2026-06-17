@@ -1,0 +1,139 @@
+import type { PrismaClient } from "@prisma/client";
+import { buildPrismaListing } from "../../../../../utils/infrastructure/listing.prisma.js";
+import { toNumber, toSafeNumber } from "../../../../../utils/kernel/bigint.js";
+import type { AppContext } from "../../../../../utils/kernel/context.js";
+import type { ListingQuery } from "../../../../../utils/kernel/listing.js";
+import { encodeCursor } from "../../../../../utils/kernel/listing.js";
+import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
+import type { IWalletMovementReadStore } from "../../../../application/ports/walletMovement.readstore.js";
+import type {
+  PaginatedWalletMovements,
+  WalletMovementDTO,
+} from "../../../../application/query/getWalletMovements/query.js";
+
+/**
+ * The statement read model. Anchored on `transaction` (so the existing
+ * cursor/filter engine applies to type/status/amount/reference/metadata),
+ * joined to the wallet's own ledger entry (running balance + signed amount)
+ * and its movement (reason). There is exactly one ledger entry per
+ * (wallet, transaction), so `ledgerEntries[0]` is the wallet's own side.
+ */
+interface MovementRow {
+  id: string;
+  walletId: string;
+  counterpartWalletId: string | null;
+  type: string;
+  amountMinor: bigint;
+  status: string;
+  reference: string | null;
+  metadata: unknown;
+  holdId: string | null;
+  movementId: string;
+  createdAt: bigint;
+  movement: { reason: string | null };
+  ledgerEntries: { entryType: string; amountMinor: bigint; balanceAfterMinor: bigint }[];
+}
+
+export class PrismaWalletMovementReadStore implements IWalletMovementReadStore {
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly logger: ILogger,
+  ) {}
+
+  async getByWallet(
+    ctx: AppContext,
+    walletId: string,
+    platformId: string,
+    listing: ListingQuery,
+  ): Promise<PaginatedWalletMovements | null> {
+    this.logger.debug(ctx, "WalletMovementReadStore | getByWallet", { wallet_id: walletId });
+
+    // Verify wallet belongs to platform (read-your-writes path → primary client).
+    const wallet = await this.prisma.wallet.findFirst({
+      where: { id: walletId, platformId },
+      select: { id: true },
+    });
+    if (!wallet) {
+      this.logger.info(ctx, "WalletMovementReadStore | getByWallet wallet not found", {
+        wallet_id: walletId,
+        platform_id: platformId,
+      });
+      return null;
+    }
+
+    const { where, orderBy, take } = buildPrismaListing(
+      { walletId },
+      listing.filters,
+      listing.sort,
+      listing.limit,
+      listing.cursor,
+      listing.jsonFilters,
+    );
+
+    const rows = await this.prisma.transaction.findMany({
+      where,
+      orderBy,
+      take,
+      include: {
+        movement: { select: { reason: true } },
+        ledgerEntries: {
+          where: { walletId },
+          select: { entryType: true, amountMinor: true, balanceAfterMinor: true },
+        },
+      },
+    });
+
+    const hasMore = rows.length > listing.limit;
+    const items = hasMore ? rows.slice(0, listing.limit) : rows;
+
+    let nextCursor: string | null = null;
+    if (hasMore) {
+      const lastRow = items.at(-1);
+      if (lastRow) {
+        nextCursor = encodeCursor(listing.sort, lastRow as unknown as Record<string, unknown>);
+      }
+    }
+
+    this.logger.debug(ctx, "WalletMovementReadStore | getByWallet result", {
+      wallet_id: walletId,
+      count: items.length,
+      has_more: hasMore,
+    });
+
+    return {
+      movements: items
+        .map((r) => this.toDTO(r as unknown as MovementRow))
+        .filter((m): m is WalletMovementDTO => m !== null),
+      next_cursor: nextCursor,
+    };
+  }
+
+  private toDTO(row: MovementRow): WalletMovementDTO | null {
+    // Exactly one ledger entry belongs to this wallet for this transaction. A
+    // transaction with no ledger entry for this wallet (e.g. never settled) is
+    // not part of the running-balance statement.
+    const entry = row.ledgerEntries[0];
+    if (!entry) {
+      return null;
+    }
+    // amountMinor is signed in the ledger (+credit / -debit), so
+    // balance_before = balance_after - signed(amount).
+    const balanceBeforeMinor = entry.balanceAfterMinor - entry.amountMinor;
+    return {
+      movement_id: row.movementId,
+      transaction_id: row.id,
+      type: row.type,
+      amount_minor: toSafeNumber(row.amountMinor),
+      direction: entry.entryType === "CREDIT" ? "credit" : "debit",
+      reason: row.movement.reason,
+      reference: row.reference,
+      metadata: (row.metadata as Record<string, unknown>) ?? null,
+      counterpart_wallet_id: row.counterpartWalletId,
+      hold_id: row.holdId,
+      status: row.status,
+      balance_before_minor: toSafeNumber(balanceBeforeMinor),
+      balance_after_minor: toSafeNumber(entry.balanceAfterMinor),
+      created_at: toNumber(row.createdAt),
+    };
+  }
+}

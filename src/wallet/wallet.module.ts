@@ -41,6 +41,8 @@ import { GetTransactionsQuery } from "./application/query/getTransactions/query.
 import { GetTransactionsUseCase } from "./application/query/getTransactions/usecase.js";
 import { GetWalletQuery } from "./application/query/getWallet/query.js";
 import { GetWalletUseCase } from "./application/query/getWallet/usecase.js";
+import { GetWalletMovementsQuery } from "./application/query/getWalletMovements/query.js";
+import { GetWalletMovementsUseCase } from "./application/query/getWalletMovements/usecase.js";
 import { ListHoldsQuery } from "./application/query/listHolds/query.js";
 import { ListHoldsUseCase } from "./application/query/listHolds/usecase.js";
 import { ListWalletsQuery } from "./application/query/listWallets/query.js";
@@ -55,6 +57,7 @@ import { PrismaTransactionReadStore } from "./infrastructure/adapters/outbound/p
 import { PrismaTransactionRepo } from "./infrastructure/adapters/outbound/prisma/transaction.repo.js";
 import { PrismaWalletReadStore } from "./infrastructure/adapters/outbound/prisma/wallet.readstore.js";
 import { PrismaWalletRepo } from "./infrastructure/adapters/outbound/prisma/wallet.repo.js";
+import { PrismaWalletMovementReadStore } from "./infrastructure/adapters/outbound/prisma/walletMovement.readstore.js";
 
 export function wire({
   prisma,
@@ -73,6 +76,7 @@ export function wire({
   const holdReadStore = new PrismaHoldReadStore(prisma, logger);
   const transactionReadStore = new PrismaTransactionReadStore(prisma, logger);
   const ledgerEntryReadStore = new PrismaLedgerEntryReadStore(prisma, logger);
+  const walletMovementReadStore = new PrismaWalletMovementReadStore(prisma, logger);
 
   // Use cases
   const createWallet = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
@@ -141,6 +145,7 @@ export function wire({
   const listHolds = new ListHoldsUseCase(holdReadStore, logger);
   const getTransactions = new GetTransactionsUseCase(transactionReadStore, logger);
   const getLedgerEntries = new GetLedgerEntriesUseCase(ledgerEntryReadStore, logger);
+  const getWalletMovements = new GetWalletMovementsUseCase(walletMovementReadStore, logger);
   const transfer = new TransferUseCase(
     txManager,
     walletRepo,
@@ -212,6 +217,7 @@ export function wire({
       { type: ListHoldsQuery.TYPE, handler: listHolds },
       { type: GetTransactionsQuery.TYPE, handler: getTransactions },
       { type: GetLedgerEntriesQuery.TYPE, handler: getLedgerEntries },
+      { type: GetWalletMovementsQuery.TYPE, handler: getWalletMovements },
     ],
   };
 }
