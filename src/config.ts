@@ -8,6 +8,11 @@ import { z } from "zod";
 const configSchema = z.object({
   DATABASE_URL: z.url({ message: "DATABASE_URL must be a valid connection string" }),
   DIRECT_URL: z.url({ message: "DIRECT_URL must be a valid connection string" }).optional(),
+  // Optional read-replica URL for analytics/heavy reads (R4). When unset, those
+  // reads fall back to the primary. Enabling it later is an env-only change.
+  READ_DATABASE_URL: z
+    .url({ message: "READ_DATABASE_URL must be a valid connection string" })
+    .optional(),
   HTTP_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   CRON_SECRET: z.string().default(""),
@@ -50,6 +55,8 @@ const configSchema = z.object({
  */
 export interface Config {
   databaseUrl: string;
+  /** Optional read-replica URL for analytics/heavy reads (R4). Falls back to the primary when unset. */
+  readDatabaseUrl?: string;
   directUrl: string;
   httpPort: number;
   logLevel: string;
@@ -130,6 +137,7 @@ export function loadConfig(): Config {
 
   return {
     databaseUrl: env.DATABASE_URL,
+    readDatabaseUrl: env.READ_DATABASE_URL,
     directUrl: env.DIRECT_URL ?? env.DATABASE_URL,
     httpPort: env.HTTP_PORT,
     logLevel: env.LOG_LEVEL,

@@ -33,10 +33,18 @@ import { VoidHoldCommand } from "./application/command/voidHold/command.js";
 import { VoidHoldUseCase } from "./application/command/voidHold/usecase.js";
 import { WithdrawCommand } from "./application/command/withdraw/command.js";
 import { WithdrawUseCase } from "./application/command/withdraw/usecase.js";
+import { GetBalanceTimeseriesQuery } from "./application/query/getBalanceTimeseries/query.js";
+import { GetBalanceTimeseriesUseCase } from "./application/query/getBalanceTimeseries/usecase.js";
+import { GetCashFlowQuery } from "./application/query/getCashFlow/query.js";
+import { GetCashFlowUseCase } from "./application/query/getCashFlow/usecase.js";
 import { GetHoldQuery } from "./application/query/getHold/query.js";
 import { GetHoldUseCase } from "./application/query/getHold/usecase.js";
 import { GetLedgerEntriesQuery } from "./application/query/getLedgerEntries/query.js";
 import { GetLedgerEntriesUseCase } from "./application/query/getLedgerEntries/usecase.js";
+import { GetStatementQuery } from "./application/query/getStatement/query.js";
+import { GetStatementUseCase } from "./application/query/getStatement/usecase.js";
+import { GetStatementEntryQuery } from "./application/query/getStatementEntry/query.js";
+import { GetStatementEntryUseCase } from "./application/query/getStatementEntry/usecase.js";
 import { GetTransactionsQuery } from "./application/query/getTransactions/query.js";
 import { GetTransactionsUseCase } from "./application/query/getTransactions/usecase.js";
 import { GetWalletQuery } from "./application/query/getWallet/query.js";
@@ -51,13 +59,16 @@ import { PrismaHoldRepo } from "./infrastructure/adapters/outbound/prisma/hold.r
 import { PrismaLedgerEntryReadStore } from "./infrastructure/adapters/outbound/prisma/ledgerEntry.readstore.js";
 import { PrismaLedgerEntryRepo } from "./infrastructure/adapters/outbound/prisma/ledgerEntry.repo.js";
 import { PrismaMovementRepo } from "./infrastructure/adapters/outbound/prisma/movement.repo.js";
+import { PrismaStatementReadStore } from "./infrastructure/adapters/outbound/prisma/statement.readstore.js";
 import { PrismaTransactionReadStore } from "./infrastructure/adapters/outbound/prisma/transaction.readstore.js";
 import { PrismaTransactionRepo } from "./infrastructure/adapters/outbound/prisma/transaction.repo.js";
 import { PrismaWalletReadStore } from "./infrastructure/adapters/outbound/prisma/wallet.readstore.js";
 import { PrismaWalletRepo } from "./infrastructure/adapters/outbound/prisma/wallet.repo.js";
+import { PrismaWalletAnalyticsReadStore } from "./infrastructure/adapters/outbound/prisma/walletAnalytics.readstore.js";
 
 export function wire({
   prisma,
+  analyticsPrisma,
   logger,
   idGen,
   txManager,
@@ -73,6 +84,9 @@ export function wire({
   const holdReadStore = new PrismaHoldReadStore(prisma, logger);
   const transactionReadStore = new PrismaTransactionReadStore(prisma, logger);
   const ledgerEntryReadStore = new PrismaLedgerEntryReadStore(prisma, logger);
+  const statementReadStore = new PrismaStatementReadStore(prisma, logger);
+  // Analytics reads run on the replica when configured (WS0), else the primary.
+  const walletAnalyticsReadStore = new PrismaWalletAnalyticsReadStore(analyticsPrisma, logger);
 
   // Use cases
   const createWallet = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
@@ -141,6 +155,10 @@ export function wire({
   const listHolds = new ListHoldsUseCase(holdReadStore, logger);
   const getTransactions = new GetTransactionsUseCase(transactionReadStore, logger);
   const getLedgerEntries = new GetLedgerEntriesUseCase(ledgerEntryReadStore, logger);
+  const getStatement = new GetStatementUseCase(statementReadStore, logger);
+  const getStatementEntry = new GetStatementEntryUseCase(statementReadStore, logger);
+  const getCashFlow = new GetCashFlowUseCase(walletAnalyticsReadStore, logger);
+  const getBalanceTimeseries = new GetBalanceTimeseriesUseCase(walletAnalyticsReadStore, logger);
   const transfer = new TransferUseCase(
     txManager,
     walletRepo,
@@ -212,6 +230,10 @@ export function wire({
       { type: ListHoldsQuery.TYPE, handler: listHolds },
       { type: GetTransactionsQuery.TYPE, handler: getTransactions },
       { type: GetLedgerEntriesQuery.TYPE, handler: getLedgerEntries },
+      { type: GetStatementQuery.TYPE, handler: getStatement },
+      { type: GetStatementEntryQuery.TYPE, handler: getStatementEntry },
+      { type: GetCashFlowQuery.TYPE, handler: getCashFlow },
+      { type: GetBalanceTimeseriesQuery.TYPE, handler: getBalanceTimeseries },
     ],
   };
 }
