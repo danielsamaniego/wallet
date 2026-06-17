@@ -31,6 +31,7 @@ export class GetWalletMovementsUseCase
       query.walletId,
       query.platformId,
       query.listing,
+      query.q,
     );
 
     if (!result) {

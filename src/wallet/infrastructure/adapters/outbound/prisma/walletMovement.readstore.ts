@@ -14,11 +14,10 @@ import type {
 /**
  * The statement read model. Anchored on `transaction` (so the existing
  * cursor/filter engine applies to type/status/amount/reference/metadata),
- * joined to the transaction's own-wallet ledger entry (running balance + signed
- * amount) and its movement (reason). There is exactly one ledger entry per
- * (wallet, transaction): wallet-scoped reads pre-filter the include to that
- * wallet (`ledgerEntries[0]`); cross-wallet search picks the entry whose
- * walletId matches the transaction's own wallet.
+ * joined to the wallet's own ledger entry (running balance + signed amount) and
+ * its movement (reason). The include pre-filters the ledger entry to this
+ * wallet, so `ledgerEntries[0]` is the wallet's own side (exactly one per
+ * (wallet, transaction)).
  */
 interface LedgerEntryFields {
   entryType: string;
@@ -45,10 +44,6 @@ interface MovementRow extends MovementRowBase {
   ledgerEntries: LedgerEntryFields[];
 }
 
-interface SearchRow extends MovementRowBase {
-  ledgerEntries: (LedgerEntryFields & { walletId: string })[];
-}
-
 export class PrismaWalletMovementReadStore implements IWalletMovementReadStore {
   constructor(
     private readonly prisma: PrismaClient,
@@ -60,8 +55,12 @@ export class PrismaWalletMovementReadStore implements IWalletMovementReadStore {
     walletId: string,
     platformId: string,
     listing: ListingQuery,
+    q?: string,
   ): Promise<PaginatedWalletMovements | null> {
-    this.logger.debug(ctx, "WalletMovementReadStore | getByWallet", { wallet_id: walletId });
+    this.logger.debug(ctx, "WalletMovementReadStore | getByWallet", {
+      wallet_id: walletId,
+      has_query: q !== undefined,
+    });
 
     // Verify wallet belongs to platform (read-your-writes path → primary client).
     const wallet = await this.prisma.wallet.findFirst({
@@ -76,8 +75,18 @@ export class PrismaWalletMovementReadStore implements IWalletMovementReadStore {
       return null;
     }
 
+    // Free-text `q` is a case-insensitive substring match on reference/reason,
+    // confined to this wallet (the walletId filter already bounds the scan).
+    const baseWhere: Record<string, unknown> = { walletId };
+    if (q) {
+      baseWhere.OR = [
+        { reference: { contains: q, mode: "insensitive" } },
+        { movement: { reason: { contains: q, mode: "insensitive" } } },
+      ];
+    }
+
     const { where, orderBy, take } = buildPrismaListing(
-      { walletId },
+      baseWhere,
       listing.filters,
       listing.sort,
       listing.limit,
@@ -165,83 +174,6 @@ export class PrismaWalletMovementReadStore implements IWalletMovementReadStore {
     }
 
     return this.toDTO(row as unknown as MovementRow);
-  }
-
-  async search(
-    ctx: AppContext,
-    platformId: string,
-    q: string | undefined,
-    listing: ListingQuery,
-  ): Promise<PaginatedWalletMovements> {
-    this.logger.debug(ctx, "WalletMovementReadStore | search", {
-      platform_id: platformId,
-      has_query: q !== undefined,
-    });
-
-    // Platform-scoped, cross-wallet. Free-text `q` is a case-insensitive
-    // substring match on reference/reason (a pg_trgm GIN index backs it in
-    // prod); structured filters (type/status/date/metadata) come via `listing`.
-    const baseWhere: Record<string, unknown> = { wallet: { platformId } };
-    if (q) {
-      baseWhere.OR = [
-        { reference: { contains: q, mode: "insensitive" } },
-        { movement: { reason: { contains: q, mode: "insensitive" } } },
-      ];
-    }
-
-    const { where, orderBy, take } = buildPrismaListing(
-      baseWhere,
-      listing.filters,
-      listing.sort,
-      listing.limit,
-      listing.cursor,
-      listing.jsonFilters,
-    );
-
-    const rows = await this.prisma.transaction.findMany({
-      where,
-      orderBy,
-      take,
-      include: {
-        movement: { select: { reason: true } },
-        ledgerEntries: {
-          select: { walletId: true, entryType: true, amountMinor: true, balanceAfterMinor: true },
-        },
-      },
-    });
-
-    const hasMore = rows.length > listing.limit;
-    const items = hasMore ? rows.slice(0, listing.limit) : rows;
-
-    let nextCursor: string | null = null;
-    if (hasMore) {
-      const lastRow = items.at(-1);
-      if (lastRow) {
-        nextCursor = encodeCursor(listing.sort, lastRow as unknown as Record<string, unknown>);
-      }
-    }
-
-    this.logger.debug(ctx, "WalletMovementReadStore | search result", {
-      platform_id: platformId,
-      count: items.length,
-      has_more: hasMore,
-    });
-
-    return {
-      movements: items
-        .map((r) => this.toSearchDTO(r as unknown as SearchRow))
-        .filter((m): m is WalletMovementDTO => m !== null),
-      next_cursor: nextCursor,
-    };
-  }
-
-  private toSearchDTO(row: SearchRow): WalletMovementDTO | null {
-    // Cross-wallet: pick the ledger entry belonging to the transaction's own wallet.
-    const entry = row.ledgerEntries.find((e) => e.walletId === row.walletId);
-    if (!entry) {
-      return null;
-    }
-    return this.buildDTO(row, entry);
   }
 
   private toDTO(row: MovementRow): WalletMovementDTO | null {

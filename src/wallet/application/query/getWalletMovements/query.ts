@@ -34,6 +34,8 @@ export class GetWalletMovementsQuery extends IQuery<PaginatedWalletMovements> {
     public readonly walletId: string,
     public readonly platformId: string,
     public readonly listing: ListingQuery,
+    /** Optional free-text query — case-insensitive substring on reference/reason. */
+    public readonly q?: string,
   ) {
     super(GetWalletMovementsQuery.TYPE);
   }

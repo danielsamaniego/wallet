@@ -267,4 +267,33 @@ describe("Wallet Movements (statement) E2E", () => {
       expect(res.status).toBe(404);
     });
   });
+
+  // ── R5: per-wallet free-text search ───────────────────────────────────────
+
+  describe("Given a wallet with charges carrying references", () => {
+    it("Then ?q= matches a reference case-insensitively, scoped to the wallet", async () => {
+      const walletId = await createWallet("mv-q-user");
+      await deposit(walletId, 10000);
+      await charge(walletId, 1000, "ALPHACOMMISSION");
+      await charge(walletId, 1000, "BETAFEE");
+
+      const res = await app.request(`/v1/wallets/${walletId}/movements?q=alpha`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      expect(body.movements).toHaveLength(1);
+      expect(body.movements[0].reference).toBe("ALPHACOMMISSION");
+    });
+
+    it("Then a non-matching q returns no movements", async () => {
+      const walletId = await createWallet("mv-q-empty-user");
+      await deposit(walletId, 5000);
+      await charge(walletId, 1000, "ONLYTHIS");
+
+      const res = await app.request(`/v1/wallets/${walletId}/movements?q=NOTHINGMATCHES`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.movements).toEqual([]);
+    });
+  });
 });

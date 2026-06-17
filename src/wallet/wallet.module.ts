@@ -53,8 +53,6 @@ import { ListHoldsQuery } from "./application/query/listHolds/query.js";
 import { ListHoldsUseCase } from "./application/query/listHolds/usecase.js";
 import { ListWalletsQuery } from "./application/query/listWallets/query.js";
 import { ListWalletsUseCase } from "./application/query/listWallets/usecase.js";
-import { SearchMovementsQuery } from "./application/query/searchMovements/query.js";
-import { SearchMovementsUseCase } from "./application/query/searchMovements/usecase.js";
 // Repos
 import { PrismaHoldReadStore } from "./infrastructure/adapters/outbound/prisma/hold.readstore.js";
 import { PrismaHoldRepo } from "./infrastructure/adapters/outbound/prisma/hold.repo.js";
@@ -161,7 +159,6 @@ export function wire({
   const getMovement = new GetMovementUseCase(walletMovementReadStore, logger);
   const getMoneyFlow = new GetMoneyFlowUseCase(walletAnalyticsReadStore, logger);
   const getBalanceTimeseries = new GetBalanceTimeseriesUseCase(walletAnalyticsReadStore, logger);
-  const searchMovements = new SearchMovementsUseCase(walletMovementReadStore, logger);
   const transfer = new TransferUseCase(
     txManager,
     walletRepo,
@@ -237,7 +234,6 @@ export function wire({
       { type: GetMovementQuery.TYPE, handler: getMovement },
       { type: GetMoneyFlowQuery.TYPE, handler: getMoneyFlow },
       { type: GetBalanceTimeseriesQuery.TYPE, handler: getBalanceTimeseries },
-      { type: SearchMovementsQuery.TYPE, handler: searchMovements },
     ],
   };
 }

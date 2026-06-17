@@ -66,7 +66,13 @@ describe("GetWalletMovementsUseCase", () => {
         expect(result).toEqual(paginated);
         expect(result.movements).toHaveLength(1);
         expect(result.next_cursor).toBe("cursor-xyz");
-        expect(readStore.getByWallet).toHaveBeenCalledWith(ctx, WALLET_ID, PLATFORM_ID, listing);
+        expect(readStore.getByWallet).toHaveBeenCalledWith(
+          ctx,
+          WALLET_ID,
+          PLATFORM_ID,
+          listing,
+          undefined,
+        );
       });
     });
   });
@@ -100,6 +106,28 @@ describe("GetWalletMovementsUseCase", () => {
         await expect(useCase.handle(ctx, query)).rejects.toSatisfy((err: AppError) => {
           return err.kind === ErrorKind.NotFound && err.code === "WALLET_NOT_FOUND";
         });
+      });
+    });
+  });
+
+  describe("Given a free-text query", () => {
+    beforeEach(() => {
+      readStore.getByWallet.mockResolvedValue({ movements: [], next_cursor: null });
+    });
+
+    describe("When movements are queried with q", () => {
+      it("Then it forwards q to the read store", async () => {
+        const query = new GetWalletMovementsQuery(WALLET_ID, PLATFORM_ID, listing, "INV-1");
+
+        await useCase.handle(ctx, query);
+
+        expect(readStore.getByWallet).toHaveBeenCalledWith(
+          ctx,
+          WALLET_ID,
+          PLATFORM_ID,
+          listing,
+          "INV-1",
+        );
       });
     });
   });

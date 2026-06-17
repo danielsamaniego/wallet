@@ -15,6 +15,7 @@ export interface IWalletMovementReadStore {
     walletId: string,
     platformId: string,
     listing: ListingQuery,
+    q?: string,
   ): Promise<PaginatedWalletMovements | null>;
 
   /**
@@ -27,16 +28,4 @@ export interface IWalletMovementReadStore {
     movementId: string,
     platformId: string,
   ): Promise<WalletMovementDTO | null>;
-
-  /**
-   * Platform-scoped, cross-wallet search. Free-text `q` matches reference/reason
-   * (case-insensitive substring); structured filters (type/status/date/metadata)
-   * and cursor pagination come via `listing`.
-   */
-  search(
-    ctx: AppContext,
-    platformId: string,
-    q: string | undefined,
-    listing: ListingQuery,
-  ): Promise<PaginatedWalletMovements>;
 }

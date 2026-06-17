@@ -32,30 +32,6 @@ function buildMovementRow(overrides?: Partial<Record<string, unknown>>) {
   };
 }
 
-// Cross-wallet search rows: ledger entries carry walletId (the include is not
-// pre-filtered), and a deposit-style row has two entries on different wallets.
-function buildSearchRow(overrides?: Partial<Record<string, unknown>>) {
-  return {
-    id: "txn-1",
-    walletId: "wallet-1",
-    counterpartWalletId: "sys-1",
-    type: "deposit",
-    amountMinor: 10000n,
-    status: "completed",
-    reference: "INV-1",
-    metadata: { order_id: "o1" },
-    holdId: null,
-    movementId: "mv-1",
-    createdAt: 1700000000000n,
-    movement: { reason: null },
-    ledgerEntries: [
-      { walletId: "wallet-1", entryType: "CREDIT", amountMinor: 10000n, balanceAfterMinor: 10000n },
-      { walletId: "sys-1", entryType: "DEBIT", amountMinor: -10000n, balanceAfterMinor: -10000n },
-    ],
-    ...overrides,
-  };
-}
-
 describe("PrismaWalletMovementReadStore", () => {
   const ctx = createTestContext();
 
@@ -179,6 +155,16 @@ describe("PrismaWalletMovementReadStore", () => {
       expect(result!.movements).toEqual([]);
       expect(result!.next_cursor).toBeNull();
     });
+
+    it("Given a free-text query, When getByWallet is called, Then it returns the matching movements", async () => {
+      const { store, transaction, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
+      transaction.findMany.mockResolvedValue([buildMovementRow()]);
+
+      const result = await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing(), "ref");
+
+      expect(result!.movements).toHaveLength(1);
+    });
   });
 
   describe("getOne", () => {
@@ -213,77 +199,6 @@ describe("PrismaWalletMovementReadStore", () => {
       const result = await store.getOne(ctx, "wallet-1", "mv-404", "platform-1");
 
       expect(result).toBeNull();
-    });
-  });
-
-  describe("search", () => {
-    const listing = defaultListing();
-
-    it("Given a free-text query, When search is called, Then it picks the transaction's own-wallet entry and maps the DTO", async () => {
-      const { store, transaction } = buildReadStore();
-      transaction.findMany.mockResolvedValue([buildSearchRow()]);
-
-      const result = await store.search(ctx, "platform-1", "INV", listing);
-
-      expect(result.movements).toHaveLength(1);
-      expect(result.movements[0]).toMatchObject({
-        movement_id: "mv-1",
-        transaction_id: "txn-1",
-        type: "deposit",
-        direction: "credit",
-        amount_minor: 10000,
-        balance_before_minor: 0,
-        balance_after_minor: 10000,
-      });
-      expect(result.next_cursor).toBeNull();
-    });
-
-    it("Given no query, When search is called, Then it still returns platform-wide results", async () => {
-      const { store, transaction } = buildReadStore();
-      transaction.findMany.mockResolvedValue([buildSearchRow()]);
-
-      const result = await store.search(ctx, "platform-1", undefined, listing);
-
-      expect(result.movements).toHaveLength(1);
-    });
-
-    it("Given a transaction with no entry for its own wallet, When search is called, Then it is excluded", async () => {
-      const { store, transaction } = buildReadStore();
-      transaction.findMany.mockResolvedValue([
-        buildSearchRow({
-          ledgerEntries: [
-            { walletId: "other", entryType: "CREDIT", amountMinor: 10000n, balanceAfterMinor: 10000n },
-          ],
-        }),
-      ]);
-
-      const result = await store.search(ctx, "platform-1", "INV", listing);
-
-      expect(result.movements).toEqual([]);
-    });
-
-    it("Given more results than the limit, When search is called, Then it returns a next_cursor", async () => {
-      const { store, transaction } = buildReadStore();
-      transaction.findMany.mockResolvedValue([
-        buildSearchRow({ id: "txn-1", createdAt: 1700000000003n }),
-        buildSearchRow({ id: "txn-2", createdAt: 1700000000002n }),
-        buildSearchRow({ id: "txn-3", createdAt: 1700000000001n }),
-      ]);
-
-      const result = await store.search(ctx, "platform-1", "INV", defaultListing({ limit: 2 }));
-
-      expect(result.movements).toHaveLength(2);
-      expect(result.next_cursor).toBeTruthy();
-    });
-
-    it("Given hasMore is true but items is empty (limit 0 edge case), When search is called, Then next_cursor stays null", async () => {
-      const { store, transaction } = buildReadStore();
-      transaction.findMany.mockResolvedValue([buildSearchRow()]);
-
-      const result = await store.search(ctx, "platform-1", "INV", defaultListing({ limit: 0 }));
-
-      expect(result.movements).toEqual([]);
-      expect(result.next_cursor).toBeNull();
     });
   });
 });

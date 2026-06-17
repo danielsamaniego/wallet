@@ -38,11 +38,12 @@ export function getWalletMovementsRoute(queryBus: IQueryBus) {
     async (c) => {
       const { walletId } = c.req.valid("param");
       const listing = c.req.valid("query");
+      const q = c.req.query("q");
       const ctx = buildAuthenticatedAppContext(c);
 
       const result = await queryBus.dispatch(
         ctx,
-        new GetWalletMovementsQuery(walletId, ctx.platformId, listing),
+        new GetWalletMovementsQuery(walletId, ctx.platformId, listing, q),
       );
 
       return c.json(result, 200);
