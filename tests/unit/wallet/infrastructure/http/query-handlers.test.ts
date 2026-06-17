@@ -5,7 +5,9 @@ import { CanonicalAccumulator } from "@/utils/kernel/observability/canonical.js"
 import type { IQueryBus } from "@/utils/application/cqrs.js";
 
 import { getHoldRoute } from "@/wallet/infrastructure/adapters/inbound/http/getHold/handler.js";
+import { getBalanceTimeseriesRoute } from "@/wallet/infrastructure/adapters/inbound/http/getBalanceTimeseries/handler.js";
 import { getLedgerEntriesRoute } from "@/wallet/infrastructure/adapters/inbound/http/getLedgerEntries/handler.js";
+import { getMoneyFlowRoute } from "@/wallet/infrastructure/adapters/inbound/http/getMoneyFlow/handler.js";
 import { getMovementRoute } from "@/wallet/infrastructure/adapters/inbound/http/getMovement/handler.js";
 import { getTransactionsRoute } from "@/wallet/infrastructure/adapters/inbound/http/getTransactions/handler.js";
 import { getWalletMovementsRoute } from "@/wallet/infrastructure/adapters/inbound/http/getWalletMovements/handler.js";
@@ -145,6 +147,49 @@ describe("Wallet query HTTP handlers", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.movement_id).toBe("mv-1");
+      expect(queryBus.dispatch).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ── getMoneyFlow ───────────────────────────────────────────────
+  describe("getMoneyFlowRoute", () => {
+    it("Given a valid walletId and range, When GET is called, Then it dispatches GetMoneyFlowQuery and returns 200", async () => {
+      const queryBus: IQueryBus = {
+        dispatch: vi.fn().mockResolvedValue({
+          income_minor: 0,
+          expense_minor: 0,
+          net_minor: 0,
+          days: 1,
+        }),
+      };
+
+      const handlers = getMoneyFlowRoute(queryBus);
+      const app = buildApp("/wallets/:walletId/money-flow", handlers);
+
+      const res = await app.request(
+        "/wallets/wallet-1/money-flow?from=1700000000000&to=1700100000000",
+      );
+
+      expect(res.status).toBe(200);
+      expect(queryBus.dispatch).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ── getBalanceTimeseries ───────────────────────────────────────
+  describe("getBalanceTimeseriesRoute", () => {
+    it("Given a valid walletId and range, When GET is called, Then it dispatches GetBalanceTimeseriesQuery and returns 200", async () => {
+      const queryBus: IQueryBus = {
+        dispatch: vi.fn().mockResolvedValue({ points: [] }),
+      };
+
+      const handlers = getBalanceTimeseriesRoute(queryBus);
+      const app = buildApp("/wallets/:walletId/balance-timeseries", handlers);
+
+      const res = await app.request(
+        "/wallets/wallet-1/balance-timeseries?from=1700000000000&to=1700100000000",
+      );
+
+      expect(res.status).toBe(200);
       expect(queryBus.dispatch).toHaveBeenCalledOnce();
     });
   });

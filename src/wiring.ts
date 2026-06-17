@@ -51,6 +51,12 @@ import type { ILogger } from "./utils/kernel/observability/logger.port.js";
 
 export interface SharedInfra {
   prisma: PrismaClient;
+  /**
+   * Read client for analytics/heavy reads (R4). Points at a read replica when
+   * READ_DATABASE_URL is set, otherwise falls back to the primary. Never used
+   * for read-your-writes reads (balance / statement / movement-by-id).
+   */
+  analyticsPrisma: PrismaClient;
   logger: ILogger;
   idGen: IIDGenerator;
   txManager: ITransactionManager;
@@ -133,13 +139,23 @@ export function wire(config: Config): Dependencies {
   // correlatable across the module.
   const bootCtx = createAppContext(idGen);
 
-  const adapter = new PrismaPg({ connectionString: config.databaseUrl });
   // Every query goes through the connection-retry extension: transient
   // EMAXCONN / "too many clients" / ECONNRESET failures retry transparently
   // with exponential backoff before surfacing to the caller as 500.
-  const prisma = new PrismaClient({ adapter }).$extends(
-    connectionRetryExtension(logger, bootCtx),
-  ) as unknown as PrismaClient;
+  const buildPrisma = (connectionString: string): PrismaClient =>
+    new PrismaClient({ adapter: new PrismaPg({ connectionString }) }).$extends(
+      connectionRetryExtension(logger, bootCtx),
+    ) as unknown as PrismaClient;
+
+  const prisma = buildPrisma(config.databaseUrl);
+  // Analytics/heavy reads (R4) use a read replica when READ_DATABASE_URL is set,
+  // otherwise they fall back to the primary. Replica-ready by config: enabling
+  // the replica later is an env-only change, no code change. Latency-sensitive
+  // read-your-writes reads always use `prisma` (primary).
+  const analyticsPrisma = config.readDatabaseUrl ? buildPrisma(config.readDatabaseUrl) : prisma;
+  logger.info(bootCtx, "analytics read client wired", {
+    mode: config.readDatabaseUrl ? "replica" : "primary-fallback",
+  });
   const txManager = new PrismaTransactionManager(prisma, logger);
 
   const idempotencyStore = new PrismaIdempotencyStore(prisma, idGen);
@@ -239,7 +255,15 @@ export function wire(config: Config): Dependencies {
   }
   const lockRunner = new LockRunner(distributedLock, lockOptions, logger);
 
-  const shared = { prisma, logger, idGen, txManager, idempotencyStore, lockRunner };
+  const shared = {
+    prisma,
+    analyticsPrisma,
+    logger,
+    idGen,
+    txManager,
+    idempotencyStore,
+    lockRunner,
+  };
 
   // ── Modules ──────────────────────────────
   const wallet = WalletModule.wire(shared);

@@ -33,10 +33,14 @@ import { VoidHoldCommand } from "./application/command/voidHold/command.js";
 import { VoidHoldUseCase } from "./application/command/voidHold/usecase.js";
 import { WithdrawCommand } from "./application/command/withdraw/command.js";
 import { WithdrawUseCase } from "./application/command/withdraw/usecase.js";
+import { GetBalanceTimeseriesQuery } from "./application/query/getBalanceTimeseries/query.js";
+import { GetBalanceTimeseriesUseCase } from "./application/query/getBalanceTimeseries/usecase.js";
 import { GetHoldQuery } from "./application/query/getHold/query.js";
 import { GetHoldUseCase } from "./application/query/getHold/usecase.js";
 import { GetLedgerEntriesQuery } from "./application/query/getLedgerEntries/query.js";
 import { GetLedgerEntriesUseCase } from "./application/query/getLedgerEntries/usecase.js";
+import { GetMoneyFlowQuery } from "./application/query/getMoneyFlow/query.js";
+import { GetMoneyFlowUseCase } from "./application/query/getMoneyFlow/usecase.js";
 import { GetMovementQuery } from "./application/query/getMovement/query.js";
 import { GetMovementUseCase } from "./application/query/getMovement/usecase.js";
 import { GetTransactionsQuery } from "./application/query/getTransactions/query.js";
@@ -59,10 +63,12 @@ import { PrismaTransactionReadStore } from "./infrastructure/adapters/outbound/p
 import { PrismaTransactionRepo } from "./infrastructure/adapters/outbound/prisma/transaction.repo.js";
 import { PrismaWalletReadStore } from "./infrastructure/adapters/outbound/prisma/wallet.readstore.js";
 import { PrismaWalletRepo } from "./infrastructure/adapters/outbound/prisma/wallet.repo.js";
+import { PrismaWalletAnalyticsReadStore } from "./infrastructure/adapters/outbound/prisma/walletAnalytics.readstore.js";
 import { PrismaWalletMovementReadStore } from "./infrastructure/adapters/outbound/prisma/walletMovement.readstore.js";
 
 export function wire({
   prisma,
+  analyticsPrisma,
   logger,
   idGen,
   txManager,
@@ -79,6 +85,8 @@ export function wire({
   const transactionReadStore = new PrismaTransactionReadStore(prisma, logger);
   const ledgerEntryReadStore = new PrismaLedgerEntryReadStore(prisma, logger);
   const walletMovementReadStore = new PrismaWalletMovementReadStore(prisma, logger);
+  // Analytics reads run on the replica when configured (WS0), else the primary.
+  const walletAnalyticsReadStore = new PrismaWalletAnalyticsReadStore(analyticsPrisma, logger);
 
   // Use cases
   const createWallet = new CreateWalletUseCase(txManager, walletRepo, idGen, logger);
@@ -149,6 +157,8 @@ export function wire({
   const getLedgerEntries = new GetLedgerEntriesUseCase(ledgerEntryReadStore, logger);
   const getWalletMovements = new GetWalletMovementsUseCase(walletMovementReadStore, logger);
   const getMovement = new GetMovementUseCase(walletMovementReadStore, logger);
+  const getMoneyFlow = new GetMoneyFlowUseCase(walletAnalyticsReadStore, logger);
+  const getBalanceTimeseries = new GetBalanceTimeseriesUseCase(walletAnalyticsReadStore, logger);
   const transfer = new TransferUseCase(
     txManager,
     walletRepo,
@@ -222,6 +232,8 @@ export function wire({
       { type: GetLedgerEntriesQuery.TYPE, handler: getLedgerEntries },
       { type: GetWalletMovementsQuery.TYPE, handler: getWalletMovements },
       { type: GetMovementQuery.TYPE, handler: getMovement },
+      { type: GetMoneyFlowQuery.TYPE, handler: getMoneyFlow },
+      { type: GetBalanceTimeseriesQuery.TYPE, handler: getBalanceTimeseries },
     ],
   };
 }

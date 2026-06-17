@@ -24,6 +24,7 @@ describe("loadConfig", () => {
     "directUrl",
     "httpPort",
     "logLevel",
+    "readDatabaseUrl",
     "walletLock",
   ];
 
@@ -36,6 +37,28 @@ describe("loadConfig", () => {
 
         expect(Object.keys(config).sort()).toEqual(EXPECTED_CONFIG_KEYS);
       });
+    });
+  });
+
+  describe("Given READ_DATABASE_URL is set", () => {
+    it("Then readDatabaseUrl is parsed for the analytics read replica", () => {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+      process.env.READ_DATABASE_URL = "postgresql://user:pass@replica:5432/db";
+
+      const config = loadConfig();
+
+      expect(config.readDatabaseUrl).toBe("postgresql://user:pass@replica:5432/db");
+    });
+  });
+
+  describe("Given READ_DATABASE_URL is not set", () => {
+    it("Then readDatabaseUrl is undefined (reads fall back to the primary)", () => {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+      delete process.env.READ_DATABASE_URL;
+
+      const config = loadConfig();
+
+      expect(config.readDatabaseUrl).toBeUndefined();
     });
   });
 
