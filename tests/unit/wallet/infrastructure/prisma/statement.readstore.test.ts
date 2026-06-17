@@ -116,6 +116,18 @@ describe("PrismaStatementReadStore", () => {
       expect(result!.next_cursor).toBeNull();
     });
 
+    it("Given a getByWallet call, When the query is built, Then the WHERE requires a ledger entry for the wallet so pagination counts stay exact", async () => {
+      const { store, transaction, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
+      transaction.findMany.mockResolvedValue([]);
+
+      await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing());
+
+      const where = transaction.findMany.mock.calls[0][0].where;
+      const json = JSON.stringify(where);
+      expect(json).toContain('"ledgerEntries":{"some":{"walletId":"wallet-1"}}');
+    });
+
     it("Given a transaction with no ledger entry for the wallet, When getByWallet is called, Then it is excluded from the statement", async () => {
       const { store, transaction, wallet } = buildReadStore();
       wallet.findFirst.mockResolvedValue({ id: "wallet-1" });

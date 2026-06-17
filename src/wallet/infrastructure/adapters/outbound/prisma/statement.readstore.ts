@@ -88,7 +88,17 @@ export class PrismaStatementReadStore implements IStatementReadStore {
     // confined to this wallet (the walletId filter already bounds the scan).
     // LIKE wildcards in the user input are escaped so they match literally —
     // otherwise `_`/`%` would act as wildcards (over-matching / probing).
-    const baseWhere: Record<string, unknown> = { walletId };
+    // Only transactions that have a ledger entry for THIS wallet are part of the
+    // running-balance statement. Enforcing it in the WHERE (not just by dropping
+    // entry-less rows after mapping) keeps has_more / next_cursor exact: an
+    // entry-less transaction can never consume a page slot and leave the client
+    // with a short or empty page that still carries a next_cursor. Today the
+    // write path always pairs a transaction with its ledger entries atomically,
+    // so this is a defensive invariant rather than a reachable state.
+    const baseWhere: Record<string, unknown> = {
+      walletId,
+      ledgerEntries: { some: { walletId } },
+    };
     if (q) {
       const term = escapeLike(q);
       baseWhere.OR = [

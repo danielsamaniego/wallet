@@ -130,6 +130,35 @@ describe("Wallet query HTTP handlers", () => {
       expect(body.entries).toEqual([]);
       expect(queryBus.dispatch).toHaveBeenCalledOnce();
     });
+
+    it("Given a valid free-text q, When GET is called, Then q is forwarded on the query", async () => {
+      const queryBus: IQueryBus = {
+        dispatch: vi.fn().mockResolvedValue({ entries: [], next_cursor: null }),
+      };
+
+      const handlers = getStatementRoute(queryBus);
+      const app = buildApp("/wallets/:walletId/statement", handlers);
+
+      const res = await app.request("/wallets/wallet-1/statement?q=rolex");
+
+      expect(res.status).toBe(200);
+      const dispatched = (queryBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      expect(dispatched.q).toBe("rolex");
+    });
+
+    it("Given a q longer than the limit, When GET is called, Then it is rejected with 400", async () => {
+      const queryBus: IQueryBus = {
+        dispatch: vi.fn().mockResolvedValue({ entries: [], next_cursor: null }),
+      };
+
+      const handlers = getStatementRoute(queryBus);
+      const app = buildApp("/wallets/:walletId/statement", handlers);
+
+      const res = await app.request(`/wallets/wallet-1/statement?q=${"x".repeat(257)}`);
+
+      expect(res.status).toBe(400);
+      expect(queryBus.dispatch).not.toHaveBeenCalled();
+    });
   });
 
   // ── getStatementEntry ────────────────────────────────────────────────
