@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { createListingQuerySchema, parseJsonFilters } from "@/utils/infrastructure/listing.zod.js";
 import type { JsonFilterableFieldConfig, ListingConfig } from "@/utils/kernel/listing.js";
 import { encodeCursor } from "@/utils/kernel/listing.js";
@@ -678,5 +679,42 @@ describe("parseJsonFilters", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.data).toEqual([]);
+  });
+});
+
+// ── Endpoint-specific extra fields ────────────────────────────────
+
+describe("createListingQuerySchema with extra fields", () => {
+  const schema = createListingQuerySchema(baseConfig, { q: z.string().max(5).optional() });
+
+  describe("Given a valid extra field", () => {
+    it("Then it is validated and passed through alongside the ListingQuery", () => {
+      const result = schema.safeParse({ q: "abc" });
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.data.q).toBe("abc");
+      // ListingQuery fields are still present.
+      expect(result.data.limit).toBe(20);
+      expect(result.data.sort).toEqual([{ field: "createdAt", direction: "desc" }]);
+    });
+  });
+
+  describe("Given the extra field is omitted", () => {
+    it("Then it is undefined and the ListingQuery is unaffected", () => {
+      const result = schema.safeParse({});
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.data.q).toBeUndefined();
+    });
+  });
+
+  describe("Given the extra field violates its constraint", () => {
+    it("Then parsing fails", () => {
+      const result = schema.safeParse({ q: "way too long" });
+
+      expect(result.success).toBe(false);
+    });
   });
 });

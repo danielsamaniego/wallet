@@ -328,6 +328,14 @@ describe("Statement & Analytics — edge cases E2E", () => {
       const after = await (await statement(w)).json();
       expect(after.entries).toHaveLength(1);
     });
+
+    it("Then an oversized q (> 256 chars) is rejected with 400", async () => {
+      const w = await createWallet("edge-q-long");
+      await op(w, "deposit", 5000, "SAFEREF");
+
+      const res = await statement(w, `?q=${"x".repeat(257)}`);
+      expect(res.status).toBe(400);
+    });
   });
 
   describe("Given q combined with a type filter", () => {

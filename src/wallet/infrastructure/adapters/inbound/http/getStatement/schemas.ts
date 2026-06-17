@@ -68,7 +68,13 @@ const listingConfig: ListingConfig = {
   defaultLimit: 50,
 };
 
-export const QueryParamsSchema = createListingQuerySchema(listingConfig);
+// Free-text search is an endpoint-specific extra (not a listing filter): a
+// case-insensitive substring on reference/reason. Bounded to 256 chars so an
+// oversized term can't build a pathological ILIKE pattern; declaring it here
+// also emits it into the OpenAPI spec.
+export const QueryParamsSchema = createListingQuerySchema<{ q?: string }>(listingConfig, {
+  q: z.string().max(256).optional(),
+});
 
 // ── Response ────────────────────────────────────────────────────────────────
 

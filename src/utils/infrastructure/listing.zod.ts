@@ -28,7 +28,10 @@ import { decodeCursor } from "../kernel/listing.js";
  *
  * Output type: ListingQuery
  */
-export function createListingQuerySchema(config: ListingConfig) {
+export function createListingQuerySchema<TExtra = unknown>(
+  config: ListingConfig,
+  extraFields?: z.ZodRawShape,
+) {
   // Build explicit keys for each filterable field + operator combination.
   // This makes every possible query param visible to hono-openapi for documentation.
   const filterShape: Record<string, z.ZodOptional<z.ZodString>> = {};
@@ -48,15 +51,27 @@ export function createListingQuerySchema(config: ListingConfig) {
   // Build JSON-filterable prefixes (e.g. "metadata" → config)
   const jsonPrefixes = new Map((config.jsonFilterableFields ?? []).map((f) => [f.apiName, f]));
 
+  // Endpoint-specific params (e.g. a free-text `q`) are merged into the object
+  // shape so they are both validated and emitted into the OpenAPI spec, then
+  // passed through the transform alongside the ListingQuery fields. Spreading a
+  // runtime shape erases the base field types statically, so `raw` is re-typed
+  // below; the validated output shape is driven by the `TExtra` type parameter.
   return z
     .object({
       limit: z.coerce.number().int().min(1).max(config.maxLimit).default(config.defaultLimit),
       cursor: z.string().optional(),
       sort: z.string().optional(),
       ...filterShape,
+      ...(extraFields ?? {}),
     })
     .catchall(z.unknown())
-    .transform((raw, ctx) => {
+    .transform((rawInput, ctx): ListingQuery & TExtra => {
+      const raw = rawInput as {
+        limit: number;
+        cursor?: string;
+        sort?: string;
+      } & Record<string, unknown>;
+
       // Reject unknown filter[...] keys
       for (const key of Object.keys(raw)) {
         if (
@@ -110,13 +125,23 @@ export function createListingQuerySchema(config: ListingConfig) {
         }
       }
 
-      return {
+      const listing: ListingQuery = {
         filters: filtersResult.data,
         jsonFilters: jsonFiltersResult.data.length > 0 ? jsonFiltersResult.data : undefined,
         sort: sortResult.data,
         limit: raw.limit,
         cursor: raw.cursor,
-      } satisfies ListingQuery;
+      };
+
+      // Merge the validated endpoint-specific extras (if any) into the output.
+      if (!extraFields) {
+        return listing as ListingQuery & TExtra;
+      }
+      const extras: Record<string, unknown> = {};
+      for (const key of Object.keys(extraFields)) {
+        extras[key] = raw[key];
+      }
+      return { ...listing, ...extras } as ListingQuery & TExtra;
     });
 }
 

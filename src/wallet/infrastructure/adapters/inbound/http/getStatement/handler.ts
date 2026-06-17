@@ -37,8 +37,9 @@ export function getStatementRoute(queryBus: IQueryBus) {
     zValidator("query", QueryParamsSchema, validationHook),
     async (c) => {
       const { walletId } = c.req.valid("param");
-      const listing = c.req.valid("query");
-      const q = c.req.query("q");
+      // The validated query carries the ListingQuery fields plus the optional,
+      // length-bounded free-text `q`.
+      const { q, ...listing } = c.req.valid("query");
       const ctx = buildAuthenticatedAppContext(c);
 
       const result = await queryBus.dispatch(
