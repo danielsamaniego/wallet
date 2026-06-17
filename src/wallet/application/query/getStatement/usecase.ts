@@ -2,20 +2,18 @@ import type { IQueryHandler } from "../../../../utils/application/cqrs.js";
 import { AppError } from "../../../../utils/kernel/appError.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
-import type { IWalletMovementReadStore } from "../../ports/walletMovement.readstore.js";
-import type { GetWalletMovementsQuery, PaginatedWalletMovements } from "./query.js";
+import type { IStatementReadStore } from "../../ports/statement.readstore.js";
+import type { GetStatementQuery, PaginatedStatement } from "./query.js";
 
-const mainLogTag = "GetWalletMovementsUseCase";
+const mainLogTag = "GetStatementUseCase";
 
-export class GetWalletMovementsUseCase
-  implements IQueryHandler<GetWalletMovementsQuery, PaginatedWalletMovements>
-{
+export class GetStatementUseCase implements IQueryHandler<GetStatementQuery, PaginatedStatement> {
   constructor(
-    private readonly readStore: IWalletMovementReadStore,
+    private readonly readStore: IStatementReadStore,
     private readonly logger: ILogger,
   ) {}
 
-  async handle(ctx: AppContext, query: GetWalletMovementsQuery): Promise<PaginatedWalletMovements> {
+  async handle(ctx: AppContext, query: GetStatementQuery): Promise<PaginatedStatement> {
     const methodLogTag = `${mainLogTag} | handle`;
 
     this.logger.debug(ctx, `${methodLogTag} start`, {
@@ -41,7 +39,7 @@ export class GetWalletMovementsUseCase
 
     this.logger.info(ctx, `${methodLogTag} success`, {
       wallet_id: query.walletId,
-      movements_count: result.movements.length,
+      entries_count: result.entries.length,
       has_more: result.next_cursor !== null,
     });
 

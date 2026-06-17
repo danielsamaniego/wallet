@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { PrismaWalletMovementReadStore } from "@/wallet/infrastructure/adapters/outbound/prisma/walletMovement.readstore.js";
+import { PrismaStatementReadStore } from "@/wallet/infrastructure/adapters/outbound/prisma/statement.readstore.js";
 import { createTestContext } from "@test/helpers/builders/index.js";
 import { createMockLogger } from "@test/helpers/mocks/index.js";
 import type { ListingQuery } from "@/utils/kernel/listing.js";
@@ -32,7 +32,7 @@ function buildMovementRow(overrides?: Partial<Record<string, unknown>>) {
   };
 }
 
-describe("PrismaWalletMovementReadStore", () => {
+describe("PrismaStatementReadStore", () => {
   const ctx = createTestContext();
 
   function buildReadStore() {
@@ -40,7 +40,7 @@ describe("PrismaWalletMovementReadStore", () => {
     const wallet = { findFirst: vi.fn() };
     const prisma = { transaction, wallet } as never;
     const logger = createMockLogger();
-    const store = new PrismaWalletMovementReadStore(prisma, logger);
+    const store = new PrismaStatementReadStore(prisma, logger);
     return { store, transaction, wallet };
   }
 
@@ -77,9 +77,9 @@ describe("PrismaWalletMovementReadStore", () => {
       const result = await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing());
 
       expect(result).not.toBeNull();
-      expect(result!.movements).toHaveLength(2);
+      expect(result!.entries).toHaveLength(2);
 
-      expect(result!.movements[0]).toEqual({
+      expect(result!.entries[0]).toEqual({
         movement_id: "mv-1",
         transaction_id: "txn-1",
         type: "transfer_out",
@@ -96,7 +96,7 @@ describe("PrismaWalletMovementReadStore", () => {
         created_at: 1700000000000,
       });
 
-      expect(result!.movements[1]).toEqual({
+      expect(result!.entries[1]).toEqual({
         movement_id: "mv-2",
         transaction_id: "txn-2",
         type: "deposit",
@@ -126,11 +126,11 @@ describe("PrismaWalletMovementReadStore", () => {
 
       const result = await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing());
 
-      expect(result!.movements).toHaveLength(1);
-      expect(result!.movements[0]!.transaction_id).toBe("txn-1");
+      expect(result!.entries).toHaveLength(1);
+      expect(result!.entries[0]!.transaction_id).toBe("txn-1");
     });
 
-    it("Given more movements than the limit, When getByWallet is called, Then it returns a next_cursor", async () => {
+    it("Given more entries than the limit, When getByWallet is called, Then it returns a next_cursor", async () => {
       const { store, transaction, wallet } = buildReadStore();
       wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
       transaction.findMany.mockResolvedValue([
@@ -141,7 +141,7 @@ describe("PrismaWalletMovementReadStore", () => {
 
       const result = await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing({ limit: 2 }));
 
-      expect(result!.movements).toHaveLength(2);
+      expect(result!.entries).toHaveLength(2);
       expect(result!.next_cursor).toBeTruthy();
     });
 
@@ -152,18 +152,18 @@ describe("PrismaWalletMovementReadStore", () => {
 
       const result = await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing({ limit: 0 }));
 
-      expect(result!.movements).toEqual([]);
+      expect(result!.entries).toEqual([]);
       expect(result!.next_cursor).toBeNull();
     });
 
-    it("Given a free-text query, When getByWallet is called, Then it returns the matching movements", async () => {
+    it("Given a free-text query, When getByWallet is called, Then it returns the matching entries", async () => {
       const { store, transaction, wallet } = buildReadStore();
       wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
       transaction.findMany.mockResolvedValue([buildMovementRow()]);
 
       const result = await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing(), "ref");
 
-      expect(result!.movements).toHaveLength(1);
+      expect(result!.entries).toHaveLength(1);
     });
   });
 

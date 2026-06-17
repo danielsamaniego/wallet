@@ -1,11 +1,8 @@
 import type { AppContext } from "../../../utils/kernel/context.js";
 import type { ListingQuery } from "../../../utils/kernel/listing.js";
-import type {
-  PaginatedWalletMovements,
-  WalletMovementDTO,
-} from "../query/getWalletMovements/query.js";
+import type { PaginatedStatement, StatementEntryDTO } from "../query/getStatement/query.js";
 
-export interface IWalletMovementReadStore {
+export interface IStatementReadStore {
   /**
    * Returns the wallet's movement statement (cursor-paginated) or null if the
    * wallet does not exist for the given platform.
@@ -16,7 +13,7 @@ export interface IWalletMovementReadStore {
     platformId: string,
     listing: ListingQuery,
     q?: string,
-  ): Promise<PaginatedWalletMovements | null>;
+  ): Promise<PaginatedStatement | null>;
 
   /**
    * Returns a single statement line for (wallet, movement) or null if the
@@ -27,5 +24,5 @@ export interface IWalletMovementReadStore {
     walletId: string,
     movementId: string,
     platformId: string,
-  ): Promise<WalletMovementDTO | null>;
+  ): Promise<StatementEntryDTO | null>;
 }

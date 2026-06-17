@@ -1,17 +1,17 @@
 import { mock, mockReset } from "vitest-mock-extended";
 import { createMockLogger } from "@test/helpers/mocks/index.js";
 import { createTestContext } from "@test/helpers/builders/context.builder.js";
-import { GetMovementUseCase } from "@/wallet/application/query/getMovement/usecase.js";
-import { GetMovementQuery } from "@/wallet/application/query/getMovement/query.js";
-import type { WalletMovementDTO } from "@/wallet/application/query/getWalletMovements/query.js";
-import type { IWalletMovementReadStore } from "@/wallet/application/ports/walletMovement.readstore.js";
+import { GetStatementEntryUseCase } from "@/wallet/application/query/getStatementEntry/usecase.js";
+import { GetStatementEntryQuery } from "@/wallet/application/query/getStatementEntry/query.js";
+import type { StatementEntryDTO } from "@/wallet/application/query/getStatement/query.js";
+import type { IStatementReadStore } from "@/wallet/application/ports/statement.readstore.js";
 import { AppError, ErrorKind } from "@/utils/kernel/appError.js";
 
 const WALLET_ID = "wallet-1";
 const MOVEMENT_ID = "mv-1";
 const PLATFORM_ID = "platform-1";
 
-const movement: WalletMovementDTO = {
+const movement: StatementEntryDTO = {
   movement_id: MOVEMENT_ID,
   transaction_id: "tx-1",
   type: "charge",
@@ -28,10 +28,10 @@ const movement: WalletMovementDTO = {
   created_at: 1700000000000,
 };
 
-describe("GetMovementUseCase", () => {
-  const readStore = mock<IWalletMovementReadStore>();
+describe("GetStatementEntryUseCase", () => {
+  const readStore = mock<IStatementReadStore>();
   const logger = createMockLogger();
-  const useCase = new GetMovementUseCase(readStore, logger);
+  const useCase = new GetStatementEntryUseCase(readStore, logger);
   const ctx = createTestContext();
 
   beforeEach(() => {
@@ -45,7 +45,7 @@ describe("GetMovementUseCase", () => {
 
     describe("When the movement is queried by id", () => {
       it("Then it returns the movement and delegates to the read store", async () => {
-        const query = new GetMovementQuery(WALLET_ID, MOVEMENT_ID, PLATFORM_ID);
+        const query = new GetStatementEntryQuery(WALLET_ID, MOVEMENT_ID, PLATFORM_ID);
 
         const result = await useCase.handle(ctx, query);
 
@@ -62,7 +62,7 @@ describe("GetMovementUseCase", () => {
 
     describe("When the movement is queried by id", () => {
       it("Then it throws MOVEMENT_NOT_FOUND", async () => {
-        const query = new GetMovementQuery(WALLET_ID, MOVEMENT_ID, PLATFORM_ID);
+        const query = new GetStatementEntryQuery(WALLET_ID, MOVEMENT_ID, PLATFORM_ID);
 
         await expect(useCase.handle(ctx, query)).rejects.toSatisfy((err: AppError) => {
           return err.kind === ErrorKind.NotFound && err.code === "MOVEMENT_NOT_FOUND";

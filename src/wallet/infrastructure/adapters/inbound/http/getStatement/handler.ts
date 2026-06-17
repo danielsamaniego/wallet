@@ -8,35 +8,42 @@ import {
   ErrorResponseSchema,
   validationHook,
 } from "../../../../../../utils/infrastructure/hono.error.js";
-import { GetMovementQuery } from "../../../../../application/query/getMovement/query.js";
-import { ParamSchema, ResponseSchema } from "./schemas.js";
+import { GetStatementQuery } from "../../../../../application/query/getStatement/query.js";
+import { ParamSchema, QueryParamsSchema, ResponseSchema } from "./schemas.js";
 
-export function getMovementRoute(queryBus: IQueryBus) {
+export function getStatementRoute(queryBus: IQueryBus) {
   return handlerFactory.createHandlers(
     describeRoute({
       tags: ["Wallets"],
-      summary: "Get a wallet movement by id",
+      summary: "List wallet statement entries",
       description:
-        "Returns a single movement (statement line) with running balance and correlation metadata.",
+        "Paginated statement: one entry per movement with running balance (balance_before/after), cursor-based. Optional free-text `q` matches reference/reason.",
       responses: {
         200: {
-          description: "The movement",
+          description: "Paginated wallet statement",
           content: { "application/json": { schema: resolver(ResponseSchema) } },
         },
+        400: {
+          description: "Invalid filter, sort, or cursor",
+          content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
+        },
         404: {
-          description: "Movement not found",
+          description: "Wallet not found",
           content: { "application/json": { schema: resolver(ErrorResponseSchema) } },
         },
       },
     }),
     zValidator("param", ParamSchema, validationHook),
+    zValidator("query", QueryParamsSchema, validationHook),
     async (c) => {
-      const { walletId, movementId } = c.req.valid("param");
+      const { walletId } = c.req.valid("param");
+      const listing = c.req.valid("query");
+      const q = c.req.query("q");
       const ctx = buildAuthenticatedAppContext(c);
 
       const result = await queryBus.dispatch(
         ctx,
-        new GetMovementQuery(walletId, movementId, ctx.platformId),
+        new GetStatementQuery(walletId, ctx.platformId, listing, q),
       );
 
       return c.json(result, 200);

@@ -8,9 +8,9 @@ import { getHoldRoute } from "@/wallet/infrastructure/adapters/inbound/http/getH
 import { getBalanceTimeseriesRoute } from "@/wallet/infrastructure/adapters/inbound/http/getBalanceTimeseries/handler.js";
 import { getLedgerEntriesRoute } from "@/wallet/infrastructure/adapters/inbound/http/getLedgerEntries/handler.js";
 import { getMoneyFlowRoute } from "@/wallet/infrastructure/adapters/inbound/http/getMoneyFlow/handler.js";
-import { getMovementRoute } from "@/wallet/infrastructure/adapters/inbound/http/getMovement/handler.js";
+import { getStatementEntryRoute } from "@/wallet/infrastructure/adapters/inbound/http/getStatementEntry/handler.js";
 import { getTransactionsRoute } from "@/wallet/infrastructure/adapters/inbound/http/getTransactions/handler.js";
-import { getWalletMovementsRoute } from "@/wallet/infrastructure/adapters/inbound/http/getWalletMovements/handler.js";
+import { getStatementRoute } from "@/wallet/infrastructure/adapters/inbound/http/getStatement/handler.js";
 import { listCurrenciesRoute } from "@/wallet/infrastructure/adapters/inbound/http/listCurrencies/handler.js";
 import { listHoldsRoute } from "@/wallet/infrastructure/adapters/inbound/http/listHolds/handler.js";
 import { listWalletsRoute } from "@/wallet/infrastructure/adapters/inbound/http/listWallets/handler.js";
@@ -110,39 +110,39 @@ describe("Wallet query HTTP handlers", () => {
     });
   });
 
-  // ── getWalletMovements ─────────────────────────────────────────
-  describe("getWalletMovementsRoute", () => {
-    it("Given a valid walletId param, When GET is called, Then it dispatches GetWalletMovementsQuery and returns 200", async () => {
+  // ── getStatement ─────────────────────────────────────────
+  describe("getStatementRoute", () => {
+    it("Given a valid walletId param, When GET is called, Then it dispatches GetStatementQuery and returns 200", async () => {
       const queryBus: IQueryBus = {
         dispatch: vi.fn().mockResolvedValue({
-          movements: [],
+          entries: [],
           next_cursor: null,
         }),
       };
 
-      const handlers = getWalletMovementsRoute(queryBus);
-      const app = buildApp("/wallets/:walletId/movements", handlers);
+      const handlers = getStatementRoute(queryBus);
+      const app = buildApp("/wallets/:walletId/statement", handlers);
 
-      const res = await app.request("/wallets/wallet-1/movements");
+      const res = await app.request("/wallets/wallet-1/statement");
 
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.movements).toEqual([]);
+      expect(body.entries).toEqual([]);
       expect(queryBus.dispatch).toHaveBeenCalledOnce();
     });
   });
 
-  // ── getMovement ────────────────────────────────────────────────
-  describe("getMovementRoute", () => {
-    it("Given valid walletId and movementId params, When GET is called, Then it dispatches GetMovementQuery and returns 200", async () => {
+  // ── getStatementEntry ────────────────────────────────────────────────
+  describe("getStatementEntryRoute", () => {
+    it("Given valid walletId and movementId params, When GET is called, Then it dispatches GetStatementEntryQuery and returns 200", async () => {
       const queryBus: IQueryBus = {
         dispatch: vi.fn().mockResolvedValue({ movement_id: "mv-1", transaction_id: "tx-1" }),
       };
 
-      const handlers = getMovementRoute(queryBus);
-      const app = buildApp("/wallets/:walletId/movements/:movementId", handlers);
+      const handlers = getStatementEntryRoute(queryBus);
+      const app = buildApp("/wallets/:walletId/statement/:movementId", handlers);
 
-      const res = await app.request("/wallets/wallet-1/movements/mv-1");
+      const res = await app.request("/wallets/wallet-1/statement/mv-1");
 
       expect(res.status).toBe(200);
       const body = await res.json();

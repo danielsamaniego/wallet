@@ -6,7 +6,7 @@ import type { ListingQuery } from "../../../../utils/kernel/listing.js";
  * wallet's own ledger entry (running balance + signed amount), its transaction
  * (type, reference, metadata, counterpart) and its movement (reason).
  */
-export interface WalletMovementDTO {
+export interface StatementEntryDTO {
   movement_id: string;
   transaction_id: string;
   type: string;
@@ -23,13 +23,13 @@ export interface WalletMovementDTO {
   created_at: number;
 }
 
-export interface PaginatedWalletMovements {
-  movements: WalletMovementDTO[];
+export interface PaginatedStatement {
+  entries: StatementEntryDTO[];
   next_cursor: string | null;
 }
 
-export class GetWalletMovementsQuery extends IQuery<PaginatedWalletMovements> {
-  static readonly TYPE = "GetWalletMovements";
+export class GetStatementQuery extends IQuery<PaginatedStatement> {
+  static readonly TYPE = "GetStatement";
   constructor(
     public readonly walletId: string,
     public readonly platformId: string,
@@ -37,6 +37,6 @@ export class GetWalletMovementsQuery extends IQuery<PaginatedWalletMovements> {
     /** Optional free-text query — case-insensitive substring on reference/reason. */
     public readonly q?: string,
   ) {
-    super(GetWalletMovementsQuery.TYPE);
+    super(GetStatementQuery.TYPE);
   }
 }

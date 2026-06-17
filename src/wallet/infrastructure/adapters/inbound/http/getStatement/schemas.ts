@@ -72,7 +72,7 @@ export const QueryParamsSchema = createListingQuerySchema(listingConfig);
 
 // ── Response ────────────────────────────────────────────────────────────────
 
-const MovementSchema = z.object({
+const StatementEntrySchema = z.object({
   movement_id: z.string(),
   transaction_id: z.string(),
   type: z.string(),
@@ -90,6 +90,6 @@ const MovementSchema = z.object({
 });
 
 export const ResponseSchema = z.object({
-  movements: z.array(MovementSchema),
+  entries: z.array(StatementEntrySchema),
   next_cursor: z.string().nullable(),
 });

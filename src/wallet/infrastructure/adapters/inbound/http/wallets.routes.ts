@@ -15,10 +15,10 @@ import { freezeWalletRoute } from "./freezeWallet/handler.js";
 import { getBalanceTimeseriesRoute } from "./getBalanceTimeseries/handler.js";
 import { getLedgerEntriesRoute } from "./getLedgerEntries/handler.js";
 import { getMoneyFlowRoute } from "./getMoneyFlow/handler.js";
-import { getMovementRoute } from "./getMovement/handler.js";
+import { getStatementRoute } from "./getStatement/handler.js";
+import { getStatementEntryRoute } from "./getStatementEntry/handler.js";
 import { getTransactionsRoute } from "./getTransactions/handler.js";
 import { getWalletRoute } from "./getWallet/handler.js";
-import { getWalletMovementsRoute } from "./getWalletMovements/handler.js";
 // TODO(historical-import-temp): Remove this import together with the route
 // registration and the whole importHistoricalEntry/ folder after migration.
 import { importHistoricalEntryRoute } from "./importHistoricalEntry/handler.js";
@@ -69,8 +69,8 @@ export function walletRoutes(deps: Dependencies) {
   router.get("/:walletId", auth, ...getWalletRoute(deps.queryBus));
   router.get("/:walletId/transactions", auth, ...getTransactionsRoute(deps.queryBus));
   router.get("/:walletId/ledger", auth, ...getLedgerEntriesRoute(deps.queryBus));
-  router.get("/:walletId/movements", auth, ...getWalletMovementsRoute(deps.queryBus));
-  router.get("/:walletId/movements/:movementId", auth, ...getMovementRoute(deps.queryBus));
+  router.get("/:walletId/statement", auth, ...getStatementRoute(deps.queryBus));
+  router.get("/:walletId/statement/:movementId", auth, ...getStatementEntryRoute(deps.queryBus));
   router.get("/:walletId/balance-timeseries", auth, ...getBalanceTimeseriesRoute(deps.queryBus));
   router.get("/:walletId/money-flow", auth, ...getMoneyFlowRoute(deps.queryBus));
 

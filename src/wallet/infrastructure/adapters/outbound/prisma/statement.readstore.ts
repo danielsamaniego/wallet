@@ -5,11 +5,11 @@ import type { AppContext } from "../../../../../utils/kernel/context.js";
 import type { ListingQuery } from "../../../../../utils/kernel/listing.js";
 import { encodeCursor } from "../../../../../utils/kernel/listing.js";
 import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
-import type { IWalletMovementReadStore } from "../../../../application/ports/walletMovement.readstore.js";
+import type { IStatementReadStore } from "../../../../application/ports/statement.readstore.js";
 import type {
-  PaginatedWalletMovements,
-  WalletMovementDTO,
-} from "../../../../application/query/getWalletMovements/query.js";
+  PaginatedStatement,
+  StatementEntryDTO,
+} from "../../../../application/query/getStatement/query.js";
 
 /**
  * The statement read model. Anchored on `transaction` (so the existing
@@ -44,7 +44,7 @@ interface MovementRow extends MovementRowBase {
   ledgerEntries: LedgerEntryFields[];
 }
 
-export class PrismaWalletMovementReadStore implements IWalletMovementReadStore {
+export class PrismaStatementReadStore implements IStatementReadStore {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly logger: ILogger,
@@ -56,7 +56,7 @@ export class PrismaWalletMovementReadStore implements IWalletMovementReadStore {
     platformId: string,
     listing: ListingQuery,
     q?: string,
-  ): Promise<PaginatedWalletMovements | null> {
+  ): Promise<PaginatedStatement | null> {
     this.logger.debug(ctx, "WalletMovementReadStore | getByWallet", {
       wallet_id: walletId,
       has_query: q !== undefined,
@@ -125,9 +125,9 @@ export class PrismaWalletMovementReadStore implements IWalletMovementReadStore {
     });
 
     return {
-      movements: items
+      entries: items
         .map((r) => this.toDTO(r as unknown as MovementRow))
-        .filter((m): m is WalletMovementDTO => m !== null),
+        .filter((m): m is StatementEntryDTO => m !== null),
       next_cursor: nextCursor,
     };
   }
@@ -137,7 +137,7 @@ export class PrismaWalletMovementReadStore implements IWalletMovementReadStore {
     walletId: string,
     movementId: string,
     platformId: string,
-  ): Promise<WalletMovementDTO | null> {
+  ): Promise<StatementEntryDTO | null> {
     this.logger.debug(ctx, "WalletMovementReadStore | getOne", {
       wallet_id: walletId,
       movement_id: movementId,
@@ -176,7 +176,7 @@ export class PrismaWalletMovementReadStore implements IWalletMovementReadStore {
     return this.toDTO(row as unknown as MovementRow);
   }
 
-  private toDTO(row: MovementRow): WalletMovementDTO | null {
+  private toDTO(row: MovementRow): StatementEntryDTO | null {
     // Wallet-scoped: the include pre-filters to this wallet, so there is at most
     // one entry; a transaction with no entry for this wallet (never settled) is
     // not part of the running-balance statement.
@@ -187,7 +187,7 @@ export class PrismaWalletMovementReadStore implements IWalletMovementReadStore {
     return this.buildDTO(row, entry);
   }
 
-  private buildDTO(row: MovementRowBase, entry: LedgerEntryFields): WalletMovementDTO {
+  private buildDTO(row: MovementRowBase, entry: LedgerEntryFields): StatementEntryDTO {
     // amountMinor is signed in the ledger (+credit / -debit), so
     // balance_before = balance_after - signed(amount).
     const balanceBeforeMinor = entry.balanceAfterMinor - entry.amountMinor;

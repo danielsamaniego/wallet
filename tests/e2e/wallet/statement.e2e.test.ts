@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { createTestApp, type TestApp } from "../setup/test-app.js";
 
-describe("Wallet Movements (statement) E2E", () => {
+describe("Wallet Statement E2E", () => {
   let app: TestApp;
   let idempCounter = 0;
 
@@ -66,23 +66,23 @@ describe("Wallet Movements (statement) E2E", () => {
       await deposit(walletId, 10000);
       await charge(walletId, 3000, "COMMISSION");
 
-      const res = await app.request(`/v1/wallets/${walletId}/movements`);
+      const res = await app.request(`/v1/wallets/${walletId}/statement`);
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      expect(body.movements).toHaveLength(2);
+      expect(body.entries).toHaveLength(2);
       // Newest first (created_at desc): charge before deposit.
-      expect(body.movements[0].type).toBe("charge");
-      expect(body.movements[1].type).toBe("deposit");
+      expect(body.entries[0].type).toBe("charge");
+      expect(body.entries[1].type).toBe("deposit");
 
-      const chargeMv = body.movements.find((m: { type: string }) => m.type === "charge");
+      const chargeMv = body.entries.find((m: { type: string }) => m.type === "charge");
       expect(chargeMv.direction).toBe("debit");
       expect(chargeMv.amount_minor).toBe(3000);
       expect(chargeMv.reference).toBe("COMMISSION");
       expect(chargeMv.balance_before_minor).toBe(10000);
       expect(chargeMv.balance_after_minor).toBe(7000);
 
-      const depositMv = body.movements.find((m: { type: string }) => m.type === "deposit");
+      const depositMv = body.entries.find((m: { type: string }) => m.type === "deposit");
       expect(depositMv.direction).toBe("credit");
       expect(depositMv.amount_minor).toBe(10000);
       expect(depositMv.balance_before_minor).toBe(0);
@@ -100,10 +100,10 @@ describe("Wallet Movements (statement) E2E", () => {
       await deposit(walletId, 5000);
       await adjust(walletId, 2000, "Promotional credit", { order_id: "order-789" });
 
-      const res = await app.request(`/v1/wallets/${walletId}/movements`);
+      const res = await app.request(`/v1/wallets/${walletId}/statement`);
       const body = await res.json();
 
-      const adj = body.movements.find((m: { type: string }) => m.type === "adjustment_credit");
+      const adj = body.entries.find((m: { type: string }) => m.type === "adjustment_credit");
       expect(adj.direction).toBe("credit");
       expect(adj.amount_minor).toBe(2000);
       expect(adj.reason).toBe("Promotional credit");
@@ -115,26 +115,26 @@ describe("Wallet Movements (statement) E2E", () => {
 
   // ── Cursor pagination (consistent, no offset) ─────────────────────────────
 
-  describe("Given a wallet with 3 movements", () => {
+  describe("Given a wallet with 3 entries", () => {
     it("Then cursor pagination returns all of them with no gaps or duplicates", async () => {
       const walletId = await createWallet("mv-page-user");
       await deposit(walletId, 1000);
       await deposit(walletId, 2000);
       await deposit(walletId, 3000);
 
-      const first = await app.request(`/v1/wallets/${walletId}/movements?limit=2`);
+      const first = await app.request(`/v1/wallets/${walletId}/statement?limit=2`);
       const firstBody = await first.json();
-      expect(firstBody.movements).toHaveLength(2);
+      expect(firstBody.entries).toHaveLength(2);
       expect(firstBody.next_cursor).toBeTruthy();
 
       const second = await app.request(
-        `/v1/wallets/${walletId}/movements?limit=2&cursor=${encodeURIComponent(firstBody.next_cursor)}`,
+        `/v1/wallets/${walletId}/statement?limit=2&cursor=${encodeURIComponent(firstBody.next_cursor)}`,
       );
       const secondBody = await second.json();
-      expect(secondBody.movements).toHaveLength(1);
+      expect(secondBody.entries).toHaveLength(1);
       expect(secondBody.next_cursor).toBeNull();
 
-      const ids = [...firstBody.movements, ...secondBody.movements].map(
+      const ids = [...firstBody.entries, ...secondBody.entries].map(
         (m: { movement_id: string }) => m.movement_id,
       );
       expect(new Set(ids).size).toBe(3);
@@ -150,25 +150,25 @@ describe("Wallet Movements (statement) E2E", () => {
       await charge(walletId, 1000);
 
       const res = await app.request(
-        `/v1/wallets/${walletId}/movements?filter%5Btype%5D=charge`,
+        `/v1/wallets/${walletId}/statement?filter%5Btype%5D=charge`,
       );
       const body = await res.json();
 
-      expect(body.movements.length).toBeGreaterThan(0);
-      expect(body.movements.every((m: { type: string }) => m.type === "charge")).toBe(true);
+      expect(body.entries.length).toBeGreaterThan(0);
+      expect(body.entries.every((m: { type: string }) => m.type === "charge")).toBe(true);
     });
   });
 
   // ── Empty wallet ──────────────────────────────────────────────────────────
 
-  describe("Given a wallet with no movements", () => {
+  describe("Given a wallet with no entries", () => {
     it("Then it returns an empty statement with no cursor", async () => {
       const walletId = await createWallet("mv-empty-user");
 
-      const res = await app.request(`/v1/wallets/${walletId}/movements`);
+      const res = await app.request(`/v1/wallets/${walletId}/statement`);
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.movements).toEqual([]);
+      expect(body.entries).toEqual([]);
       expect(body.next_cursor).toBeNull();
     });
   });
@@ -176,11 +176,11 @@ describe("Wallet Movements (statement) E2E", () => {
   // ── Cross-tenant isolation ────────────────────────────────────────────────
 
   describe("Given a wallet owned by the victim platform", () => {
-    it("Then the attacker platform cannot read its movements (404)", async () => {
+    it("Then the attacker platform cannot read its entries (404)", async () => {
       const victimWalletId = await createWallet("mv-victim-user");
       await deposit(victimWalletId, 5000);
 
-      const res = await app.attackerRequest(`/v1/wallets/${victimWalletId}/movements`);
+      const res = await app.attackerRequest(`/v1/wallets/${victimWalletId}/statement`);
       expect(res.status).toBe(404);
     });
   });
@@ -188,10 +188,10 @@ describe("Wallet Movements (statement) E2E", () => {
   // ── Authentication ────────────────────────────────────────────────────────
 
   describe("Given an unauthenticated client", () => {
-    it("Then reading movements returns 401", async () => {
+    it("Then reading entries returns 401", async () => {
       const walletId = await createWallet("mv-auth-user");
 
-      const res = await app.unauthenticatedRequest(`/v1/wallets/${walletId}/movements`);
+      const res = await app.unauthenticatedRequest(`/v1/wallets/${walletId}/statement`);
       expect(res.status).toBe(401);
     });
   });
@@ -199,9 +199,9 @@ describe("Wallet Movements (statement) E2E", () => {
   // ── Non-existent wallet ───────────────────────────────────────────────────
 
   describe("Given a non-existent wallet id", () => {
-    it("Then reading movements returns 404", async () => {
+    it("Then reading entries returns 404", async () => {
       const fakeId = "019560a0-0000-7000-8000-0000000000aa";
-      const res = await app.request(`/v1/wallets/${fakeId}/movements`);
+      const res = await app.request(`/v1/wallets/${fakeId}/statement`);
       expect(res.status).toBe(404);
     });
   });
@@ -212,7 +212,7 @@ describe("Wallet Movements (statement) E2E", () => {
     it("Then it returns 400", async () => {
       const walletId = await createWallet("mv-badcursor-user");
 
-      const res = await app.request(`/v1/wallets/${walletId}/movements?cursor=not-a-valid-cursor`);
+      const res = await app.request(`/v1/wallets/${walletId}/statement?cursor=not-a-valid-cursor`);
       expect(res.status).toBe(400);
     });
   });
@@ -220,18 +220,18 @@ describe("Wallet Movements (statement) E2E", () => {
   // ── Get movement by id (R3) ───────────────────────────────────────────────
 
   describe("Given a wallet with an adjustment movement", () => {
-    it("Then GET /movements/:movementId returns that single movement with balance, reason and metadata", async () => {
+    it("Then GET /statement/:movementId returns that single movement with balance, reason and metadata", async () => {
       const walletId = await createWallet("mv-byid-user");
       await deposit(walletId, 8000);
       await adjust(walletId, 2000, "bonus", { order_id: "ord-1" });
 
-      const list = await app.request(`/v1/wallets/${walletId}/movements`);
-      const target = (await list.json()).movements.find(
+      const list = await app.request(`/v1/wallets/${walletId}/statement`);
+      const target = (await list.json()).entries.find(
         (m: { type: string }) => m.type === "adjustment_credit",
       );
       expect(target).toBeDefined();
 
-      const res = await app.request(`/v1/wallets/${walletId}/movements/${target.movement_id}`);
+      const res = await app.request(`/v1/wallets/${walletId}/statement/${target.movement_id}`);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.movement_id).toBe(target.movement_id);
@@ -246,12 +246,12 @@ describe("Wallet Movements (statement) E2E", () => {
   });
 
   describe("Given a non-existent movement id", () => {
-    it("Then GET /movements/:movementId returns 404", async () => {
+    it("Then GET /statement/:movementId returns 404", async () => {
       const walletId = await createWallet("mv-byid-404-user");
       await deposit(walletId, 1000);
 
       const fakeMovement = "019560a0-0000-7000-8000-0000000000bb";
-      const res = await app.request(`/v1/wallets/${walletId}/movements/${fakeMovement}`);
+      const res = await app.request(`/v1/wallets/${walletId}/statement/${fakeMovement}`);
       expect(res.status).toBe(404);
     });
   });
@@ -260,10 +260,10 @@ describe("Wallet Movements (statement) E2E", () => {
     it("Then the attacker platform cannot read it by id (404)", async () => {
       const victimWalletId = await createWallet("mv-byid-victim");
       await deposit(victimWalletId, 5000);
-      const list = await app.request(`/v1/wallets/${victimWalletId}/movements`);
-      const mvId = (await list.json()).movements[0].movement_id;
+      const list = await app.request(`/v1/wallets/${victimWalletId}/statement`);
+      const mvId = (await list.json()).entries[0].movement_id;
 
-      const res = await app.attackerRequest(`/v1/wallets/${victimWalletId}/movements/${mvId}`);
+      const res = await app.attackerRequest(`/v1/wallets/${victimWalletId}/statement/${mvId}`);
       expect(res.status).toBe(404);
     });
   });
@@ -277,23 +277,23 @@ describe("Wallet Movements (statement) E2E", () => {
       await charge(walletId, 1000, "ALPHACOMMISSION");
       await charge(walletId, 1000, "BETAFEE");
 
-      const res = await app.request(`/v1/wallets/${walletId}/movements?q=alpha`);
+      const res = await app.request(`/v1/wallets/${walletId}/statement?q=alpha`);
       expect(res.status).toBe(200);
       const body = await res.json();
 
-      expect(body.movements).toHaveLength(1);
-      expect(body.movements[0].reference).toBe("ALPHACOMMISSION");
+      expect(body.entries).toHaveLength(1);
+      expect(body.entries[0].reference).toBe("ALPHACOMMISSION");
     });
 
-    it("Then a non-matching q returns no movements", async () => {
+    it("Then a non-matching q returns no entries", async () => {
       const walletId = await createWallet("mv-q-empty-user");
       await deposit(walletId, 5000);
       await charge(walletId, 1000, "ONLYTHIS");
 
-      const res = await app.request(`/v1/wallets/${walletId}/movements?q=NOTHINGMATCHES`);
+      const res = await app.request(`/v1/wallets/${walletId}/statement?q=NOTHINGMATCHES`);
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.movements).toEqual([]);
+      expect(body.entries).toEqual([]);
     });
   });
 });

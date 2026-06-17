@@ -2,19 +2,21 @@ import type { IQueryHandler } from "../../../../utils/application/cqrs.js";
 import { AppError } from "../../../../utils/kernel/appError.js";
 import type { AppContext } from "../../../../utils/kernel/context.js";
 import type { ILogger } from "../../../../utils/kernel/observability/logger.port.js";
-import type { IWalletMovementReadStore } from "../../ports/walletMovement.readstore.js";
-import type { WalletMovementDTO } from "../getWalletMovements/query.js";
-import type { GetMovementQuery } from "./query.js";
+import type { IStatementReadStore } from "../../ports/statement.readstore.js";
+import type { StatementEntryDTO } from "../getStatement/query.js";
+import type { GetStatementEntryQuery } from "./query.js";
 
-const mainLogTag = "GetMovementUseCase";
+const mainLogTag = "GetStatementEntryUseCase";
 
-export class GetMovementUseCase implements IQueryHandler<GetMovementQuery, WalletMovementDTO> {
+export class GetStatementEntryUseCase
+  implements IQueryHandler<GetStatementEntryQuery, StatementEntryDTO>
+{
   constructor(
-    private readonly readStore: IWalletMovementReadStore,
+    private readonly readStore: IStatementReadStore,
     private readonly logger: ILogger,
   ) {}
 
-  async handle(ctx: AppContext, query: GetMovementQuery): Promise<WalletMovementDTO> {
+  async handle(ctx: AppContext, query: GetStatementEntryQuery): Promise<StatementEntryDTO> {
     const methodLogTag = `${mainLogTag} | handle`;
 
     this.logger.debug(ctx, `${methodLogTag} start`, {
