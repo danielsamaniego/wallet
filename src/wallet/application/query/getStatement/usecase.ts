@@ -30,6 +30,8 @@ export class GetStatementUseCase implements IQueryHandler<GetStatementQuery, Pag
       query.platformId,
       query.listing,
       query.q,
+      query.direction,
+      query.includeTotal,
     );
 
     if (!result) {

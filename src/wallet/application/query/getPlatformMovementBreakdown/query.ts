@@ -20,6 +20,8 @@ export class GetPlatformMovementBreakdownQuery extends IQuery<MovementBreakdownB
     public readonly direction: MovementDirection,
     public readonly metadataKey?: string,
     public readonly ownerId?: string,
+    public readonly metadataFilterKey?: string,
+    public readonly metadataFilterValue?: string,
   ) {
     super(GetPlatformMovementBreakdownQuery.TYPE);
   }

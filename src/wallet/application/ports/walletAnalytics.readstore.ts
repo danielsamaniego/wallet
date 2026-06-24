@@ -16,7 +16,11 @@ export type MovementDirection = "credit" | "debit" | "all";
  * Scope + shaping of a movement breakdown. `walletId` restricts to a single
  * wallet (per-wallet endpoint); `ownerId` narrows a platform-wide query to one
  * owner. Both omitted → the whole platform. `metadataKey` is required when
- * `groupBy === "metadata"`.
+ * `groupBy === "metadata"`. `metadataFilterKey`/`metadataFilterValue` are an
+ * optional pre-aggregation filter on an arbitrary JSON key (e.g. keep only rows
+ * whose `metadata ->> 'reasonKey'` equals a value) — independent of `groupBy`,
+ * so callers can group by one dimension while narrowing on another. Both are
+ * set together or neither.
  */
 export interface MovementBreakdownParams {
   platformId: string;
@@ -27,6 +31,8 @@ export interface MovementBreakdownParams {
   walletId?: string;
   ownerId?: string;
   metadataKey?: string;
+  metadataFilterKey?: string;
+  metadataFilterValue?: string;
 }
 
 /** One aggregated bucket of a movement breakdown. Amounts in minor units. */
@@ -36,6 +42,10 @@ export interface MovementBreakdownBucketDTO {
   sum_net_minor: number | string;
   sum_credits_minor: number | string;
   sum_debits_minor: number | string;
+  /** Smallest signed entry amount in the bucket (most negative debit or smallest credit). */
+  min_minor: number | string;
+  /** Largest signed entry amount in the bucket (largest credit or least-negative debit). */
+  max_minor: number | string;
   count: number;
 }
 

@@ -159,6 +159,76 @@ describe("Wallet Statement E2E", () => {
     });
   });
 
+  // ── Direction filter (credit/debit) ───────────────────────────────────────
+
+  describe("Given a wallet with both credit and debit movements", () => {
+    it("Then direction=credit returns only credit lines and direction=debit only debits", async () => {
+      const walletId = await createWallet("mv-dir-user");
+      await deposit(walletId, 10000); // credit
+      await charge(walletId, 3000); // debit
+
+      const credits = await (
+        await app.request(`/v1/wallets/${walletId}/statement?direction=credit`)
+      ).json();
+      expect(credits.entries.every((m: { direction: string }) => m.direction === "credit")).toBe(
+        true,
+      );
+      expect(credits.entries).toHaveLength(1);
+      expect(credits.entries[0].type).toBe("deposit");
+
+      const debits = await (
+        await app.request(`/v1/wallets/${walletId}/statement?direction=debit`)
+      ).json();
+      expect(debits.entries.every((m: { direction: string }) => m.direction === "debit")).toBe(
+        true,
+      );
+      expect(debits.entries).toHaveLength(1);
+      expect(debits.entries[0].type).toBe("charge");
+    });
+
+    it("Then an invalid direction returns 400", async () => {
+      const walletId = await createWallet("mv-dir-bad-user");
+      const res = await app.request(`/v1/wallets/${walletId}/statement?direction=sideways`);
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── Total count (opt-in) ──────────────────────────────────────────────────
+
+  describe("Given a wallet with more entries than the page limit", () => {
+    it("Then include_total=true returns the full match count across pages; absent by default", async () => {
+      const walletId = await createWallet("mv-total-user");
+      await deposit(walletId, 1000);
+      await deposit(walletId, 2000);
+      await deposit(walletId, 3000);
+
+      const withTotal = await (
+        await app.request(`/v1/wallets/${walletId}/statement?limit=2&include_total=true`)
+      ).json();
+      expect(withTotal.entries).toHaveLength(2);
+      expect(withTotal.next_cursor).toBeTruthy();
+      expect(withTotal.total).toBe(3); // counts all pages, not just this one
+
+      const withoutTotal = await (
+        await app.request(`/v1/wallets/${walletId}/statement?limit=2`)
+      ).json();
+      expect(withoutTotal.total).toBeUndefined();
+    });
+
+    it("Then include_total respects active filters (e.g. direction)", async () => {
+      const walletId = await createWallet("mv-total-filter-user");
+      await deposit(walletId, 1000);
+      await deposit(walletId, 2000);
+      await charge(walletId, 500);
+
+      const res = await app.request(
+        `/v1/wallets/${walletId}/statement?direction=credit&include_total=true`,
+      );
+      const body = await res.json();
+      expect(body.total).toBe(2); // two deposits; the charge is excluded
+    });
+  });
+
   // ── Empty wallet ──────────────────────────────────────────────────────────
 
   describe("Given a wallet with no entries", () => {

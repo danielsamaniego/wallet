@@ -31,7 +31,16 @@ export function getPlatformMovementBreakdownRoute(queryBus: IQueryBus) {
     }),
     zValidator("query", QueryParamsSchema, validationHook),
     async (c) => {
-      const { from, to, group_by, direction, metadata_key, owner_id } = c.req.valid("query");
+      const {
+        from,
+        to,
+        group_by,
+        direction,
+        metadata_key,
+        owner_id,
+        metadata_filter_key,
+        metadata_filter_value,
+      } = c.req.valid("query");
       const ctx = buildAuthenticatedAppContext(c);
 
       const result = await queryBus.dispatch(
@@ -44,6 +53,8 @@ export function getPlatformMovementBreakdownRoute(queryBus: IQueryBus) {
           direction,
           metadata_key,
           owner_id,
+          metadata_filter_key,
+          metadata_filter_value,
         ),
       );
 

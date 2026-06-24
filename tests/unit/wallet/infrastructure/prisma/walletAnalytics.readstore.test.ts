@@ -117,6 +117,8 @@ describe("PrismaWalletAnalyticsReadStore", () => {
       sum_credits_minor: 10000n,
       sum_debits_minor: -3000n,
       sum_net_minor: 7000n,
+      min_minor: -3000n,
+      max_minor: 10000n,
       count: 5,
     };
     const MAPPED = {
@@ -124,6 +126,8 @@ describe("PrismaWalletAnalyticsReadStore", () => {
       sum_net_minor: 7000,
       sum_credits_minor: 10000,
       sum_debits_minor: -3000,
+      min_minor: -3000,
+      max_minor: 10000,
       count: 5,
     };
 
@@ -234,6 +238,40 @@ describe("PrismaWalletAnalyticsReadStore", () => {
           expect(result).toEqual([MAPPED]);
         });
       }
+
+      it("When narrowed by a metadata filter key+value, Then it queries and maps buckets", async () => {
+        const { store, $queryRaw } = buildReadStore();
+        $queryRaw.mockResolvedValue([ROW]);
+
+        const result = await store.aggregateMovements(ctx, {
+          platformId: "p1",
+          fromMs: D1,
+          toMs: D2,
+          groupBy: "month",
+          direction: "all",
+          metadataFilterKey: "reasonKey",
+          metadataFilterValue: "_MovementReasonSettlementSales",
+        });
+
+        expect(result).toEqual([MAPPED]);
+        expect($queryRaw).toHaveBeenCalledTimes(1);
+      });
+
+      it("When a metadata filter key has no value, Then it falls back to an empty match (defensive)", async () => {
+        const { store, $queryRaw } = buildReadStore();
+        $queryRaw.mockResolvedValue([]);
+
+        const result = await store.aggregateMovements(ctx, {
+          platformId: "p1",
+          fromMs: D1,
+          toMs: D2,
+          groupBy: "month",
+          direction: "all",
+          metadataFilterKey: "reasonKey",
+        });
+
+        expect(result).toEqual([]);
+      });
 
       it("When narrowed to an owner, Then it applies the owner filter", async () => {
         const { store, $queryRaw } = buildReadStore();

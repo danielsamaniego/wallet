@@ -33,6 +33,8 @@ interface MovementBreakdownRow {
   sum_credits_minor: bigint;
   sum_debits_minor: bigint;
   sum_net_minor: bigint;
+  min_minor: bigint;
+  max_minor: bigint;
   count: number;
 }
 
@@ -227,6 +229,13 @@ export class PrismaWalletAnalyticsReadStore implements IWalletAnalyticsReadStore
         : params.direction === "debit"
           ? Prisma.sql`AND le.entry_type = 'DEBIT'`
           : Prisma.empty;
+    // Optional pre-aggregation narrowing on an arbitrary JSON key — the key and
+    // value are bound as parameters (never interpolated), so the service stays
+    // agnostic and injection-safe. Validated as a pair at the HTTP layer.
+    const metadataFilter =
+      params.metadataFilterKey !== undefined
+        ? Prisma.sql`AND t.metadata ->> ${params.metadataFilterKey} = ${params.metadataFilterValue ?? ""}`
+        : Prisma.empty;
 
     // Sum the wallet's OWN signed ledger entries (CREDIT > 0, DEBIT < 0).
     // System (omnibus) wallets are excluded: by double-entry they are the
@@ -239,6 +248,8 @@ export class PrismaWalletAnalyticsReadStore implements IWalletAnalyticsReadStore
              COALESCE(SUM(le.amount_minor) FILTER (WHERE le.entry_type = 'CREDIT'), 0)::bigint AS sum_credits_minor,
              COALESCE(SUM(le.amount_minor) FILTER (WHERE le.entry_type = 'DEBIT'), 0)::bigint AS sum_debits_minor,
              COALESCE(SUM(le.amount_minor), 0)::bigint AS sum_net_minor,
+             COALESCE(MIN(le.amount_minor), 0)::bigint AS min_minor,
+             COALESCE(MAX(le.amount_minor), 0)::bigint AS max_minor,
              COUNT(*)::int AS count
       FROM ledger_entries le
       JOIN wallets w ON w.id = le.wallet_id
@@ -251,6 +262,7 @@ export class PrismaWalletAnalyticsReadStore implements IWalletAnalyticsReadStore
         ${walletFilter}
         ${ownerFilter}
         ${directionFilter}
+        ${metadataFilter}
       GROUP BY bucket
       ORDER BY sum_net_minor DESC
       LIMIT ${MAX_BREAKDOWN_BUCKETS}
@@ -269,6 +281,8 @@ export class PrismaWalletAnalyticsReadStore implements IWalletAnalyticsReadStore
       sum_net_minor: toSafeNumber(r.sum_net_minor),
       sum_credits_minor: toSafeNumber(r.sum_credits_minor),
       sum_debits_minor: toSafeNumber(r.sum_debits_minor),
+      min_minor: toSafeNumber(r.min_minor),
+      max_minor: toSafeNumber(r.max_minor),
       count: r.count,
     }));
   }

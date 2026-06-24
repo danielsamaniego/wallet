@@ -17,7 +17,7 @@ export function getStatementRoute(queryBus: IQueryBus) {
       tags: ["Wallets"],
       summary: "List wallet statement entries",
       description:
-        "Paginated statement: one entry per movement with running balance (balance_before/after), cursor-based. Optional free-text `q` matches reference/reason.",
+        "Paginated statement: one entry per movement with running balance (balance_before/after), cursor-based. Optional free-text `q` matches reference/reason; `direction` (credit/debit) keeps only that side; `include_total=true` adds the full match count across pages.",
       responses: {
         200: {
           description: "Paginated wallet statement",
@@ -37,14 +37,21 @@ export function getStatementRoute(queryBus: IQueryBus) {
     zValidator("query", QueryParamsSchema, validationHook),
     async (c) => {
       const { walletId } = c.req.valid("param");
-      // The validated query carries the ListingQuery fields plus the optional,
-      // length-bounded free-text `q`.
-      const { q, ...listing } = c.req.valid("query");
+      // The validated query carries the ListingQuery fields plus the optional
+      // endpoint-specific extras (free-text `q`, `direction`, `include_total`).
+      const { q, direction, include_total, ...listing } = c.req.valid("query");
       const ctx = buildAuthenticatedAppContext(c);
 
       const result = await queryBus.dispatch(
         ctx,
-        new GetStatementQuery(walletId, ctx.platformId, listing, q),
+        new GetStatementQuery(
+          walletId,
+          ctx.platformId,
+          listing,
+          q,
+          direction,
+          include_total === "true",
+        ),
       );
 
       return c.json(result, 200);

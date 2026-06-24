@@ -42,6 +42,8 @@ export class GetPlatformMovementBreakdownUseCase
         direction: query.direction,
         metadataKey: query.metadataKey,
         ownerId: query.ownerId,
+        metadataFilterKey: query.metadataFilterKey,
+        metadataFilterValue: query.metadataFilterValue,
       })) ?? [];
 
     this.logger.info(ctx, `${methodLogTag} success`, {

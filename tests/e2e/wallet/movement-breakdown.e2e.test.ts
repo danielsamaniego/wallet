@@ -8,6 +8,8 @@ interface Bucket {
   sum_net_minor: number | string;
   sum_credits_minor: number | string;
   sum_debits_minor: number | string;
+  min_minor: number | string;
+  max_minor: number | string;
   count: number;
 }
 
@@ -120,6 +122,49 @@ describe("Movement Breakdown E2E (per-wallet + platform)", () => {
       expect(byBucket(rows, "charge")).toBeUndefined();
     });
 
+    it("Then min_minor/max_minor report the smallest and largest signed entries per bucket", async () => {
+      const walletId = await createWallet("mb-minmax-user");
+      await deposit(walletId, 4000);
+      await deposit(walletId, 10000);
+      await charge(walletId, 3000);
+
+      const now = Date.now();
+      const res = await app.request(
+        `/v1/wallets/${walletId}/analytics/movement-breakdown?from=${now - DAY}&to=${now + DAY}&group_by=type`,
+      );
+      expect(res.status).toBe(200);
+      const rows = (await res.json()) as Bucket[];
+
+      // Deposits: signed +4000 and +10000 → min 4000, max 10000.
+      expect(byBucket(rows, "deposit")).toMatchObject({ min_minor: 4000, max_minor: 10000, count: 2 });
+      // The single charge is a debit (-3000), so min === max === -3000.
+      expect(byBucket(rows, "charge")).toMatchObject({ min_minor: -3000, max_minor: -3000 });
+    });
+
+    it("Then a metadata_filter_key+value narrows the aggregation to matching rows before grouping", async () => {
+      const walletId = await createWallet("mb-filter-user");
+      await deposit(walletId, 10000, { reasonKey: "_MovementReasonSettlementSales" });
+      await deposit(walletId, 4200, { reasonKey: "_MovementReasonPurchase" });
+
+      const now = Date.now();
+      const res = await app.request(
+        `/v1/wallets/${walletId}/analytics/movement-breakdown?from=${now - DAY}&to=${now + DAY}&group_by=type&metadata_filter_key=reasonKey&metadata_filter_value=_MovementReasonSettlementSales`,
+      );
+      expect(res.status).toBe(200);
+      const rows = (await res.json()) as Bucket[];
+
+      // Only the settlement deposit is counted; the purchase deposit is excluded.
+      expect(byBucket(rows, "deposit")).toMatchObject({ sum_net_minor: 10000, count: 1 });
+    });
+
+    it("Then a metadata_filter_key without a value returns 400", async () => {
+      const walletId = await createWallet("mb-filter-bad");
+      const res = await app.request(
+        `/v1/wallets/${walletId}/analytics/movement-breakdown?from=1&to=2&group_by=type&metadata_filter_key=reasonKey`,
+      );
+      expect(res.status).toBe(400);
+    });
+
     it("Then an invalid range (to < from) returns 400", async () => {
       const walletId = await createWallet("mb-badrange");
       const res = await app.request(
@@ -211,6 +256,24 @@ describe("Movement Breakdown E2E (per-wallet + platform)", () => {
       const rows = (await res.json()) as Bucket[];
 
       expect(byBucket(rows, "deposit")).toMatchObject({ sum_net_minor: 10000, count: 1 });
+    });
+
+    it("Then a metadata_filter_key+value narrows the platform breakdown across wallets", async () => {
+      const a = await createWallet("mb-pf-a");
+      const b = await createWallet("mb-pf-b");
+      await deposit(a, 10000, { reasonKey: "_MovementReasonSettlementSales" });
+      await deposit(b, 7000, { reasonKey: "_MovementReasonSettlementSales" });
+      await deposit(a, 4200, { reasonKey: "_MovementReasonPurchase" });
+
+      const now = Date.now();
+      const res = await app.request(
+        `/v1/analytics/movement-breakdown?from=${now - DAY}&to=${now + DAY}&group_by=type&metadata_filter_key=reasonKey&metadata_filter_value=_MovementReasonSettlementSales`,
+      );
+      expect(res.status).toBe(200);
+      const rows = (await res.json()) as Bucket[];
+
+      // Both settlement deposits across the two wallets, the purchase excluded.
+      expect(byBucket(rows, "deposit")).toMatchObject({ sum_net_minor: 17000, count: 2 });
     });
 
     it("Then an unknown group_by returns 400", async () => {

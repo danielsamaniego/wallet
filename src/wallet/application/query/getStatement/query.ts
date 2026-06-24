@@ -26,6 +26,8 @@ export interface StatementEntryDTO {
 export interface PaginatedStatement {
   entries: StatementEntryDTO[];
   next_cursor: string | null;
+  /** Full count of matching lines across all pages. Present only when requested. */
+  total?: number;
 }
 
 export class GetStatementQuery extends IQuery<PaginatedStatement> {
@@ -36,6 +38,10 @@ export class GetStatementQuery extends IQuery<PaginatedStatement> {
     public readonly listing: ListingQuery,
     /** Optional free-text query — case-insensitive substring on reference/reason. */
     public readonly q?: string,
+    /** Keep only the wallet's credit or debit lines (its own ledger-entry side). */
+    public readonly direction?: "credit" | "debit",
+    /** When true, the result carries `total` (full match count across pages). */
+    public readonly includeTotal?: boolean,
   ) {
     super(GetStatementQuery.TYPE);
   }

@@ -37,7 +37,15 @@ export function getWalletMovementBreakdownRoute(queryBus: IQueryBus) {
     zValidator("query", QueryParamsSchema, validationHook),
     async (c) => {
       const { walletId } = c.req.valid("param");
-      const { from, to, group_by, direction, metadata_key } = c.req.valid("query");
+      const {
+        from,
+        to,
+        group_by,
+        direction,
+        metadata_key,
+        metadata_filter_key,
+        metadata_filter_value,
+      } = c.req.valid("query");
       const ctx = buildAuthenticatedAppContext(c);
 
       const result = await queryBus.dispatch(
@@ -50,6 +58,8 @@ export function getWalletMovementBreakdownRoute(queryBus: IQueryBus) {
           group_by,
           direction,
           metadata_key,
+          metadata_filter_key,
+          metadata_filter_value,
         ),
       );
 
