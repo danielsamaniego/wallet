@@ -65,10 +65,14 @@ export class PrismaStatementReadStore implements IStatementReadStore {
     platformId: string,
     listing: ListingQuery,
     q?: string,
+    direction?: "credit" | "debit",
+    includeTotal?: boolean,
   ): Promise<PaginatedStatement | null> {
     this.logger.debug(ctx, "StatementReadStore | getByWallet", {
       wallet_id: walletId,
       has_query: q !== undefined,
+      direction: direction ?? null,
+      include_total: includeTotal === true,
     });
 
     // Verify wallet belongs to platform (read-your-writes path → primary client).
@@ -95,9 +99,16 @@ export class PrismaStatementReadStore implements IStatementReadStore {
     // with a short or empty page that still carries a next_cursor. Today the
     // write path always pairs a transaction with its ledger entries atomically,
     // so this is a defensive invariant rather than a reachable state.
+    // `direction` keeps only the wallet's own credit/debit side. There is
+    // exactly one ledger entry per (wallet, transaction), so narrowing the
+    // `some` by entry type selects precisely those lines.
+    const entrySome: Record<string, unknown> = { walletId };
+    if (direction) {
+      entrySome.entryType = direction === "credit" ? "CREDIT" : "DEBIT";
+    }
     const baseWhere: Record<string, unknown> = {
       walletId,
-      ledgerEntries: { some: { walletId } },
+      ledgerEntries: { some: entrySome },
     };
     if (q) {
       const term = escapeLike(q);
@@ -140,10 +151,27 @@ export class PrismaStatementReadStore implements IStatementReadStore {
       }
     }
 
+    // Opt-in full count across all pages: re-derive the filter WHERE without the
+    // cursor keyset clause (the cursor restricts to one page) so the total spans
+    // every matching line, not just those after the cursor.
+    let total: number | undefined;
+    if (includeTotal) {
+      const { where: countWhere } = buildPrismaListing(
+        baseWhere,
+        listing.filters,
+        listing.sort,
+        listing.limit,
+        undefined,
+        listing.jsonFilters,
+      );
+      total = await this.prisma.transaction.count({ where: countWhere });
+    }
+
     this.logger.debug(ctx, "StatementReadStore | getByWallet result", {
       wallet_id: walletId,
       count: items.length,
       has_more: hasMore,
+      total: total ?? null,
     });
 
     return {
@@ -151,6 +179,7 @@ export class PrismaStatementReadStore implements IStatementReadStore {
         .map((r) => this.toDTO(r as unknown as MovementRow))
         .filter((m): m is StatementEntryDTO => m !== null),
       next_cursor: nextCursor,
+      total,
     };
   }
 

@@ -20,6 +20,8 @@ export class GetWalletMovementBreakdownQuery extends IQuery<MovementBreakdownBuc
     public readonly groupBy: MovementGroupBy,
     public readonly direction: MovementDirection,
     public readonly metadataKey?: string,
+    public readonly metadataFilterKey?: string,
+    public readonly metadataFilterValue?: string,
   ) {
     super(GetWalletMovementBreakdownQuery.TYPE);
   }

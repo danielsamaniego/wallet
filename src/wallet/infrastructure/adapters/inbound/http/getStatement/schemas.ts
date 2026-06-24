@@ -68,12 +68,23 @@ const listingConfig: ListingConfig = {
   defaultLimit: 50,
 };
 
-// Free-text search is an endpoint-specific extra (not a listing filter): a
-// case-insensitive substring on reference/reason. Bounded to 256 chars so an
-// oversized term can't build a pathological ILIKE pattern; declaring it here
-// also emits it into the OpenAPI spec.
-export const QueryParamsSchema = createListingQuerySchema<{ q?: string }>(listingConfig, {
+// Endpoint-specific extras (not listing filters), declared here so they are
+// validated and emitted into the OpenAPI spec:
+//  - `q`: case-insensitive substring on reference/reason, bounded to 256 chars
+//    so an oversized term can't build a pathological ILIKE pattern.
+//  - `direction`: keep only the wallet's credit or debit lines (its own
+//    ledger-entry side); it is not a transaction column, so it can't be a
+//    listing filter.
+//  - `include_total`: opt-in full match count across pages (a string flag — a
+//    plain coerced boolean would turn "false" into true).
+export const QueryParamsSchema = createListingQuerySchema<{
+  q?: string;
+  direction?: "credit" | "debit";
+  include_total?: "true" | "false";
+}>(listingConfig, {
   q: z.string().max(256).optional(),
+  direction: z.enum(["credit", "debit"]).optional(),
+  include_total: z.enum(["true", "false"]).optional(),
 });
 
 // ── Response ────────────────────────────────────────────────────────────────
@@ -98,4 +109,6 @@ const StatementEntrySchema = z.object({
 export const ResponseSchema = z.object({
   entries: z.array(StatementEntrySchema),
   next_cursor: z.string().nullable(),
+  // Present only when include_total=true was requested.
+  total: z.number().int().nonnegative().optional(),
 });

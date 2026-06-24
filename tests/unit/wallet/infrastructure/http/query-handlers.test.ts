@@ -161,6 +161,38 @@ describe("Wallet query HTTP handlers", () => {
       expect(res.status).toBe(400);
       expect(queryBus.dispatch).not.toHaveBeenCalled();
     });
+
+    it("Given direction and include_total, When GET is called, Then both are forwarded on the query", async () => {
+      const queryBus: IQueryBus = {
+        dispatch: vi.fn().mockResolvedValue({ entries: [], next_cursor: null, total: 0 }),
+      };
+
+      const handlers = getStatementRoute(queryBus);
+      const app = buildApp("/wallets/:walletId/statement", handlers);
+
+      const res = await app.request(
+        "/wallets/wallet-1/statement?direction=credit&include_total=true",
+      );
+
+      expect(res.status).toBe(200);
+      const dispatched = (queryBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      expect(dispatched.direction).toBe("credit");
+      expect(dispatched.includeTotal).toBe(true);
+    });
+
+    it("Given an invalid direction, When GET is called, Then it is rejected with 400", async () => {
+      const queryBus: IQueryBus = {
+        dispatch: vi.fn().mockResolvedValue({ entries: [], next_cursor: null }),
+      };
+
+      const handlers = getStatementRoute(queryBus);
+      const app = buildApp("/wallets/:walletId/statement", handlers);
+
+      const res = await app.request("/wallets/wallet-1/statement?direction=sideways");
+
+      expect(res.status).toBe(400);
+      expect(queryBus.dispatch).not.toHaveBeenCalled();
+    });
   });
 
   // ── getStatementEntry ────────────────────────────────────────────────
@@ -388,6 +420,38 @@ describe("Wallet query HTTP handlers", () => {
       expect(res.status).toBe(400);
       expect(queryBus.dispatch).not.toHaveBeenCalled();
     });
+
+    it("Given a metadata_filter_key and value, When GET is called, Then they are forwarded and it returns 200", async () => {
+      const queryBus: IQueryBus = { dispatch: vi.fn().mockResolvedValue(buckets) };
+      const app = buildApp(
+        "/wallets/:walletId/analytics/movement-breakdown",
+        getWalletMovementBreakdownRoute(queryBus),
+      );
+
+      const res = await app.request(
+        "/wallets/wallet-1/analytics/movement-breakdown?from=1&to=2&group_by=month&metadata_filter_key=reasonKey&metadata_filter_value=_MovementReasonSettlementSales",
+      );
+
+      expect(res.status).toBe(200);
+      const dispatched = (queryBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      expect(dispatched.metadataFilterKey).toBe("reasonKey");
+      expect(dispatched.metadataFilterValue).toBe("_MovementReasonSettlementSales");
+    });
+
+    it("Given a metadata_filter_key without a value, When GET is called, Then it is rejected with 400", async () => {
+      const queryBus: IQueryBus = { dispatch: vi.fn() };
+      const app = buildApp(
+        "/wallets/:walletId/analytics/movement-breakdown",
+        getWalletMovementBreakdownRoute(queryBus),
+      );
+
+      const res = await app.request(
+        "/wallets/wallet-1/analytics/movement-breakdown?from=1&to=2&group_by=type&metadata_filter_key=reasonKey",
+      );
+
+      expect(res.status).toBe(400);
+      expect(queryBus.dispatch).not.toHaveBeenCalled();
+    });
   });
 
   // ── getPlatformMovementBreakdown ───────────────────────────────
@@ -439,6 +503,32 @@ describe("Wallet query HTTP handlers", () => {
 
       expect(res.status).toBe(400);
       expect(queryBus.dispatch).not.toHaveBeenCalled();
+    });
+
+    it("Given a metadata_filter_value without a key, When GET is called, Then it is rejected with 400", async () => {
+      const queryBus: IQueryBus = { dispatch: vi.fn() };
+      const app = buildApp("/analytics/movement-breakdown", getPlatformMovementBreakdownRoute(queryBus));
+
+      const res = await app.request(
+        "/analytics/movement-breakdown?from=1&to=2&group_by=owner&metadata_filter_value=orphan",
+      );
+
+      expect(res.status).toBe(400);
+      expect(queryBus.dispatch).not.toHaveBeenCalled();
+    });
+
+    it("Given a metadata_filter_key and value, When GET is called, Then they are forwarded and it returns 200", async () => {
+      const queryBus: IQueryBus = { dispatch: vi.fn().mockResolvedValue(buckets) };
+      const app = buildApp("/analytics/movement-breakdown", getPlatformMovementBreakdownRoute(queryBus));
+
+      const res = await app.request(
+        "/analytics/movement-breakdown?from=1&to=2&group_by=month&metadata_filter_key=reasonKey&metadata_filter_value=_MovementReasonSettlementSales",
+      );
+
+      expect(res.status).toBe(200);
+      const dispatched = (queryBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      expect(dispatched.metadataFilterKey).toBe("reasonKey");
+      expect(dispatched.metadataFilterValue).toBe("_MovementReasonSettlementSales");
     });
   });
 });

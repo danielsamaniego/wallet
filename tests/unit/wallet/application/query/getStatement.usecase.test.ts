@@ -72,6 +72,8 @@ describe("GetStatementUseCase", () => {
           PLATFORM_ID,
           listing,
           undefined,
+          undefined,
+          undefined,
         );
       });
     });
@@ -127,6 +129,40 @@ describe("GetStatementUseCase", () => {
           PLATFORM_ID,
           listing,
           "INV-1",
+          undefined,
+          undefined,
+        );
+      });
+    });
+  });
+
+  describe("Given a direction filter and total requested", () => {
+    beforeEach(() => {
+      readStore.getByWallet.mockResolvedValue({ entries: [], next_cursor: null, total: 7 });
+    });
+
+    describe("When entries are queried with direction and includeTotal", () => {
+      it("Then it forwards direction and includeTotal and returns the total", async () => {
+        const query = new GetStatementQuery(
+          WALLET_ID,
+          PLATFORM_ID,
+          listing,
+          undefined,
+          "credit",
+          true,
+        );
+
+        const result = await useCase.handle(ctx, query);
+
+        expect(result.total).toBe(7);
+        expect(readStore.getByWallet).toHaveBeenCalledWith(
+          ctx,
+          WALLET_ID,
+          PLATFORM_ID,
+          listing,
+          undefined,
+          "credit",
+          true,
         );
       });
     });

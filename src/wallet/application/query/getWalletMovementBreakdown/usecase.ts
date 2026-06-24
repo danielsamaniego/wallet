@@ -39,6 +39,8 @@ export class GetWalletMovementBreakdownUseCase
       groupBy: query.groupBy,
       direction: query.direction,
       metadataKey: query.metadataKey,
+      metadataFilterKey: query.metadataFilterKey,
+      metadataFilterValue: query.metadataFilterValue,
     });
 
     if (result === null) {

@@ -17,7 +17,7 @@ export function getWalletMovementBreakdownRoute(queryBus: IQueryBus) {
       tags: ["Wallets"],
       summary: "Wallet movement breakdown",
       description:
-        "Aggregated credit/debit/net sums and count of the wallet's movements over a time range, grouped by type, time bucket (day/week/month), or a metadata key.",
+        "Aggregated credit/debit/net sums, min/max and count of the wallet's movements over a time range, grouped by type, time bucket (day/week/month), or a metadata key. Optionally narrowed before grouping by a metadata key/value pair (metadata_filter_key + metadata_filter_value).",
       responses: {
         200: {
           description: "Movement breakdown buckets",
@@ -37,7 +37,15 @@ export function getWalletMovementBreakdownRoute(queryBus: IQueryBus) {
     zValidator("query", QueryParamsSchema, validationHook),
     async (c) => {
       const { walletId } = c.req.valid("param");
-      const { from, to, group_by, direction, metadata_key } = c.req.valid("query");
+      const {
+        from,
+        to,
+        group_by,
+        direction,
+        metadata_key,
+        metadata_filter_key,
+        metadata_filter_value,
+      } = c.req.valid("query");
       const ctx = buildAuthenticatedAppContext(c);
 
       const result = await queryBus.dispatch(
@@ -50,6 +58,8 @@ export function getWalletMovementBreakdownRoute(queryBus: IQueryBus) {
           group_by,
           direction,
           metadata_key,
+          metadata_filter_key,
+          metadata_filter_value,
         ),
       );
 

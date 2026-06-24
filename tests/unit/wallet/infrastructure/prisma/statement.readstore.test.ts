@@ -36,7 +36,7 @@ describe("PrismaStatementReadStore", () => {
   const ctx = createTestContext();
 
   function buildReadStore() {
-    const transaction = { findMany: vi.fn(), findFirst: vi.fn() };
+    const transaction = { findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn() };
     const wallet = { findFirst: vi.fn() };
     const prisma = { transaction, wallet } as never;
     const logger = createMockLogger();
@@ -176,6 +176,52 @@ describe("PrismaStatementReadStore", () => {
       const result = await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing(), "ref");
 
       expect(result!.entries).toHaveLength(1);
+    });
+
+    it("Given direction=credit, When getByWallet is called, Then the WHERE narrows the ledger entry to CREDIT", async () => {
+      const { store, transaction, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
+      transaction.findMany.mockResolvedValue([]);
+
+      await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing(), undefined, "credit");
+
+      const where = transaction.findMany.mock.calls[0][0].where;
+      expect(JSON.stringify(where)).toContain(
+        '"ledgerEntries":{"some":{"walletId":"wallet-1","entryType":"CREDIT"}}',
+      );
+    });
+
+    it("Given direction=debit, When getByWallet is called, Then the WHERE narrows the ledger entry to DEBIT", async () => {
+      const { store, transaction, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
+      transaction.findMany.mockResolvedValue([]);
+
+      await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing(), undefined, "debit");
+
+      const where = transaction.findMany.mock.calls[0][0].where;
+      expect(JSON.stringify(where)).toContain(
+        '"ledgerEntries":{"some":{"walletId":"wallet-1","entryType":"DEBIT"}}',
+      );
+    });
+
+    it("Given includeTotal, When getByWallet is called, Then it counts all matches (cursor-free) and returns the total", async () => {
+      const { store, transaction, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
+      transaction.findMany.mockResolvedValue([buildMovementRow()]);
+      transaction.count.mockResolvedValue(42);
+
+      const result = await store.getByWallet(
+        ctx,
+        "wallet-1",
+        "platform-1",
+        defaultListing({ cursor: undefined }),
+        undefined,
+        undefined,
+        true,
+      );
+
+      expect(result!.total).toBe(42);
+      expect(transaction.count).toHaveBeenCalledTimes(1);
     });
 
     it("Given a free-text query with LIKE wildcards, When getByWallet is called, Then they are escaped to match literally", async () => {
