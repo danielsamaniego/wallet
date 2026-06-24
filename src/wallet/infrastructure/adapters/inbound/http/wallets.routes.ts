@@ -19,6 +19,7 @@ import { getStatementRoute } from "./getStatement/handler.js";
 import { getStatementEntryRoute } from "./getStatementEntry/handler.js";
 import { getTransactionsRoute } from "./getTransactions/handler.js";
 import { getWalletRoute } from "./getWallet/handler.js";
+import { getWalletMovementBreakdownRoute } from "./getWalletMovementBreakdown/handler.js";
 // TODO(historical-import-temp): Remove this import together with the route
 // registration and the whole importHistoricalEntry/ folder after migration.
 import { importHistoricalEntryRoute } from "./importHistoricalEntry/handler.js";
@@ -77,6 +78,11 @@ export function walletRoutes(deps: Dependencies) {
     ...getBalanceTimeseriesRoute(deps.queryBus),
   );
   router.get("/:walletId/analytics/cash-flow", auth, ...getCashFlowRoute(deps.queryBus));
+  router.get(
+    "/:walletId/analytics/movement-breakdown",
+    auth,
+    ...getWalletMovementBreakdownRoute(deps.queryBus),
+  );
 
   return router;
 }

@@ -15,6 +15,7 @@ import { trackingCanonical } from "./utils/infrastructure/middleware/trackingCan
 import { AppError } from "./utils/kernel/appError.js";
 import { createAppContext } from "./utils/kernel/context.js";
 import { ExpireHoldsCommand } from "./wallet/application/command/expireHolds/command.js";
+import { analyticsRoutes } from "./wallet/infrastructure/adapters/inbound/http/analytics.routes.js";
 import { currencyRoutes } from "./wallet/infrastructure/adapters/inbound/http/currencies.routes.js";
 import { holdRoutes } from "./wallet/infrastructure/adapters/inbound/http/holds.routes.js";
 import { transferRoutes } from "./wallet/infrastructure/adapters/inbound/http/transfers.routes.js";
@@ -143,6 +144,7 @@ export function createApp(deps: Dependencies) {
   v1.route("/holds", holdRoutes(deps));
   v1.route("/platforms", platformRoutes(deps));
   v1.route("/currencies", currencyRoutes());
+  v1.route("/analytics", analyticsRoutes(deps));
 
   // OpenAPI spec + interactive docs
   app.get(
