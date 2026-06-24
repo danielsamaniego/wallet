@@ -16,6 +16,7 @@ import { listHoldsRoute } from "@/wallet/infrastructure/adapters/inbound/http/li
 import { listWalletsRoute } from "@/wallet/infrastructure/adapters/inbound/http/listWallets/handler.js";
 import { getWalletMovementBreakdownRoute } from "@/wallet/infrastructure/adapters/inbound/http/getWalletMovementBreakdown/handler.js";
 import { getPlatformMovementBreakdownRoute } from "@/wallet/infrastructure/adapters/inbound/http/getPlatformMovementBreakdown/handler.js";
+import { getMovementStatementRoute } from "@/wallet/infrastructure/adapters/inbound/http/getMovementStatement/handler.js";
 
 /**
  * Builds a minimal Hono app with tracking context that mounts the given route handlers.
@@ -529,6 +530,43 @@ describe("Wallet query HTTP handlers", () => {
       const dispatched = (queryBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0][1];
       expect(dispatched.metadataFilterKey).toBe("reasonKey");
       expect(dispatched.metadataFilterValue).toBe("_MovementReasonSettlementSales");
+    });
+  });
+
+  // ── getMovementStatement (platform-wide by movement id) ────────────────
+  describe("getMovementStatementRoute", () => {
+    it("Given a valid movementId, When GET is called, Then it dispatches and returns 200 with entries", async () => {
+      const entries = [
+        {
+          movement_id: "mv-1",
+          transaction_id: "tx-1",
+          type: "deposit",
+          amount_minor: 10000,
+          direction: "credit",
+          reason: null,
+          reference: null,
+          metadata: null,
+          counterpart_wallet_id: null,
+          hold_id: null,
+          status: "completed",
+          balance_before_minor: 0,
+          balance_after_minor: 10000,
+          created_at: 1700000000000,
+          wallet_id: "wallet-1",
+          owner_id: "owner-1",
+        },
+      ];
+      const queryBus: IQueryBus = { dispatch: vi.fn().mockResolvedValue(entries) };
+      const app = buildApp("/statement/:movementId", getMovementStatementRoute(queryBus));
+
+      const res = await app.request("/statement/mv-1");
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.entries).toEqual(entries);
+      const dispatched = (queryBus.dispatch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      expect(dispatched.movementId).toBe("mv-1");
+      expect(queryBus.dispatch).toHaveBeenCalledOnce();
     });
   });
 });

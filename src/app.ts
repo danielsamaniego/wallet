@@ -18,6 +18,7 @@ import { ExpireHoldsCommand } from "./wallet/application/command/expireHolds/com
 import { analyticsRoutes } from "./wallet/infrastructure/adapters/inbound/http/analytics.routes.js";
 import { currencyRoutes } from "./wallet/infrastructure/adapters/inbound/http/currencies.routes.js";
 import { holdRoutes } from "./wallet/infrastructure/adapters/inbound/http/holds.routes.js";
+import { statementRoutes } from "./wallet/infrastructure/adapters/inbound/http/statement.routes.js";
 import { transferRoutes } from "./wallet/infrastructure/adapters/inbound/http/transfers.routes.js";
 import { walletRoutes } from "./wallet/infrastructure/adapters/inbound/http/wallets.routes.js";
 import type { Dependencies } from "./wiring.js";
@@ -145,6 +146,7 @@ export function createApp(deps: Dependencies) {
   v1.route("/platforms", platformRoutes(deps));
   v1.route("/currencies", currencyRoutes());
   v1.route("/analytics", analyticsRoutes(deps));
+  v1.route("/statement", statementRoutes(deps));
 
   // OpenAPI spec + interactive docs
   app.get(

@@ -38,10 +38,11 @@ describe("PrismaStatementReadStore", () => {
   function buildReadStore() {
     const transaction = { findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn() };
     const wallet = { findFirst: vi.fn() };
-    const prisma = { transaction, wallet } as never;
+    const $queryRaw = vi.fn();
+    const prisma = { transaction, wallet, $queryRaw } as never;
     const logger = createMockLogger();
     const store = new PrismaStatementReadStore(prisma, logger);
-    return { store, transaction, wallet };
+    return { store, transaction, wallet, $queryRaw };
   }
 
   describe("getByWallet", () => {
@@ -280,6 +281,100 @@ describe("PrismaStatementReadStore", () => {
       const result = await store.getOne(ctx, "wallet-1", "mv-404", "platform-1");
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe("getByMovement", () => {
+    it("Given a movement's user faces, When getByMovement is called, Then it maps both directions with wallet_id/owner_id and signed balances", async () => {
+      const { store, $queryRaw } = buildReadStore();
+      $queryRaw.mockResolvedValue([
+        {
+          movement_id: "mv-1",
+          transaction_id: "tx-recv",
+          type: "transfer_in",
+          amount_minor: 4050n,
+          entry_type: "CREDIT",
+          reason: "Transfer received",
+          reference: "ref-1",
+          metadata: { reasonKey: "_MovementReasonTransferReceived" },
+          counterpart_wallet_id: "wallet-sender",
+          hold_id: null,
+          status: "completed",
+          balance_before_minor: 36399n,
+          balance_after_minor: 40449n,
+          created_at: 1700000000000n,
+          wallet_id: "wallet-recv",
+          owner_id: "owner-recv",
+        },
+        {
+          movement_id: "mv-1",
+          transaction_id: "tx-send",
+          type: "transfer_out",
+          amount_minor: 4050n,
+          entry_type: "DEBIT",
+          reason: "Transfer sent",
+          reference: null,
+          metadata: null,
+          counterpart_wallet_id: "wallet-recv",
+          hold_id: null,
+          status: "completed",
+          balance_before_minor: 8855223n,
+          balance_after_minor: 8851173n,
+          created_at: 1700000000000n,
+          wallet_id: "wallet-send",
+          owner_id: "owner-send",
+        },
+      ]);
+
+      const result = await store.getByMovement(ctx, "mv-1", "platform-1");
+
+      expect(result).toEqual([
+        {
+          movement_id: "mv-1",
+          transaction_id: "tx-recv",
+          type: "transfer_in",
+          amount_minor: 4050,
+          direction: "credit",
+          reason: "Transfer received",
+          reference: "ref-1",
+          metadata: { reasonKey: "_MovementReasonTransferReceived" },
+          counterpart_wallet_id: "wallet-sender",
+          hold_id: null,
+          status: "completed",
+          balance_before_minor: 36399,
+          balance_after_minor: 40449,
+          created_at: 1700000000000,
+          wallet_id: "wallet-recv",
+          owner_id: "owner-recv",
+        },
+        {
+          movement_id: "mv-1",
+          transaction_id: "tx-send",
+          type: "transfer_out",
+          amount_minor: 4050,
+          direction: "debit",
+          reason: "Transfer sent",
+          reference: null,
+          metadata: null,
+          counterpart_wallet_id: "wallet-recv",
+          hold_id: null,
+          status: "completed",
+          balance_before_minor: 8855223,
+          balance_after_minor: 8851173,
+          created_at: 1700000000000,
+          wallet_id: "wallet-send",
+          owner_id: "owner-send",
+        },
+      ]);
+    });
+
+    it("Given no user-facing face, When getByMovement is called, Then it returns an empty array", async () => {
+      const { store, $queryRaw } = buildReadStore();
+      $queryRaw.mockResolvedValue([]);
+
+      const result = await store.getByMovement(ctx, "mv-x", "platform-1");
+
+      expect(result).toEqual([]);
     });
   });
 });

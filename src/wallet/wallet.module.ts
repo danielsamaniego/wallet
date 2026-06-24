@@ -41,6 +41,8 @@ import { GetHoldQuery } from "./application/query/getHold/query.js";
 import { GetHoldUseCase } from "./application/query/getHold/usecase.js";
 import { GetLedgerEntriesQuery } from "./application/query/getLedgerEntries/query.js";
 import { GetLedgerEntriesUseCase } from "./application/query/getLedgerEntries/usecase.js";
+import { GetMovementStatementQuery } from "./application/query/getMovementStatement/query.js";
+import { GetMovementStatementUseCase } from "./application/query/getMovementStatement/usecase.js";
 import { GetPlatformMovementBreakdownQuery } from "./application/query/getPlatformMovementBreakdown/query.js";
 import { GetPlatformMovementBreakdownUseCase } from "./application/query/getPlatformMovementBreakdown/usecase.js";
 import { GetStatementQuery } from "./application/query/getStatement/query.js";
@@ -161,6 +163,7 @@ export function wire({
   const getLedgerEntries = new GetLedgerEntriesUseCase(ledgerEntryReadStore, logger);
   const getStatement = new GetStatementUseCase(statementReadStore, logger);
   const getStatementEntry = new GetStatementEntryUseCase(statementReadStore, logger);
+  const getMovementStatement = new GetMovementStatementUseCase(statementReadStore, logger);
   const getCashFlow = new GetCashFlowUseCase(walletAnalyticsReadStore, logger);
   const getBalanceTimeseries = new GetBalanceTimeseriesUseCase(walletAnalyticsReadStore, logger);
   const getWalletMovementBreakdown = new GetWalletMovementBreakdownUseCase(
@@ -244,6 +247,7 @@ export function wire({
       { type: GetLedgerEntriesQuery.TYPE, handler: getLedgerEntries },
       { type: GetStatementQuery.TYPE, handler: getStatement },
       { type: GetStatementEntryQuery.TYPE, handler: getStatementEntry },
+      { type: GetMovementStatementQuery.TYPE, handler: getMovementStatement },
       { type: GetCashFlowQuery.TYPE, handler: getCashFlow },
       { type: GetBalanceTimeseriesQuery.TYPE, handler: getBalanceTimeseries },
       { type: GetWalletMovementBreakdownQuery.TYPE, handler: getWalletMovementBreakdown },
