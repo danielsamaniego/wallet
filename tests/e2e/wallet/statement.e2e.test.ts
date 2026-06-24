@@ -49,6 +49,23 @@ describe("Wallet Statement E2E", () => {
     expect(res.status).toBe(201);
   }
 
+  async function transfer(
+    sourceWalletId: string,
+    targetWalletId: string,
+    amountMinor: number,
+  ): Promise<void> {
+    const res = await app.request("/v1/transfers", {
+      method: "POST",
+      headers: { "Idempotency-Key": nextKey("transfer") },
+      body: JSON.stringify({
+        source_wallet_id: sourceWalletId,
+        target_wallet_id: targetWalletId,
+        amount_minor: amountMinor,
+      }),
+    });
+    expect(res.status).toBe(201);
+  }
+
   beforeAll(async () => {
     app = await createTestApp();
   });
@@ -322,6 +339,77 @@ describe("Wallet Statement E2E", () => {
 
       const fakeMovement = "019560a0-0000-7000-8000-0000000000bb";
       const res = await app.request(`/v1/wallets/${walletId}/statement/${fakeMovement}`);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ── Platform-wide statement by movement id (no walletId) ──────────────────
+
+  describe("Given a normal movement, when looked up platform-wide by id", () => {
+    it("Then GET /v1/statement/:movementId returns the single user face with wallet_id + owner_id", async () => {
+      const walletId = await createWallet("mv-global-deposit");
+      await deposit(walletId, 8000);
+      const list = await (await app.request(`/v1/wallets/${walletId}/statement`)).json();
+      const movementId = list.entries[0].movement_id;
+
+      const res = await app.request(`/v1/statement/${movementId}`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.entries).toHaveLength(1);
+      expect(body.entries[0].movement_id).toBe(movementId);
+      expect(body.entries[0].wallet_id).toBe(walletId);
+      expect(body.entries[0].owner_id).toBe("mv-global-deposit");
+      expect(body.entries[0].direction).toBe("credit");
+    });
+  });
+
+  describe("Given a transfer, when looked up platform-wide by id", () => {
+    it("Then it returns BOTH user faces (sender debit + receiver credit)", async () => {
+      const sender = await createWallet("mv-global-sender");
+      const receiver = await createWallet("mv-global-receiver");
+      await deposit(sender, 10000);
+      await transfer(sender, receiver, 4000);
+
+      const list = await (
+        await app.request(`/v1/wallets/${sender}/statement?filter%5Btype%5D=transfer_out`)
+      ).json();
+      const movementId = list.entries[0].movement_id;
+
+      const res = await app.request(`/v1/statement/${movementId}`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.entries).toHaveLength(2);
+      expect(body.entries.map((e: { owner_id: string }) => e.owner_id).sort()).toEqual([
+        "mv-global-receiver",
+        "mv-global-sender",
+      ]);
+      expect(body.entries.map((e: { direction: string }) => e.direction).sort()).toEqual([
+        "credit",
+        "debit",
+      ]);
+    });
+  });
+
+  describe("Given a non-existent / foreign movement id (platform-wide)", () => {
+    it("Then GET /v1/statement/:movementId returns 404", async () => {
+      const res = await app.request("/v1/statement/019560a0-0000-7000-8000-0000000000ff");
+      expect(res.status).toBe(404);
+    });
+
+    it("Then an unauthenticated client returns 401", async () => {
+      const res = await app.unauthenticatedRequest(
+        "/v1/statement/019560a0-0000-7000-8000-0000000000ff",
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("Then the attacker platform cannot read the victim's movement (404)", async () => {
+      const walletId = await createWallet("mv-global-victim");
+      await deposit(walletId, 5000);
+      const list = await (await app.request(`/v1/wallets/${walletId}/statement`)).json();
+      const movementId = list.entries[0].movement_id;
+
+      const res = await app.attackerRequest(`/v1/statement/${movementId}`);
       expect(res.status).toBe(404);
     });
   });

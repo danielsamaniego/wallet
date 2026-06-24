@@ -6,10 +6,31 @@ import type { ListingQuery } from "../../../../../utils/kernel/listing.js";
 import { encodeCursor } from "../../../../../utils/kernel/listing.js";
 import type { ILogger } from "../../../../../utils/kernel/observability/logger.port.js";
 import type { IStatementReadStore } from "../../../../application/ports/statement.readstore.js";
+import type { GlobalStatementEntryDTO } from "../../../../application/query/getMovementStatement/query.js";
 import type {
   PaginatedStatement,
   StatementEntryDTO,
 } from "../../../../application/query/getStatement/query.js";
+
+/** Raw row of a movement's user-facing face (one ledger entry + its tx/movement/wallet). */
+interface MovementFaceRow {
+  movement_id: string;
+  transaction_id: string;
+  type: string;
+  amount_minor: bigint;
+  entry_type: string;
+  reason: string | null;
+  reference: string | null;
+  metadata: unknown;
+  counterpart_wallet_id: string | null;
+  hold_id: string | null;
+  status: string;
+  balance_before_minor: bigint;
+  balance_after_minor: bigint;
+  created_at: bigint;
+  wallet_id: string;
+  owner_id: string;
+}
 
 /**
  * The statement read model. Anchored on `transaction` (so the existing
@@ -225,6 +246,62 @@ export class PrismaStatementReadStore implements IStatementReadStore {
     }
 
     return this.toDTO(row as unknown as MovementRow);
+  }
+
+  async getByMovement(
+    ctx: AppContext,
+    movementId: string,
+    platformId: string,
+  ): Promise<GlobalStatementEntryDTO[]> {
+    this.logger.debug(ctx, "StatementReadStore | getByMovement", {
+      movement_id: movementId,
+      platform_id: platformId,
+    });
+
+    // Anchored on ledger entries (the natural per-face grain): each user-facing
+    // face is one ledger entry of this movement, joined to its transaction,
+    // movement and wallet. System (omnibus) faces are excluded — they are the
+    // double-entry counterpart and never exposed. Scope bounded to the platform.
+    // balance_before = balance_after - signed(entry amount).
+    const rows = await this.prisma.$queryRaw<MovementFaceRow[]>`
+      SELECT le.movement_id, le.transaction_id, t.type, t.amount_minor,
+             le.entry_type, m.reason, t.reference, t.metadata,
+             t.counterpart_wallet_id, t.hold_id, t.status,
+             (le.balance_after_minor - le.amount_minor) AS balance_before_minor,
+             le.balance_after_minor, t.created_at, le.wallet_id, w.owner_id
+      FROM ledger_entries le
+      JOIN wallets w ON w.id = le.wallet_id
+      JOIN transactions t ON t.id = le.transaction_id
+      JOIN movements m ON m.id = le.movement_id
+      WHERE le.movement_id = ${movementId}
+        AND w.platform_id = ${platformId}
+        AND w.is_system = false
+      ORDER BY le.entry_type
+    `;
+
+    this.logger.debug(ctx, "StatementReadStore | getByMovement result", {
+      movement_id: movementId,
+      faces: rows.length,
+    });
+
+    return rows.map((r) => ({
+      movement_id: r.movement_id,
+      transaction_id: r.transaction_id,
+      type: r.type,
+      amount_minor: toSafeNumber(r.amount_minor),
+      direction: (r.entry_type === "CREDIT" ? "credit" : "debit") as "credit" | "debit",
+      reason: r.reason,
+      reference: r.reference,
+      metadata: (r.metadata as Record<string, unknown>) ?? null,
+      counterpart_wallet_id: r.counterpart_wallet_id,
+      hold_id: r.hold_id,
+      status: r.status,
+      balance_before_minor: toSafeNumber(r.balance_before_minor),
+      balance_after_minor: toSafeNumber(r.balance_after_minor),
+      created_at: toNumber(r.created_at),
+      wallet_id: r.wallet_id,
+      owner_id: r.owner_id,
+    }));
   }
 
   private toDTO(row: MovementRow): StatementEntryDTO | null {
