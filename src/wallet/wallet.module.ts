@@ -41,6 +41,8 @@ import { GetHoldQuery } from "./application/query/getHold/query.js";
 import { GetHoldUseCase } from "./application/query/getHold/usecase.js";
 import { GetLedgerEntriesQuery } from "./application/query/getLedgerEntries/query.js";
 import { GetLedgerEntriesUseCase } from "./application/query/getLedgerEntries/usecase.js";
+import { GetPlatformMovementBreakdownQuery } from "./application/query/getPlatformMovementBreakdown/query.js";
+import { GetPlatformMovementBreakdownUseCase } from "./application/query/getPlatformMovementBreakdown/usecase.js";
 import { GetStatementQuery } from "./application/query/getStatement/query.js";
 import { GetStatementUseCase } from "./application/query/getStatement/usecase.js";
 import { GetStatementEntryQuery } from "./application/query/getStatementEntry/query.js";
@@ -49,6 +51,8 @@ import { GetTransactionsQuery } from "./application/query/getTransactions/query.
 import { GetTransactionsUseCase } from "./application/query/getTransactions/usecase.js";
 import { GetWalletQuery } from "./application/query/getWallet/query.js";
 import { GetWalletUseCase } from "./application/query/getWallet/usecase.js";
+import { GetWalletMovementBreakdownQuery } from "./application/query/getWalletMovementBreakdown/query.js";
+import { GetWalletMovementBreakdownUseCase } from "./application/query/getWalletMovementBreakdown/usecase.js";
 import { ListHoldsQuery } from "./application/query/listHolds/query.js";
 import { ListHoldsUseCase } from "./application/query/listHolds/usecase.js";
 import { ListWalletsQuery } from "./application/query/listWallets/query.js";
@@ -159,6 +163,14 @@ export function wire({
   const getStatementEntry = new GetStatementEntryUseCase(statementReadStore, logger);
   const getCashFlow = new GetCashFlowUseCase(walletAnalyticsReadStore, logger);
   const getBalanceTimeseries = new GetBalanceTimeseriesUseCase(walletAnalyticsReadStore, logger);
+  const getWalletMovementBreakdown = new GetWalletMovementBreakdownUseCase(
+    walletAnalyticsReadStore,
+    logger,
+  );
+  const getPlatformMovementBreakdown = new GetPlatformMovementBreakdownUseCase(
+    walletAnalyticsReadStore,
+    logger,
+  );
   const transfer = new TransferUseCase(
     txManager,
     walletRepo,
@@ -234,6 +246,8 @@ export function wire({
       { type: GetStatementEntryQuery.TYPE, handler: getStatementEntry },
       { type: GetCashFlowQuery.TYPE, handler: getCashFlow },
       { type: GetBalanceTimeseriesQuery.TYPE, handler: getBalanceTimeseries },
+      { type: GetWalletMovementBreakdownQuery.TYPE, handler: getWalletMovementBreakdown },
+      { type: GetPlatformMovementBreakdownQuery.TYPE, handler: getPlatformMovementBreakdown },
     ],
   };
 }

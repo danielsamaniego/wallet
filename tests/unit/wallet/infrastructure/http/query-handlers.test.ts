@@ -14,6 +14,8 @@ import { getStatementRoute } from "@/wallet/infrastructure/adapters/inbound/http
 import { listCurrenciesRoute } from "@/wallet/infrastructure/adapters/inbound/http/listCurrencies/handler.js";
 import { listHoldsRoute } from "@/wallet/infrastructure/adapters/inbound/http/listHolds/handler.js";
 import { listWalletsRoute } from "@/wallet/infrastructure/adapters/inbound/http/listWallets/handler.js";
+import { getWalletMovementBreakdownRoute } from "@/wallet/infrastructure/adapters/inbound/http/getWalletMovementBreakdown/handler.js";
+import { getPlatformMovementBreakdownRoute } from "@/wallet/infrastructure/adapters/inbound/http/getPlatformMovementBreakdown/handler.js";
 
 /**
  * Builds a minimal Hono app with tracking context that mounts the given route handlers.
@@ -317,6 +319,126 @@ describe("Wallet query HTTP handlers", () => {
       expect(body.wallets).toHaveLength(1);
       expect(body.wallets[0].owner_id).toBe("owner-1");
       expect(queryBus.dispatch).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ── getWalletMovementBreakdown ─────────────────────────────────
+  describe("getWalletMovementBreakdownRoute", () => {
+    const buckets = [
+      { bucket: "deposit", sum_net_minor: 7000, sum_credits_minor: 10000, sum_debits_minor: -3000, count: 5 },
+    ];
+
+    it("Given a valid walletId, range and group_by, When GET is called, Then it dispatches and returns 200", async () => {
+      const queryBus: IQueryBus = { dispatch: vi.fn().mockResolvedValue(buckets) };
+      const app = buildApp(
+        "/wallets/:walletId/analytics/movement-breakdown",
+        getWalletMovementBreakdownRoute(queryBus),
+      );
+
+      const res = await app.request(
+        "/wallets/wallet-1/analytics/movement-breakdown?from=1700000000000&to=1700100000000&group_by=type",
+      );
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual(buckets);
+      expect(queryBus.dispatch).toHaveBeenCalledOnce();
+    });
+
+    it("Given group_by=metadata with a metadata_key, When GET is called, Then it returns 200", async () => {
+      const queryBus: IQueryBus = { dispatch: vi.fn().mockResolvedValue(buckets) };
+      const app = buildApp(
+        "/wallets/:walletId/analytics/movement-breakdown",
+        getWalletMovementBreakdownRoute(queryBus),
+      );
+
+      const res = await app.request(
+        "/wallets/wallet-1/analytics/movement-breakdown?from=1&to=2&group_by=metadata&metadata_key=reasonKey",
+      );
+
+      expect(res.status).toBe(200);
+      expect(queryBus.dispatch).toHaveBeenCalledOnce();
+    });
+
+    it("Given to < from, When GET is called, Then it is rejected with 400", async () => {
+      const queryBus: IQueryBus = { dispatch: vi.fn() };
+      const app = buildApp(
+        "/wallets/:walletId/analytics/movement-breakdown",
+        getWalletMovementBreakdownRoute(queryBus),
+      );
+
+      const res = await app.request(
+        "/wallets/wallet-1/analytics/movement-breakdown?from=2000&to=1000&group_by=type",
+      );
+
+      expect(res.status).toBe(400);
+      expect(queryBus.dispatch).not.toHaveBeenCalled();
+    });
+
+    it("Given group_by=metadata without a metadata_key, When GET is called, Then it is rejected with 400", async () => {
+      const queryBus: IQueryBus = { dispatch: vi.fn() };
+      const app = buildApp(
+        "/wallets/:walletId/analytics/movement-breakdown",
+        getWalletMovementBreakdownRoute(queryBus),
+      );
+
+      const res = await app.request(
+        "/wallets/wallet-1/analytics/movement-breakdown?from=1&to=2&group_by=metadata",
+      );
+
+      expect(res.status).toBe(400);
+      expect(queryBus.dispatch).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── getPlatformMovementBreakdown ───────────────────────────────
+  describe("getPlatformMovementBreakdownRoute", () => {
+    const buckets = [
+      { bucket: "owner-1", sum_net_minor: 5000, sum_credits_minor: 8000, sum_debits_minor: -3000, count: 9 },
+    ];
+
+    it("Given a valid range and group_by=owner, When GET is called, Then it dispatches and returns 200", async () => {
+      const queryBus: IQueryBus = { dispatch: vi.fn().mockResolvedValue(buckets) };
+      const app = buildApp("/analytics/movement-breakdown", getPlatformMovementBreakdownRoute(queryBus));
+
+      const res = await app.request(
+        "/analytics/movement-breakdown?from=1700000000000&to=1700100000000&group_by=owner",
+      );
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual(buckets);
+      expect(queryBus.dispatch).toHaveBeenCalledOnce();
+    });
+
+    it("Given group_by=metadata with key and owner_id, When GET is called, Then it returns 200", async () => {
+      const queryBus: IQueryBus = { dispatch: vi.fn().mockResolvedValue(buckets) };
+      const app = buildApp("/analytics/movement-breakdown", getPlatformMovementBreakdownRoute(queryBus));
+
+      const res = await app.request(
+        "/analytics/movement-breakdown?from=1&to=2&group_by=metadata&metadata_key=reasonKey&owner_id=owner-7",
+      );
+
+      expect(res.status).toBe(200);
+      expect(queryBus.dispatch).toHaveBeenCalledOnce();
+    });
+
+    it("Given an unknown group_by, When GET is called, Then it is rejected with 400", async () => {
+      const queryBus: IQueryBus = { dispatch: vi.fn() };
+      const app = buildApp("/analytics/movement-breakdown", getPlatformMovementBreakdownRoute(queryBus));
+
+      const res = await app.request("/analytics/movement-breakdown?from=1&to=2&group_by=nope");
+
+      expect(res.status).toBe(400);
+      expect(queryBus.dispatch).not.toHaveBeenCalled();
+    });
+
+    it("Given group_by=metadata without a metadata_key, When GET is called, Then it is rejected with 400", async () => {
+      const queryBus: IQueryBus = { dispatch: vi.fn() };
+      const app = buildApp("/analytics/movement-breakdown", getPlatformMovementBreakdownRoute(queryBus));
+
+      const res = await app.request("/analytics/movement-breakdown?from=1&to=2&group_by=metadata");
+
+      expect(res.status).toBe(400);
+      expect(queryBus.dispatch).not.toHaveBeenCalled();
     });
   });
 });
