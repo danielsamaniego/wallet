@@ -54,6 +54,7 @@ export function batchOperationsRoute(commandBus: ICommandBus) {
             type: op.type,
             amountMinor: BigInt(op.amount_minor),
             reason: op.reason,
+            metadata: op.metadata,
           })),
           c.req.header("idempotency-key") ?? "",
           c.get("systemWalletShardCount") ?? 0,

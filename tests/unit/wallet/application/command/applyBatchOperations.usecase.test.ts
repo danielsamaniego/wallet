@@ -34,8 +34,9 @@ function op(
   type: BatchOperation["type"],
   amountMinor: bigint,
   reason?: string,
+  metadata?: Record<string, unknown>,
 ): BatchOperation {
-  return { walletId, type, amountMinor, reason };
+  return { walletId, type, amountMinor, reason, metadata };
 }
 
 function cmd(
@@ -547,6 +548,70 @@ describe("ApplyBatchOperationsUseCase", () => {
         "deposit",
         "withdrawal",
       ]);
+    });
+  });
+
+  // ── per-operation metadata ──────────────────────────────────────
+
+  describe("Given per-operation metadata", () => {
+    function withWallet(balance = 100000n) {
+      walletRepo.findById.mockResolvedValue(
+        new WalletBuilder()
+          .withId("wallet-m")
+          .withPlatformId(PLATFORM)
+          .withCurrency(CURRENCY)
+          .withBalance(balance)
+          .build(),
+      );
+    }
+
+    it("Then each transaction merges its op metadata over the batch metadata (op wins)", async () => {
+      withWallet();
+      await useCase.handle(
+        ctx,
+        cmd(
+          [
+            op("wallet-m", "deposit", 5000n, undefined, { reasonKey: "SETTLEMENT_SALES", k: "op" }),
+            op("wallet-m", "charge", 1000n, undefined, { reasonKey: "SALES_COMMISSION" }),
+          ],
+          { metadata: { correlationId: "c-1", k: "batch" } },
+        ),
+      );
+      const metaByType = new Map(savedTransactions(transactionRepo).map((t) => [t.type, t.metadata]));
+      // op key "k" overrides the batch "k"; correlationId (batch only) is preserved.
+      expect(metaByType.get("deposit")).toEqual({
+        correlationId: "c-1",
+        k: "op",
+        reasonKey: "SETTLEMENT_SALES",
+      });
+      expect(metaByType.get("charge")).toEqual({
+        correlationId: "c-1",
+        k: "batch",
+        reasonKey: "SALES_COMMISSION",
+      });
+    });
+
+    it("Then op metadata alone is stored when there is no batch metadata", async () => {
+      withWallet();
+      await useCase.handle(
+        ctx,
+        cmd([
+          op("wallet-m", "deposit", 5000n, undefined, { reasonKey: "A" }),
+          op("wallet-m", "deposit", 1000n),
+        ]),
+      );
+      const txs = savedTransactions(transactionRepo);
+      expect(txs[0].metadata).toEqual({ reasonKey: "A" });
+      expect(txs[1].metadata).toBeNull();
+    });
+
+    it("Then metadata is null when neither batch nor op provide it", async () => {
+      withWallet();
+      await useCase.handle(
+        ctx,
+        cmd([op("wallet-m", "deposit", 5000n), op("wallet-m", "deposit", 1000n)]),
+      );
+      expect(savedTransactions(transactionRepo).every((t) => t.metadata === null)).toBe(true);
     });
   });
 });

@@ -130,6 +130,74 @@ describe("Batch operations E2E", () => {
     });
   });
 
+  // ── Per-operation metadata ───────────────────────────────────────────────
+
+  describe("Given a batch where each operation carries its own metadata", () => {
+    it("Then each transaction stores its op metadata merged over the batch metadata (op wins)", async () => {
+      const vendor = await createWallet("vendor-meta");
+
+      const res = await post({
+        operations: [
+          {
+            wallet_id: vendor,
+            type: "deposit",
+            amount_minor: 10000,
+            metadata: { reasonKey: "SETTLEMENT_SALES", k: "op" },
+          },
+          {
+            wallet_id: vendor,
+            type: "charge",
+            amount_minor: 1500,
+            metadata: { reasonKey: "SALES_COMMISSION" },
+          },
+        ],
+        metadata: { correlationId: "c-1", k: "batch" },
+      });
+      expect(res.status).toBe(201);
+      const { operations } = await res.json();
+
+      const prisma = getTestPrisma();
+      const txs = await prisma.transaction.findMany({
+        where: { id: { in: operations.map((o: { transaction_id: string }) => o.transaction_id) } },
+      });
+      const byType = new Map(txs.map((t) => [t.type, t.metadata]));
+      // deposit op overrides the batch "k"; correlationId (batch-only) is preserved.
+      expect(byType.get("deposit")).toEqual({
+        correlationId: "c-1",
+        k: "op",
+        reasonKey: "SETTLEMENT_SALES",
+      });
+      // charge op has no "k" → keeps the batch "k"; adds its own reasonKey.
+      expect(byType.get("charge")).toEqual({
+        correlationId: "c-1",
+        k: "batch",
+        reasonKey: "SALES_COMMISSION",
+      });
+    });
+
+    it("Then an operation without metadata still inherits the batch metadata", async () => {
+      const vendor = await createWallet("vendor-meta-2");
+
+      const res = await post({
+        operations: [
+          { wallet_id: vendor, type: "deposit", amount_minor: 5000, metadata: { reasonKey: "A" } },
+          { wallet_id: vendor, type: "deposit", amount_minor: 1000 },
+        ],
+        metadata: { correlationId: "c-2" },
+      });
+      const { operations } = await res.json();
+
+      const prisma = getTestPrisma();
+      const txs = await prisma.transaction.findMany({
+        where: { id: { in: operations.map((o: { transaction_id: string }) => o.transaction_id) } },
+      });
+      const t5000 = txs.find((t) => t.amountMinor === 5000n);
+      const t1000 = txs.find((t) => t.amountMinor === 1000n);
+      expect(t5000?.metadata).toEqual({ correlationId: "c-2", reasonKey: "A" });
+      expect(t1000?.metadata).toEqual({ correlationId: "c-2" });
+    });
+  });
+
   // ── Credit-before-debit ordering ─────────────────────────────────────────
 
   describe("Given a wallet with 0 balance and a debit operation listed before the funding credit", () => {

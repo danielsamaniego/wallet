@@ -10,6 +10,9 @@ export const OperationSchema = z
     // magnitude for deposit/withdraw/charge (enforced below).
     amount_minor: z.number().int(),
     reason: z.string().max(500).optional(),
+    // Per-operation metadata, merged over the batch-level `metadata` (operation
+    // keys win) onto this operation's transaction.
+    metadata: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine((op, ctx) => {
     if (op.type === "adjust") {
