@@ -30,6 +30,22 @@ import type {
 
 const mainLogTag = "ApplyBatchOperationsUseCase";
 
+/**
+ * Per-operation metadata merged OVER the batch-level metadata (operation keys
+ * win), so each leg of a batch can carry its own classification while still
+ * inheriting shared batch keys (e.g. a correlation id). Null when both absent —
+ * never store an empty object.
+ */
+function mergeMetadata(
+  batch: Record<string, unknown> | undefined,
+  op: Record<string, unknown> | undefined,
+): Record<string, unknown> | null {
+  if (batch === undefined && op === undefined) {
+    return null;
+  }
+  return { ...(batch ?? {}), ...(op ?? {}) };
+}
+
 /** Signed balance delta an operation applies (adjust carries its own sign). */
 function signedAmountOf(op: BatchOperation): bigint {
   switch (op.type) {
@@ -317,7 +333,7 @@ export class ApplyBatchOperationsUseCase
       status: "completed",
       idempotencyKey: txId === keyedTxId ? cmd.idempotencyKey : null,
       reference: op.reason ?? cmd.reference ?? null,
-      metadata: cmd.metadata ?? null,
+      metadata: mergeMetadata(cmd.metadata, op.metadata),
       holdId: null,
       movementId,
       createdAt: now,

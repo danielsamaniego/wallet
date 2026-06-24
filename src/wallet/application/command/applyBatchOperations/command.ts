@@ -25,6 +25,13 @@ export interface BatchOperation {
   type: BatchOperationType;
   amountMinor: bigint;
   reason?: string;
+  /**
+   * Per-operation metadata, merged over the batch-level `metadata` (operation
+   * keys win). Lets each leg of an atomic batch carry its own classification
+   * (e.g. a consumer-specific reason key) while still sharing batch-level keys
+   * such as a correlation id.
+   */
+  metadata?: Record<string, unknown>;
 }
 
 export interface BatchOperationResult {
