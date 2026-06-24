@@ -17,7 +17,7 @@ export function getWalletMovementBreakdownRoute(queryBus: IQueryBus) {
       tags: ["Wallets"],
       summary: "Wallet movement breakdown",
       description:
-        "Aggregated credit/debit/net sums and count of the wallet's movements over a time range, grouped by type, time bucket (day/week/month), or a metadata key.",
+        "Aggregated credit/debit/net sums, min/max and count of the wallet's movements over a time range, grouped by type, time bucket (day/week/month), or a metadata key. Optionally narrowed before grouping by a metadata key/value pair (metadata_filter_key + metadata_filter_value).",
       responses: {
         200: {
           description: "Movement breakdown buckets",

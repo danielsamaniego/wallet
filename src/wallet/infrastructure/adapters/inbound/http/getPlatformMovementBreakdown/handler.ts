@@ -17,7 +17,7 @@ export function getPlatformMovementBreakdownRoute(queryBus: IQueryBus) {
       tags: ["Analytics"],
       summary: "Platform movement breakdown",
       description:
-        "Aggregated credit/debit/net sums and count of the authenticated platform's movements (all wallets) over a time range, grouped by type, time bucket (day/week/month), owner, or a metadata key. Optionally narrowed to a single owner.",
+        "Aggregated credit/debit/net sums, min/max and count of the authenticated platform's movements (all wallets) over a time range, grouped by type, time bucket (day/week/month), owner, or a metadata key. Optionally narrowed to a single owner, and/or before grouping by a metadata key/value pair (metadata_filter_key + metadata_filter_value).",
       responses: {
         200: {
           description: "Movement breakdown buckets",
