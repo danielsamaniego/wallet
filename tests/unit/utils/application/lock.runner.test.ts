@@ -237,6 +237,78 @@ describe("LockRunner", () => {
     });
   });
 
+  describe("Given a key prefix is configured", () => {
+    describe("When run is called with logical keys", () => {
+      it("Then lock.withLocks receives every key namespaced with the prefix", async () => {
+        const lock = mock<IDistributedLock>();
+        lock.withLocks.mockImplementation(async (_ctx, _keys, _opts, fn) => fn());
+        const logger = mock<ILogger>();
+        const runner = new LockRunner(lock, defaultOptions, logger, "dev:");
+
+        const value = await runner.run(ctx(), ["wallet-lock:w1", "wallet-lock:w2"], async () => 7);
+
+        expect(value).toBe(7);
+        expect(lock.withLocks).toHaveBeenCalledWith(
+          expect.anything(),
+          ["dev:wallet-lock:w1", "dev:wallet-lock:w2"],
+          defaultOptions,
+          expect.any(Function),
+        );
+      });
+
+      it("Then log payloads carry the namespaced keys (what Redis actually sees)", async () => {
+        const lock = mock<IDistributedLock>();
+        lock.withLocks.mockImplementation(async (_ctx, _keys, _opts, fn) => fn());
+        const logger = mock<ILogger>();
+        const runner = new LockRunner(lock, defaultOptions, logger, "dev:");
+
+        await runner.run(ctx(), ["wallet-lock:w1"], async () => "ok");
+
+        expect(logger.debug).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.stringContaining("run start"),
+          expect.objectContaining({ keys: ["dev:wallet-lock:w1"] }),
+        );
+        expect(logger.debug).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.stringContaining("run completed"),
+          expect.objectContaining({ keys: ["dev:wallet-lock:w1"] }),
+        );
+      });
+    });
+
+    describe("When the prefix is empty (default)", () => {
+      it("Then keys are forwarded verbatim", async () => {
+        const lock = mock<IDistributedLock>();
+        lock.withLocks.mockImplementation(async (_ctx, _keys, _opts, fn) => fn());
+        const logger = mock<ILogger>();
+        const runner = new LockRunner(lock, defaultOptions, logger);
+
+        await runner.run(ctx(), ["wallet-lock:w1"], async () => "ok");
+
+        expect(lock.withLocks).toHaveBeenCalledWith(
+          expect.anything(),
+          ["wallet-lock:w1"],
+          defaultOptions,
+          expect.any(Function),
+        );
+      });
+    });
+
+    describe("When the lock is disabled (undefined) with a prefix set", () => {
+      it("Then fn runs directly and no lock interaction happens", async () => {
+        const logger = mock<ILogger>();
+        const runner = new LockRunner(undefined, defaultOptions, logger, "dev:");
+        const fn = vi.fn(async () => "direct");
+
+        const value = await runner.run(ctx(), ["wallet-lock:w1"], fn);
+
+        expect(value).toBe("direct");
+        expect(fn).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
   describe("Given an unexpected error propagates from the lock call", () => {
     describe("When run is called", () => {
       it("Then the error is re-thrown unchanged", async () => {

@@ -190,6 +190,7 @@ export function wire(config: Config): Dependencies {
         ttl_ms: lockOptions.ttlMs,
         wait_ms: lockOptions.waitMs,
         retry_ms: lockOptions.retryMs,
+        key_prefix: config.walletLock.keyPrefix,
       });
     } else {
       // TCP transport (ioredis). Resilience config: if Redis is unreachable
@@ -245,6 +246,7 @@ export function wire(config: Config): Dependencies {
         ttl_ms: lockOptions.ttlMs,
         wait_ms: lockOptions.waitMs,
         retry_ms: lockOptions.retryMs,
+        key_prefix: config.walletLock.keyPrefix,
       });
     }
   } else {
@@ -253,7 +255,12 @@ export function wire(config: Config): Dependencies {
       reason: "WALLET_LOCK_ENABLED=false or REDIS_URL missing",
     });
   }
-  const lockRunner = new LockRunner(distributedLock, lockOptions, logger);
+  const lockRunner = new LockRunner(
+    distributedLock,
+    lockOptions,
+    logger,
+    config.walletLock?.keyPrefix ?? "",
+  );
 
   const shared = {
     prisma,

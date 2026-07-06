@@ -176,6 +176,7 @@ describe("loadConfig", () => {
       delete process.env.WALLET_LOCK_WAIT_MS;
       delete process.env.WALLET_LOCK_RETRY_MS;
       delete process.env.WALLET_LOCK_TRANSPORT;
+      delete process.env.WALLET_LOCK_KEY_PREFIX;
       delete process.env.REDIS_URL;
     });
 
@@ -198,7 +199,39 @@ describe("loadConfig", () => {
           ttlMs: 10_000,
           waitMs: 5_000,
           retryMs: 50,
+          keyPrefix: "",
         });
+      });
+    });
+
+    describe("When WALLET_LOCK_KEY_PREFIX is set", () => {
+      it("Then walletLock.keyPrefix carries the value verbatim", () => {
+        process.env.WALLET_LOCK_ENABLED = "true";
+        process.env.REDIS_URL = "redis://localhost:6379";
+        process.env.WALLET_LOCK_KEY_PREFIX = "dev:";
+
+        const config = loadConfig();
+        expect(config.walletLock?.keyPrefix).toBe("dev:");
+      });
+    });
+
+    describe("When WALLET_LOCK_KEY_PREFIX contains characters outside [A-Za-z0-9:_-]", () => {
+      it("Then loadConfig throws (zod rejects it at startup)", () => {
+        process.env.WALLET_LOCK_ENABLED = "true";
+        process.env.REDIS_URL = "redis://localhost:6379";
+        process.env.WALLET_LOCK_KEY_PREFIX = "dev env:";
+
+        expect(() => loadConfig()).toThrow("Invalid environment configuration");
+      });
+    });
+
+    describe("When WALLET_LOCK_KEY_PREFIX exceeds 32 characters", () => {
+      it("Then loadConfig throws (zod rejects it at startup)", () => {
+        process.env.WALLET_LOCK_ENABLED = "true";
+        process.env.REDIS_URL = "redis://localhost:6379";
+        process.env.WALLET_LOCK_KEY_PREFIX = "a".repeat(33);
+
+        expect(() => loadConfig()).toThrow("Invalid environment configuration");
       });
     });
 
@@ -294,6 +327,7 @@ describe("loadConfig", () => {
           ttlMs: 90000,
           waitMs: 5000,
           retryMs: 100,
+          keyPrefix: "",
         });
       });
     });

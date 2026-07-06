@@ -39,10 +39,17 @@ export class LockRunner {
    * LockRunner with `undefined` to bypass it. Tests that need a no-op runner
    * should use `createMockLockRunner()` from the test helpers.
    */
+  /**
+   * `keyPrefix` namespaces every key before it reaches the lock adapter
+   * (e.g. "dev:" turns "wallet-lock:w1" into "dev:wallet-lock:w1"). It exists
+   * so environments sharing one Redis instance never contend on each other's
+   * locks — callers keep passing logical keys and stay unaware of it.
+   */
   constructor(
     private readonly lock: IDistributedLock | undefined,
     private readonly options: LockOptions,
     private readonly logger: ILogger,
+    private readonly keyPrefix: string = "",
   ) {}
 
   /**
@@ -73,20 +80,24 @@ export class LockRunner {
       return fn();
     }
 
+    // Namespaced once here so adapters, logs, and error payloads all speak
+    // the exact key that lives in Redis.
+    const namespacedKeys = this.keyPrefix ? keys.map((k) => `${this.keyPrefix}${k}`) : keys;
+
     this.logger.debug(ctx, `${mainLogTag} run start`, {
-      keys,
+      keys: namespacedKeys,
       ttl_ms: this.options.ttlMs,
       wait_ms: this.options.waitMs,
     });
 
     const startedAt = Date.now();
     try {
-      const result = await this.lock.withLocks(ctx, keys, this.options, fn);
+      const result = await this.lock.withLocks(ctx, namespacedKeys, this.options, fn);
       const durationMs = Date.now() - startedAt;
       this.logger.incrementCanonical(ctx, "lock.acquired", 1);
       this.logger.incrementCanonical(ctx, "lock.duration_ms", durationMs);
       this.logger.debug(ctx, `${mainLogTag} run completed`, {
-        keys,
+        keys: namespacedKeys,
         duration_ms: durationMs,
       });
       return result;
@@ -99,7 +110,7 @@ export class LockRunner {
         this.logger.incrementCanonical(ctx, "lock.fallthrough", 1);
         this.logger.incrementCanonical(ctx, "lock.duration_ms", durationMs);
         this.logger.warn(ctx, `${mainLogTag} backend down, proceeding without lock`, {
-          keys,
+          keys: namespacedKeys,
           duration_ms: durationMs,
           error: err.message,
           ...(causeErr
