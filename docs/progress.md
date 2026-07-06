@@ -78,6 +78,7 @@
 - [x] Root path redirects to `/docs` for interactive API discovery
 - [x] **Distributed lock** (Redis, per-resource): `IDistributedLock` port + `LockRunner` app service + `RedisDistributedLock` adapter (ioredis, `SET NX PX` + token-aware Lua release). Wired on all 12 mutating use cases; transfer sorts+dedupes keys to avoid A↔B deadlock.
 - [x] Lock feature toggle via `WALLET_LOCK_ENABLED` + `REDIS_URL`; transparent fallthrough when Redis is unreachable or the feature is off.
+- [x] Lock key environment namespace via `WALLET_LOCK_KEY_PREFIX` (`dev:`, `preview:`, …): `LockRunner` prepends it to every key so environments sharing one Redis never contend on each other's locks (default `""` = unchanged behavior).
 - [x] Transient-error classification in the acquire loop: `Command timed out` absorbed and retried within `waitMs` (slow Redis no longer silently degrades the serialization guarantee).
 - [x] Pre-lock platform validation in `captureHold`/`voidHold` to prevent cross-tenant DoS via known `holdId`.
 - [x] OpenAPI: 409 `LOCK_CONTENDED`/`VERSION_CONFLICT` declared on all 12 mutating endpoints.

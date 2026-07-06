@@ -38,6 +38,16 @@ const configSchema = z.object({
   // transports read credentials from the same `REDIS_URL`; REST parses out the
   // host + token and builds an HTTPS URL for the Upstash proxy.
   WALLET_LOCK_TRANSPORT: z.enum(["tcp", "rest"]).default("tcp"),
+  // Namespace prepended to every lock key (e.g. "dev:", "preview:"). Keeps
+  // environments that share one Redis instance from contending on the same
+  // keys — critical when a non-prod database is seeded with a copy of prod
+  // data, where resource IDs (and thus lock keys) are identical.
+  WALLET_LOCK_KEY_PREFIX: z
+    .string()
+    .regex(/^[A-Za-z0-9:_-]{0,32}$/, {
+      message: "WALLET_LOCK_KEY_PREFIX must be at most 32 chars from [A-Za-z0-9:_-] (e.g. 'dev:')",
+    })
+    .default(""),
   REDIS_URL: z.string().optional(),
 });
 
@@ -67,6 +77,8 @@ export interface Config {
     ttlMs: number;
     waitMs: number;
     retryMs: number;
+    /** Environment namespace prepended to every lock key ("" = no namespace). */
+    keyPrefix: string;
   };
 }
 
@@ -123,6 +135,7 @@ export function loadConfig(): Config {
         ttlMs: env.WALLET_LOCK_TTL_MS,
         waitMs: env.WALLET_LOCK_WAIT_MS,
         retryMs: env.WALLET_LOCK_RETRY_MS,
+        keyPrefix: env.WALLET_LOCK_KEY_PREFIX,
       };
     } else {
       // WALLET_LOCK_ENABLED=true + missing REDIS_URL is effectively the same as

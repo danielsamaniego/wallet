@@ -160,6 +160,7 @@ An **outer serialization layer** in front of optimistic locking. Eliminates the 
 
 - **Feature toggle**: `LockRunner` with `lock = undefined` is the ONLY supported way to express "feature disabled". Application code and tests must never construct one manually to bypass the lock; use `createMockLockRunner()` from `test/helpers/mocks/` in tests.
 - **Keys are opaque**: the runner doesn't know about wallets. Callers pass namespaced strings (`wallet-lock:<walletId>`, `hold-lock:<holdId>`, …). Prefix per resource type prevents collisions across features.
+- **Environment namespace**: `WALLET_LOCK_KEY_PREFIX` (e.g. `dev:`, `preview:`) is prepended to every key by `LockRunner` before it reaches the adapter. It isolates environments that share one Redis instance — critical when a non-prod database is seeded with a copy of prod data, where resource IDs (and thus lock keys) are otherwise identical. Callers keep passing logical keys; logs and error payloads show the full namespaced key (what Redis actually sees).
 - **Ordering**: `withLocks(keys)` sorts + dedupes the key list before acquiring, so two callers that need the same pair (transfer A→B vs B→A) acquire in the same order and cannot deadlock.
 - **Release** always runs a token-aware Lua script — a stale call after TTL expiry returns `deleted=0`, which is logged at `warn` with `lock.token_mismatch` incremented. This is a correctness signal: the critical section was longer than the TTL and a second holder may have overlapped.
 
