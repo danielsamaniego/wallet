@@ -70,8 +70,10 @@ const listingConfig: ListingConfig = {
 
 // Endpoint-specific extras (not listing filters), declared here so they are
 // validated and emitted into the OpenAPI spec:
-//  - `q`: case-insensitive substring on reference/reason, bounded to 256 chars
-//    so an oversized term can't build a pathological ILIKE pattern.
+//  - `q`: case-insensitive substring on reference/reason, optional normalized
+//    metadata.statementSearchText, and optional per-face
+//    metadata.statementSearchTextByWallet[walletId], bounded to 256 chars so an
+//    oversized term can't build a pathological ILIKE pattern.
 //  - `direction`: keep only the wallet's credit or debit lines (its own
 //    ledger-entry side); it is not a transaction column, so it can't be a
 //    listing filter.
