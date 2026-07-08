@@ -17,7 +17,7 @@ export function getStatementRoute(queryBus: IQueryBus) {
       tags: ["Wallets"],
       summary: "List wallet statement entries",
       description:
-        "Paginated statement: one entry per movement with running balance (balance_before/after), cursor-based. Optional free-text `q` matches reference/reason; `direction` (credit/debit) keeps only that side; `include_total=true` adds the full match count across pages.",
+        "Paginated statement: one entry per movement with running balance (balance_before/after), cursor-based. Optional free-text `q` matches reference/reason, metadata.statementSearchText, and metadata.statementSearchTextByWallet[walletId]; `direction` (credit/debit) keeps only that side; `include_total=true` adds the full match count across pages.",
       responses: {
         200: {
           description: "Paginated wallet statement",

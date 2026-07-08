@@ -247,6 +247,44 @@ describe("PrismaStatementReadStore", () => {
       const where = transaction.findMany.mock.calls[0][0].where;
       expect(findContains(where)).toBe("a\\_b\\%c\\\\d");
     });
+
+    it("Given a free-text query, When getByWallet is called, Then q also matches statementSearchText metadata", async () => {
+      const { store, transaction, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
+      transaction.findMany.mockResolvedValue([]);
+
+      await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing(), "Piedra");
+
+      const where = transaction.findMany.mock.calls[0][0].where;
+      expect(JSON.stringify(where)).toContain(
+        '"metadata":{"path":["statementSearchText"],"string_contains":"piedra"}',
+      );
+      expect(JSON.stringify(where)).toContain(
+        '"metadata":{"path":["statementSearchTextByWallet","wallet-1"],"string_contains":"piedra"}',
+      );
+    });
+
+    it("Given a free-text query with accents and extra spacing, When getByWallet is called, Then metadata search uses normalized text", async () => {
+      const { store, transaction, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
+      transaction.findMany.mockResolvedValue([]);
+
+      await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing(), "  TOMÁS   Piedra  ");
+
+      const where = transaction.findMany.mock.calls[0][0].where;
+      expect(JSON.stringify(where)).toContain('"string_contains":"tomas piedra"');
+    });
+
+    it("Given a whitespace-only free-text query, When getByWallet is called, Then metadata search is omitted", async () => {
+      const { store, transaction, wallet } = buildReadStore();
+      wallet.findFirst.mockResolvedValue({ id: "wallet-1" });
+      transaction.findMany.mockResolvedValue([]);
+
+      await store.getByWallet(ctx, "wallet-1", "platform-1", defaultListing(), "   ");
+
+      const where = transaction.findMany.mock.calls[0][0].where;
+      expect(JSON.stringify(where)).not.toContain("statementSearchText");
+    });
   });
 
   describe("getOne", () => {

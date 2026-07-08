@@ -443,6 +443,42 @@ describe("Wallet Statement E2E", () => {
       expect(body.entries[0].reference).toBe("ALPHACOMMISSION");
     });
 
+    it("Then ?q= also matches the platform-provided statementSearchText metadata", async () => {
+      const walletId = await createWallet("mv-q-meta-user");
+      await deposit(walletId, 10000);
+      await adjust(walletId, 1000, "internal settlement", {
+        statementSearchText: "transferencia enviada a tomas fuentes sanchez tomas",
+      });
+
+      const res = await app.request(`/v1/wallets/${walletId}/statement?q=fuentes`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      expect(body.entries).toHaveLength(1);
+      expect(body.entries[0].metadata.statementSearchText).toBe(
+        "transferencia enviada a tomas fuentes sanchez tomas",
+      );
+    });
+
+    it("Then ?q= can match statementSearchTextByWallet only for the listed wallet face", async () => {
+      const walletId = await createWallet("mv-q-face-user");
+      await deposit(walletId, 10000);
+      await adjust(walletId, 1000, "internal settlement", {
+        statementSearchTextByWallet: {
+          [walletId]: "transferencia enviada a piedra",
+          "other-wallet": "transferencia enviada a tomas",
+        },
+      });
+
+      const ownFace = await app.request(`/v1/wallets/${walletId}/statement?q=piedra`);
+      expect(ownFace.status).toBe(200);
+      expect((await ownFace.json()).entries).toHaveLength(1);
+
+      const otherFace = await app.request(`/v1/wallets/${walletId}/statement?q=tomas`);
+      expect(otherFace.status).toBe(200);
+      expect((await otherFace.json()).entries).toEqual([]);
+    });
+
     it("Then a non-matching q returns no entries", async () => {
       const walletId = await createWallet("mv-q-empty-user");
       await deposit(walletId, 5000);

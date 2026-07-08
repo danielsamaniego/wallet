@@ -74,6 +74,18 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
+const STATEMENT_SEARCH_TEXT_METADATA_KEY = "statementSearchText";
+const STATEMENT_SEARCH_TEXT_BY_WALLET_METADATA_KEY = "statementSearchTextByWallet";
+
+function normalizeStatementSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export class PrismaStatementReadStore implements IStatementReadStore {
   constructor(
     private readonly prisma: PrismaClient,
@@ -109,7 +121,8 @@ export class PrismaStatementReadStore implements IStatementReadStore {
       return null;
     }
 
-    // Free-text `q` is a case-insensitive substring match on reference/reason,
+    // Free-text `q` is a case-insensitive substring match on reference/reason
+    // plus an optional platform-provided normalized metadata search blob,
     // confined to this wallet (the walletId filter already bounds the scan).
     // LIKE wildcards in the user input are escaped so they match literally —
     // otherwise `_`/`%` would act as wildcards (over-matching / probing).
@@ -133,9 +146,26 @@ export class PrismaStatementReadStore implements IStatementReadStore {
     };
     if (q) {
       const term = escapeLike(q);
+      const normalizedTerm = normalizeStatementSearchText(q);
       baseWhere.OR = [
         { reference: { contains: term, mode: "insensitive" } },
         { movement: { reason: { contains: term, mode: "insensitive" } } },
+        ...(normalizedTerm
+          ? [
+              {
+                metadata: {
+                  path: [STATEMENT_SEARCH_TEXT_METADATA_KEY],
+                  string_contains: normalizedTerm,
+                },
+              },
+              {
+                metadata: {
+                  path: [STATEMENT_SEARCH_TEXT_BY_WALLET_METADATA_KEY, walletId],
+                  string_contains: normalizedTerm,
+                },
+              },
+            ]
+          : []),
       ];
     }
 
