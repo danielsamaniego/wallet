@@ -142,7 +142,7 @@ Per-owner, per-platform, per-currency balance container. Uses optimistic locking
 
 **Unique constraint:** (owner_id, platform_id, currency_code, shard_index)
 
-**CHECK constraint:** `wallets_supported_currency` ensures `currency_code` is one of the supported currencies (USD, EUR, MXN, CLP, KWD).
+**CHECK constraint:** `wallets_supported_currency` ensures `currency_code` is one of the supported currencies (USD, EUR, MXN, CLP, KWD, GBP).
 
 **Trigger:** `trg_enforce_positive_balance` (BEFORE INSERT OR UPDATE) prevents non-system wallet balances from going negative unless `platforms.allow_negative_balance = true`. Fast-path for non-negative or system wallets; only queries Platform when balance would go negative.
 
@@ -288,7 +288,7 @@ Stores response for idempotent mutations. Prevents duplicate financial operation
 
 2. **Timestamps**: Unix milliseconds (ms since epoch) everywhere: DB (BIGINT), domain, ports, DTOs, API.
 
-3. **Amounts**: Integer values in the smallest currency unit per ISO 4217 (BIGINT). No floats. Stripe-style representation. The `_minor` column suffix is a naming convention; the actual unit depends on the currency's minor unit exponent (e.g., 2 for USD/EUR, 0 for CLP, 3 for KWD). Supported currencies: USD, EUR, MXN, CLP, KWD.
+3. **Amounts**: Integer values in the smallest currency unit per ISO 4217 (BIGINT). No floats. Stripe-style representation. The `_minor` column suffix is a naming convention; the actual unit depends on the currency's minor unit exponent (e.g., 2 for USD/EUR/GBP, 0 for CLP, 3 for KWD). Supported currencies: USD, EUR, MXN, CLP, KWD, GBP.
 
 4. **System wallets**: `is_system = true`; can have negative balance. Act as counterparty for deposits and withdrawals.
 

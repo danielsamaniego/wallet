@@ -11,6 +11,7 @@ export const SUPPORTED_CURRENCIES: readonly CurrencyEntry[] = Object.freeze([
   { code: "MXN", minorUnit: 2 },
   { code: "CLP", minorUnit: 0 },
   { code: "KWD", minorUnit: 3 },
+  { code: "GBP", minorUnit: 2 },
 ]);
 
 const supportedSet = new Set(SUPPORTED_CURRENCIES.map((c) => c.code));

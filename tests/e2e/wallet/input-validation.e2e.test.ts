@@ -210,12 +210,12 @@ describe("Input Validation Attacks E2E", () => {
       });
     });
 
-    describe("When using a valid-format but unsupported currency code 'GBP'", () => {
+    describe("When using a valid-format but unsupported currency code 'CHF'", () => {
       it("Then it should reject with 400", async () => {
         const res = await app.request("/v1/wallets", {
           method: "POST",
-          headers: { "Idempotency-Key": "val-unsupported-gbp-1" },
-          body: JSON.stringify({ owner_id: "user-1", currency_code: "GBP" }),
+          headers: { "Idempotency-Key": "val-unsupported-chf-1" },
+          body: JSON.stringify({ owner_id: "user-1", currency_code: "CHF" }),
         });
 
         expect(res.status).toBe(400);

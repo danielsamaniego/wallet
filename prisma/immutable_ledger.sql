@@ -279,7 +279,7 @@ ALTER TABLE transactions
 
 ALTER TABLE wallets
   DROP CONSTRAINT IF EXISTS wallets_supported_currency,
-  ADD CONSTRAINT wallets_supported_currency CHECK (currency_code IN ('USD', 'EUR', 'MXN', 'CLP', 'KWD'));
+  ADD CONSTRAINT wallets_supported_currency CHECK (currency_code IN ('USD', 'EUR', 'MXN', 'CLP', 'KWD', 'GBP'));
 
 -- Status CHECK constraints — prevent typos and invalid values at DB level.
 ALTER TABLE wallets

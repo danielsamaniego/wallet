@@ -9,9 +9,9 @@ describe("currency catalog", () => {
   // ── SUPPORTED_CURRENCIES ────────────────────────────────────────────
 
   describe("SUPPORTED_CURRENCIES", () => {
-    it("Given the catalog, When accessed, Then it contains exactly USD, EUR, MXN, CLP, KWD", () => {
+    it("Given the catalog, When accessed, Then it contains exactly USD, EUR, MXN, CLP, KWD, GBP", () => {
       const codes = SUPPORTED_CURRENCIES.map((c) => c.code);
-      expect(codes).toEqual(["USD", "EUR", "MXN", "CLP", "KWD"]);
+      expect(codes).toEqual(["USD", "EUR", "MXN", "CLP", "KWD", "GBP"]);
     });
 
     it("Given the catalog, When accessed, Then each entry has code and minorUnit", () => {
@@ -22,7 +22,14 @@ describe("currency catalog", () => {
     });
 
     it("Given the catalog, When accessed, Then minorUnit matches each currency's ISO 4217 exponent", () => {
-      const expected: Record<string, number> = { USD: 2, EUR: 2, MXN: 2, CLP: 0, KWD: 3 };
+      const expected: Record<string, number> = {
+        USD: 2,
+        EUR: 2,
+        MXN: 2,
+        CLP: 0,
+        KWD: 3,
+        GBP: 2,
+      };
       for (const entry of SUPPORTED_CURRENCIES) {
         expect(entry.minorUnit).toBe(expected[entry.code]);
       }
@@ -64,8 +71,8 @@ describe("currency catalog", () => {
       expect(isSupportedCurrency("JPY")).toBe(false);
     });
 
-    it("Given 'GBP' (valid ISO but unsupported), When checked, Then returns false", () => {
-      expect(isSupportedCurrency("GBP")).toBe(false);
+    it("Given 'GBP', When checked, Then returns true", () => {
+      expect(isSupportedCurrency("GBP")).toBe(true);
     });
 
     it("Given '' (empty), When checked, Then returns false", () => {

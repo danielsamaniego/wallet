@@ -119,11 +119,11 @@ describe("Wallet Aggregate", () => {
       });
     });
 
-    describe("Given a valid-format but unsupported currency code 'GBP'", () => {
+    describe("Given supported currency code 'GBP'", () => {
       describe("When creating a wallet", () => {
-        it("Then throws UNSUPPORTED_CURRENCY validation error", () => {
-          expect(() => Wallet.create("w-1", "o-1", "p-1", "GBP", NOW))
-            .toThrowAppError(ErrorKind.Validation, "UNSUPPORTED_CURRENCY");
+        it("Then creates the wallet", () => {
+          const wallet = Wallet.create("w-1", "o-1", "p-1", "GBP", NOW);
+          expect(wallet.currencyCode).toBe("GBP");
         });
       });
     });

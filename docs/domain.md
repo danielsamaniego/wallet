@@ -64,7 +64,7 @@ Internal components and workflows.
 | **Hold** | Authorization that reserves funds without moving them. Lifecycle: active → captured \| voided \| expired. |
 | **Platform** | API consumer. Identified by API key; owns wallets for its users. May have `allow_negative_balance=true` to permit administrative adjustments below zero. |
 | **System Wallet** | Special wallet (per `(platform, currency)`) acting as counterparty for deposits and withdrawals. May have negative balance. Physically sharded into N rows (default 32, configurable per platform, only-increase) to avoid hot-row contention; a deterministic hash of the user wallet id picks the shard for each movement. Transparent to API consumers — balances and lookups aggregate across shards. See architecture/systemPatterns.md § "System Wallet Sharding". |
-| **Amount** | Integer in smallest currency unit per ISO 4217 (e.g., cents for USD, yen for JPY, fils for BHD). No floats; like Stripe. Column names use `_minor` as convention. The service supports an explicit currency catalog: USD, EUR, MXN, CLP, KWD. |
+| **Amount** | Integer in smallest currency unit per ISO 4217 (e.g., cents for USD, yen for JPY, fils for BHD). No floats; like Stripe. Column names use `_minor` as convention. The service supports an explicit currency catalog: USD, EUR, MXN, CLP, KWD, GBP. |
 | **Currency** | ISO 4217 code (e.g., USD, EUR). Each wallet has one currency. |
 
 ---
@@ -159,7 +159,7 @@ Some platform flows are intrinsically multi-step: a settlement credits a vendor 
 
 - All amounts stored as integers in the smallest currency unit per ISO 4217 (BIGINT). No floating point. The `_minor` column suffix is a naming convention; the actual unit depends on the currency's minor unit exponent (e.g., 2 for USD/EUR, 0 for JPY, 3 for BHD).
 - Each wallet has exactly one currency (ISO 4217).
-- `currency_code` must be a valid ISO 4217 uppercase code. The service supports an explicit currency catalog: **USD** (2), **EUR** (2), **MXN** (2), **CLP** (0), **KWD** (3) — the number in parentheses is the minor unit exponent. Domain validates against this allowed set; reject unknown codes.
+- `currency_code` must be a valid ISO 4217 uppercase code. The service supports an explicit currency catalog: **USD** (2), **EUR** (2), **MXN** (2), **CLP** (0), **KWD** (3), **GBP** (2) — the number in parentheses is the minor unit exponent. Domain validates against this allowed set; reject unknown codes.
 - **Cross-currency transfers are not allowed.** Source and target wallets must share the same `currency_code`. The transfer command must validate this before proceeding.
 
 ### Double-Entry Ledger

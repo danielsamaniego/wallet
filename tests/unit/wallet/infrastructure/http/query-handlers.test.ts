@@ -274,6 +274,7 @@ describe("Wallet query HTTP handlers", () => {
         { code: "MXN", minor_unit: 2 },
         { code: "CLP", minor_unit: 0 },
         { code: "KWD", minor_unit: 3 },
+        { code: "GBP", minor_unit: 2 },
       ]);
     });
   });

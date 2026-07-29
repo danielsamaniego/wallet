@@ -390,29 +390,34 @@ describe("Edge Cases E2E", () => {
   // ── Same owner, multiple currencies ─────────────────────────────────────
 
   describe("Given the same owner creates wallets in different currencies", () => {
-    describe("When creating USD, EUR, and MXN wallets", () => {
-      it("Then all three should be created independently", async () => {
+    describe("When creating USD, EUR, MXN, and GBP wallets", () => {
+      it("Then all four should be created independently", async () => {
         const usd = await createWallet("multi-curr-owner", "USD");
         const eur = await createWallet("multi-curr-owner", "EUR");
         const mxn = await createWallet("multi-curr-owner", "MXN");
+        const gbp = await createWallet("multi-curr-owner", "GBP");
 
         expect(usd).toBeDefined();
         expect(eur).toBeDefined();
         expect(mxn).toBeDefined();
-        expect(new Set([usd, eur, mxn]).size).toBe(3);
+        expect(gbp).toBeDefined();
+        expect(new Set([usd, eur, mxn, gbp]).size).toBe(4);
 
         // Deposit to each independently
         await deposit(usd, 1000);
         await deposit(eur, 2000);
         await deposit(mxn, 3000);
+        await deposit(gbp, 4000);
 
         const usdRes = await app.request(`/v1/wallets/${usd}`);
         const eurRes = await app.request(`/v1/wallets/${eur}`);
         const mxnRes = await app.request(`/v1/wallets/${mxn}`);
+        const gbpRes = await app.request(`/v1/wallets/${gbp}`);
 
         expect(Number((await usdRes.json()).balance_minor)).toBe(1000);
         expect(Number((await eurRes.json()).balance_minor)).toBe(2000);
         expect(Number((await mxnRes.json()).balance_minor)).toBe(3000);
+        expect(Number((await gbpRes.json()).balance_minor)).toBe(4000);
       });
     });
   });
@@ -623,6 +628,7 @@ describe("Edge Cases E2E", () => {
           { code: "MXN", minor_unit: 2 },
           { code: "CLP", minor_unit: 0 },
           { code: "KWD", minor_unit: 3 },
+          { code: "GBP", minor_unit: 2 },
         ]);
       });
     });

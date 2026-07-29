@@ -80,7 +80,7 @@ The residual hot-row surface called out when the lock shipped is now closed by s
 - Auto-generated OpenAPI 3.1 spec (hono-openapi) + interactive Scalar UI at `/docs`
 - All 13 endpoints documented with `describeRoute()` (tags, summary, response schemas)
 - Dedicated e2e coverage for balance adjustments endpoint (`POST /v1/wallets/:walletId/adjust`) across auth, validation, idempotency, cross-tenant, concurrency, and ledger integrity scenarios
-- Multi-currency support: explicit currency catalog (USD, EUR, MXN, CLP, KWD) with `wallets_supported_currency` CHECK constraint
+- Multi-currency support: explicit currency catalog (USD, EUR, MXN, CLP, KWD, GBP) with `wallets_supported_currency` CHECK constraint
 - Renamed all `_cents` fields to `_minor` across domain, application, infrastructure, and API layers to accurately reflect multi-currency minor unit semantics
 - Endpoint `schemas.ts` pattern: request + response Zod schemas per endpoint
 - Shared `ErrorResponseSchema` in `utils/infrastructure/hono.error.ts`
